@@ -79,6 +79,11 @@ class CohesionMonitor {
   std::vector<DeclaredGroup> declared_;
   ds::RollbackDSU dsu_{0};
   std::vector<std::vector<track::TouristId>> prev_components_;
+  // Previous per-group state, so we emit CHANGES rather than re-reporting the
+  // same fragmentation every tick. Same "transitions, not states" rule the
+  // evaluator follows -- reporting state floods the operator.
+  std::vector<uint8_t> was_fragmented_;
+  std::vector<std::vector<track::TouristId>> prev_stragglers_;
 };
 
 }  // namespace safetrail::group

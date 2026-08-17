@@ -29,7 +29,7 @@
 #include "safetrail/fence/hysteresis.hpp"
 #include "safetrail/fence/zone.hpp"
 #include "safetrail/geo/containment.hpp"
-#include "safetrail/index/versioned_index.hpp"
+#include "safetrail/index/spatial_index.hpp"
 #include "safetrail/power/adaptive_sampler.hpp"
 #include "safetrail/track/tourist.hpp"
 
@@ -85,7 +85,7 @@ struct EvaluatorConfig {
 // ─── Evaluator ──────────────────────────────────────────────────────────────
 class Evaluator {
  public:
-  Evaluator(const index::VersionedIndex& idx,
+  Evaluator(const index::SpatialIndex& idx,
             const ZoneStore& zones,
             EvaluatorConfig cfg = {});
 
@@ -114,7 +114,7 @@ class Evaluator {
   void reset_counters();
 
  private:
-  const index::VersionedIndex& index_;
+  const index::SpatialIndex& index_;
   const ZoneStore&             zones_;
   EvaluatorConfig              cfg_;
   Counters                     counters_{};

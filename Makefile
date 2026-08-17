@@ -1,75 +1,69 @@
-# Two build paths. `make` uses plain clang++ and needs nothing but a compiler.
-# `make cmake-build` uses CMake if you have it (brew install cmake).
-
+# Plain make, no cmake needed. `make cmake-build` uses CMake if you have it.
 CXX      ?= clang++
-CXXFLAGS := -std=c++17 -Iinclude -Wall -Wextra -Wpedantic -Wshadow -Wconversion
-DEBUG    := -g -O0 -fsanitize=address,undefined -fno-omit-frame-pointer
-RELEASE  := -O2 -DNDEBUG
-
+CXXFLAGS := -std=c++17 -Iinclude -Wall -Wextra -Wpedantic
+OPT      := -O2
 BUILD    := build
-SRC      := $(shell find src -name '*.cpp' 2>/dev/null)
-OBJ      := $(SRC:src/%.cpp=$(BUILD)/obj/%.o)
-TESTS    := $(shell find tests -name '*_test.cpp' 2>/dev/null)
-TESTBINS := $(TESTS:tests/%.cpp=$(BUILD)/test/%)
-APPS     := $(wildcard apps/*.cpp)
-APPBINS  := $(APPS:apps/%.cpp=$(BUILD)/%)
 
-.PHONY: all check test bench run clean fmt cmake-build help
+# Modules implemented so far. Stubs are excluded until they have a body --
+# see docs/ROADMAP.md for which phase each belongs to.
+CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containment.cpp \
+        src/ds/dynamic_connectivity.cpp src/index/brute_force.cpp src/index/quadtree.cpp \
+        src/util/json.cpp src/fence/zone.cpp src/fence/hysteresis.cpp src/fence/evaluator.cpp \
+        src/track/tourist.cpp src/power/adaptive_sampler.cpp src/alert/alert.cpp \
+        src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp
 
-all: $(BUILD)/libsafetrail.a $(APPBINS)
+TESTS := tests/geo/ray_casting_test.cpp tests/index/equivalence_test.cpp \
+         tests/ds/dynamic_connectivity_test.cpp
 
-# ── Syntax-check every header on its own. Catches missing includes early, which
-#    matters in a header-heavy project like this one.
+.PHONY: all demo bench test check clean asan cmake-build help
+
+all: $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench
+
+$(BUILD)/safetrail_headless: $(CORE) apps/safetrail_headless.cpp
+	@mkdir -p $(BUILD)
+	@$(CXX) $(CXXFLAGS) $(OPT) $^ -o $@
+
+$(BUILD)/safetrail_bench: $(CORE) apps/safetrail_bench.cpp
+	@mkdir -p $(BUILD)
+	@$(CXX) $(CXXFLAGS) $(OPT) $^ -o $@
+
+demo: $(BUILD)/safetrail_headless
+	@./$(BUILD)/safetrail_headless --tourists 40 --hours 1 --synthetic 5000 --show 12
+
+bench: $(BUILD)/safetrail_bench
+	@mkdir -p bench/results
+	@./$(BUILD)/safetrail_bench --out bench/results
+
+test:
+	@mkdir -p $(BUILD)/test; fail=0; \
+	for t in $(TESTS); do \
+	  n=$$(basename $$t .cpp); \
+	  $(CXX) $(CXXFLAGS) -O1 $(CORE) $$t -o $(BUILD)/test/$$n 2>/dev/null || { echo "  build FAIL $$n"; fail=1; continue; }; \
+	  ./$(BUILD)/test/$$n || fail=1; \
+	done; echo; [ $$fail -eq 0 ] && echo "ALL TESTS PASS" || { echo "TESTS FAILED"; exit 1; }
+
+# Sanitizers are opt-in: they make link times painful and timing numbers useless.
+asan: CXXFLAGS += -fsanitize=address,undefined -fno-omit-frame-pointer -g
+asan: OPT := -O0
+asan: test
+
 check:
 	@fail=0; for h in $$(find include -name '*.hpp'); do \
 	  rel=$${h#include/}; \
 	  out=$$(printf '#include "%s"\nint main(){}\n' "$$rel" | $(CXX) $(CXXFLAGS) -fsyntax-only -x c++ - 2>&1); \
-	  if [ -n "$$out" ]; then printf '  FAIL %s\n' "$$rel"; echo "$$out" | grep error: | head -3 | sed 's/^/       /'; fail=1; \
-	  else printf '  ok   %s\n' "$$rel"; fi; done; exit $$fail
-
-$(BUILD)/obj/%.o: src/%.cpp
-	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(DEBUG) -c $< -o $@
-
-$(BUILD)/libsafetrail.a: $(OBJ)
-	@mkdir -p $(BUILD)
-	@ar rcs $@ $(OBJ)
-
-$(BUILD)/%: apps/%.cpp $(BUILD)/libsafetrail.a
-	@mkdir -p $(BUILD)
-	@$(CXX) $(CXXFLAGS) $(DEBUG) $< -L$(BUILD) -lsafetrail -o $@
-
-$(BUILD)/test/%: tests/%.cpp $(BUILD)/libsafetrail.a
-	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(DEBUG) $< -L$(BUILD) -lsafetrail -o $@
-
-test: $(TESTBINS)
-	@pass=0; fail=0; for t in $(TESTBINS); do \
-	  if ./$$t >/dev/null 2>&1; then printf '  PASS %s\n' "$$(basename $$t)"; pass=$$((pass+1)); \
-	  else printf '  FAIL %s\n' "$$(basename $$t)"; fail=$$((fail+1)); fi; done; \
-	printf '\n  %d passed, %d failed\n' $$pass $$fail; [ $$fail -eq 0 ]
-
-# Release build for benchmarks — sanitizers make timing numbers meaningless.
-bench:
-	@mkdir -p $(BUILD)-rel bench/results
-	@$(CXX) $(CXXFLAGS) $(RELEASE) $(SRC) apps/safetrail_bench.cpp -o $(BUILD)-rel/safetrail_bench
-	@./$(BUILD)-rel/safetrail_bench --out bench/results
-
-run: all
-	@./$(BUILD)/safetrail_server --scenario data/scenarios/quiet_day.json
+	  if [ -n "$$out" ]; then echo "  FAIL $$rel"; fail=1; fi; done; \
+	[ $$fail -eq 0 ] && echo "all headers compile standalone" || exit 1
 
 cmake-build:
-	@cmake -B $(BUILD)-cmake -DCMAKE_BUILD_TYPE=Debug -S . && cmake --build $(BUILD)-cmake -j
+	@cmake -B $(BUILD)-cmake -DCMAKE_BUILD_TYPE=Release -S . && cmake --build $(BUILD)-cmake -j
 
 clean:
-	@rm -rf $(BUILD) $(BUILD)-rel $(BUILD)-cmake
-
-fmt:
-	@find include src apps tests -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
+	@rm -rf $(BUILD) $(BUILD)-cmake build-rel
 
 help:
-	@echo "make check   syntax-check every header standalone"
-	@echo "make         build library + apps"
-	@echo "make test    build and run all tests"
-	@echo "make bench   release build, run benchmarks -> bench/results/"
-	@echo "make run     start the server on the default scenario"
+	@echo "make          build demo + benchmark"
+	@echo "make demo     run the simulation, print the event stream and counters"
+	@echo "make bench    index scaling, equivalence, hysteresis A/B  -> bench/results/"
+	@echo "make test     unit tests"
+	@echo "make asan     unit tests under ASan/UBSan"
+	@echo "make check    syntax-check every header standalone"

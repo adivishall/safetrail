@@ -3,6 +3,6 @@ build-rel/
 compile_commands.json
 data/osm/*.pbf
 data/osm/*.graph
-bench/results/*.csv
+# benchmark CSVs are tracked deliberately -- they are the report evidence
 bench/plots/*.png
 .DS_Store
