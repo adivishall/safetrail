@@ -50,6 +50,10 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
     const Zone* z = zones_.get(zid);
     if (!z) continue;
 
+    // GAP 3, temporal filter. A zone out of force is not merely low priority --
+    // it does not exist right now, so it must not generate transitions either way.
+    if (!z->validity.active_at(now_ms)) continue;
+
     // Cheap bbox pre-reject before the O(V) polygon distance.
     const double box_d = z->shape.bbox().min_distance_m(t.last_fix.pos);
     if (box_d > t.last_fix.accuracy_m + cfg_.bbox_slack_m && box_d > 0.0)

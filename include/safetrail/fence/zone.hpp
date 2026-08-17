@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "safetrail/geo/polygon.hpp"
+#include "safetrail/index/versioned_index.hpp"
 #include "safetrail/types.hpp"
 
 namespace safetrail::fence {
@@ -24,6 +25,12 @@ struct Zone {
 
   // Dwell limit: inside longer than this raises DwellExceeded. 0 = no limit.
   Millis max_dwell_ms = 0;
+
+  // GAP 3. When this zone is actually in force. A river crossing is safe in dry
+  // season and lethal after rain; a mountain road closes at dusk. Those are the
+  // same zone with different validity, not different zones -- and an incident
+  // investigation needs to know which rule applied at the time.
+  index::Validity validity{};
 
   // Per-zone hysteresis override. A hard border buffer wants tight margins and
   // fast confirmation; a broad landslide advisory wants the opposite.

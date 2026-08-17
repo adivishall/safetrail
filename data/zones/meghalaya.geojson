@@ -1,43 +1,337 @@
-{ "type": "FeatureCollection",
-  "features": [
-    { "type": "Feature",
-      "properties": { "name": "Border Buffer - Sector 4", "kind": "restricted", "severity": 5 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.842,25.596],[91.868,25.598],[91.874,25.583],[91.858,25.574],[91.839,25.581],[91.842,25.596]]] } },
-
-    { "type": "Feature",
-      "properties": { "name": "Landslide Slope - NH6 km12", "kind": "restricted", "severity": 4, "max_dwell_s": 300 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.885,25.560],[91.902,25.566],[91.911,25.556],[91.898,25.546],[91.883,25.550],[91.885,25.560]]] } },
-
-    { "type": "Feature",
-      "properties": { "name": "Elephant Falls Gorge", "kind": "caution", "severity": 3, "max_dwell_s": 900 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.876,25.542],[91.889,25.545],[91.893,25.534],[91.881,25.529],[91.872,25.534],[91.876,25.542]]] } },
-
-    { "type": "Feature",
-      "properties": { "name": "Umiam Lake Shore - Deep Water", "kind": "caution", "severity": 4 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.888,25.612],[91.918,25.616],[91.926,25.598],[91.906,25.589],[91.886,25.597],[91.888,25.612]]] } },
-
-    { "type": "Feature",
-      "properties": { "name": "Forest Reserve - No Signal", "kind": "advisory", "severity": 2 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.812,25.556],[91.838,25.561],[91.845,25.541],[91.826,25.531],[91.808,25.539],[91.812,25.556]]] } },
-
-    { "type": "Feature",
-      "properties": { "name": "Police Bazar - Safe Zone", "kind": "safe", "severity": 1 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.878,25.572],[91.891,25.574],[91.894,25.564],[91.882,25.561],[91.875,25.566],[91.878,25.572]]] } },
-
-    { "type": "Feature",
-      "properties": { "name": "Quarry Edge - Mawlai", "kind": "restricted", "severity": 5 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.855,25.604],[91.871,25.608],[91.876,25.596],[91.862,25.591],[91.852,25.597],[91.855,25.604]]] } },
-
-    { "type": "Feature",
-      "properties": { "name": "River Crossing - Seasonal", "kind": "caution", "severity": 3 },
-      "geometry": { "type": "Polygon", "coordinates": [[
-        [91.828,25.588],[91.844,25.592],[91.849,25.579],[91.834,25.574],[91.825,25.580],[91.828,25.588]]] } }
-  ]
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Border Buffer - Sector 4",
+    "kind": "restricted",
+    "severity": 5,
+    "active_from_s": 0,
+    "rule_note": "always in force"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.842,
+       25.596
+      ],
+      [
+       91.868,
+       25.598
+      ],
+      [
+       91.874,
+       25.583
+      ],
+      [
+       91.858,
+       25.574
+      ],
+      [
+       91.839,
+       25.581
+      ],
+      [
+       91.842,
+       25.596
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Landslide Slope - NH6 km12",
+    "kind": "restricted",
+    "severity": 4,
+    "max_dwell_s": 300,
+    "active_from_s": 2700,
+    "rule_note": "activated 45 min in, after rainfall"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.885,
+       25.56
+      ],
+      [
+       91.902,
+       25.566
+      ],
+      [
+       91.911,
+       25.556
+      ],
+      [
+       91.898,
+       25.546
+      ],
+      [
+       91.883,
+       25.55
+      ],
+      [
+       91.885,
+       25.56
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Elephant Falls Gorge",
+    "kind": "caution",
+    "severity": 3,
+    "max_dwell_s": 900,
+    "active_from_s": 0,
+    "rule_note": "always in force"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.876,
+       25.542
+      ],
+      [
+       91.889,
+       25.545
+      ],
+      [
+       91.893,
+       25.534
+      ],
+      [
+       91.881,
+       25.529
+      ],
+      [
+       91.872,
+       25.534
+      ],
+      [
+       91.876,
+       25.542
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Umiam Lake Shore - Deep Water",
+    "kind": "caution",
+    "severity": 4,
+    "active_from_s": 0,
+    "rule_note": "always in force"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.888,
+       25.612
+      ],
+      [
+       91.918,
+       25.616
+      ],
+      [
+       91.926,
+       25.598
+      ],
+      [
+       91.906,
+       25.589
+      ],
+      [
+       91.886,
+       25.597
+      ],
+      [
+       91.888,
+       25.612
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Forest Reserve - No Signal",
+    "kind": "advisory",
+    "severity": 2,
+    "active_from_s": 0,
+    "rule_note": "always in force"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.812,
+       25.556
+      ],
+      [
+       91.838,
+       25.561
+      ],
+      [
+       91.845,
+       25.541
+      ],
+      [
+       91.826,
+       25.531
+      ],
+      [
+       91.808,
+       25.539
+      ],
+      [
+       91.812,
+       25.556
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Police Bazar - Safe Zone",
+    "kind": "safe",
+    "severity": 1,
+    "active_from_s": 0,
+    "rule_note": "always in force"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.878,
+       25.572
+      ],
+      [
+       91.891,
+       25.574
+      ],
+      [
+       91.894,
+       25.564
+      ],
+      [
+       91.882,
+       25.561
+      ],
+      [
+       91.875,
+       25.566
+      ],
+      [
+       91.878,
+       25.572
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Quarry Edge - Mawlai",
+    "kind": "restricted",
+    "severity": 5,
+    "active_from_s": 0,
+    "active_to_s": 3600,
+    "rule_note": "lifted at 60 min, blasting ended"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.855,
+       25.604
+      ],
+      [
+       91.871,
+       25.608
+      ],
+      [
+       91.876,
+       25.596
+      ],
+      [
+       91.862,
+       25.591
+      ],
+      [
+       91.852,
+       25.597
+      ],
+      [
+       91.855,
+       25.604
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "River Crossing - Seasonal",
+    "kind": "caution",
+    "severity": 3,
+    "active_from_s": 1800,
+    "active_to_s": 5400,
+    "rule_note": "in force 30-90 min, river in spate"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       91.828,
+       25.588
+      ],
+      [
+       91.844,
+       25.592
+      ],
+      [
+       91.849,
+       25.579
+      ],
+      [
+       91.834,
+       25.574
+      ],
+      [
+       91.825,
+       25.58
+      ],
+      [
+       91.828,
+       25.588
+      ]
+     ]
+    ]
+   }
+  }
+ ]
 }

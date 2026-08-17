@@ -8,6 +8,7 @@
 #include "safetrail/fence/zone.hpp"
 #include "safetrail/group/cohesion.hpp"
 #include "safetrail/index/spatial_index.hpp"
+#include "safetrail/index/versioned_index.hpp"
 #include "safetrail/sim/mobility.hpp"
 #include "safetrail/track/tourist.hpp"
 
@@ -45,6 +46,7 @@ class Simulator {
   const std::vector<track::Tourist>& tourists() const { return tourists_; }
   const fence::ZoneStore& zones() const { return zones_; }
   const index::SpatialIndex& index() const { return *index_; }
+  const index::VersionedIndex& versioned() const { return *vindex_; }
   fence::Evaluator::Counters counters() const { return eval_->counters(); }
   const alert::Correlator& correlator() const { return *corr_; }
   const group::CohesionMonitor& cohesion() const { return *coh_; }
@@ -61,6 +63,7 @@ class Simulator {
   Rng rng_;
   fence::ZoneStore zones_;
   std::unique_ptr<index::SpatialIndex> index_;
+  std::unique_ptr<index::VersionedIndex> vindex_;
   std::unique_ptr<fence::Evaluator> eval_;
   std::unique_ptr<alert::Correlator> corr_;
   std::unique_ptr<group::CohesionMonitor> coh_;

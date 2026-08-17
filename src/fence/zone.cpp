@@ -71,6 +71,11 @@ bool ZoneStore::load_geojson(const std::string& path, std::string* error) {
       if (const util::Json* s = props->find("severity")) z.severity = uint8_t(s->number_or(1));
       if (const util::Json* d = props->find("max_dwell_s"))
         z.max_dwell_ms = Millis(d->number_or(0) * 1000);
+      // GAP 3: seconds-into-the-scenario, so demo files stay readable.
+      if (const util::Json* a = props->find("active_from_s"))
+        z.validity.from = Timestamp(a->number_or(0) * 1000);
+      if (const util::Json* b = props->find("active_to_s"))
+        z.validity.to = Timestamp(b->number_or(0) * 1000);
     }
 
     geo::Ring outer;

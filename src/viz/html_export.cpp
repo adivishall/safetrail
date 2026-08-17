@@ -1,6 +1,7 @@
 #include "safetrail/viz/html_export.hpp"
 #include "safetrail/index/quadtree.hpp"
 #include <cstdio>
+#include <climits>
 #include <fstream>
 
 namespace safetrail::viz {
@@ -58,6 +59,13 @@ static const char* kShell = R"HTML(<!doctype html>
   .ev .k{font-weight:700;font-size:11px;letter-spacing:.4px}
   .ev .m{color:var(--dim);font-size:11px}
   .lg{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+  .rule{display:flex;justify-content:space-between;gap:8px;padding:3px 6px;
+        border-radius:3px;font-size:11px;margin-bottom:2px;background:var(--panel)}
+  .rule.off{opacity:.38}
+  .rule b{font-weight:600}
+  .chg{font-size:11px;padding:3px 6px;margin-bottom:2px;border-left:2px solid var(--b);
+       background:var(--panel);color:var(--dim)}
+  .chg.future{opacity:.35}
   .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
   table{width:100%;border-collapse:collapse;font-size:11px}
   td{padding:2px 0} td:last-child{text-align:right;color:var(--b)}
@@ -78,6 +86,9 @@ static const char* kShell = R"HTML(<!doctype html>
   <div id="stage"><canvas id="c"></canvas></div>
   <aside>
     <h2>counters</h2><table id="stats"></table>
+    <h2>rules in force <span id="asof" style="color:var(--b)"></span></h2>
+    <div id="rules"></div>
+    <h2>zone change log [GAP 3]</h2><div id="changes"></div>
     <h2>event stream</h2><div id="events"></div>
   </aside>
 </div>
@@ -147,14 +158,28 @@ function draw() {
     z.ring.forEach((p, i) => i ? cx.lineTo(X(p[1]), Y(p[0])) : cx.moveTo(X(p[1]), Y(p[0])));
     cx.closePath(); cx.stroke();
   }
+  // GAP 3 made visible: a zone out of force is drawn as a dashed ghost, not
+  // hidden. An operator needs to see that a rule exists but is not active -- and
+  // an investigator needs to see it appear and disappear as they scrub time.
+  const now = D.frames[frame].t_ms;
+  const inforce = z => now >= z.from && (z.to < 0 || now < z.to);
   for (const z of D.zones) {
     if (z.syn) continue;
     const col = ZC[z.kind] || '#8b949e';
+    const on = inforce(z);
     cx.beginPath();
     z.ring.forEach((p, i) => i ? cx.lineTo(X(p[1]), Y(p[0])) : cx.moveTo(X(p[1]), Y(p[0])));
     cx.closePath();
-    cx.fillStyle = col + '2a'; cx.fill();
-    cx.strokeStyle = col + 'cc'; cx.lineWidth = z.kind === 'restricted' ? 1.8 : 1.1; cx.stroke();
+    if (on) {
+      cx.setLineDash([]);
+      cx.fillStyle = col + '2a'; cx.fill();
+      cx.strokeStyle = col + 'cc'; cx.lineWidth = z.kind === 'restricted' ? 1.8 : 1.1;
+    } else {
+      cx.setLineDash([4, 4]);
+      cx.strokeStyle = col + '44'; cx.lineWidth = 1;
+    }
+    cx.stroke();
+    cx.setLineDash([]);
   }
 
   const f = D.frames[frame];
@@ -195,9 +220,33 @@ function panel() {
     ['pruning', D.stats.pruning.toFixed(0) + 'x'],
     ['flaps suppressed [GAP 8]', D.stats.flaps],
     ['alerts', D.stats.alerts], ['incidents [GAP 5]', D.stats.incidents],
+    ['index versions [GAP 3]', D.versions], ['node sharing', D.sharing.toFixed(1) + 'x'],
   ];
   document.getElementById('stats').innerHTML =
     rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+
+  // "What were the rules at 14:32" -- the question the persistent index exists to
+  // answer. Rendered from the exported validity windows, which come straight from
+  // the same Validity objects the evaluator consults each tick.
+  const fmt = ms => { const s2 = Math.floor(ms/1000);
+    return String(Math.floor(s2/3600)).padStart(2,'0') + ':' +
+           String(Math.floor(s2/60)%60).padStart(2,'0'); };
+  document.getElementById('asof').textContent = 'as of ' + fmt(t);
+  const authored = D.zones.filter(z => !z.syn);
+  document.getElementById('rules').innerHTML = authored.map(z => {
+    const on = t >= z.from && (z.to < 0 || t < z.to);
+    const win = z.from === 0 && z.to < 0 ? 'always'
+              : fmt(z.from) + '-' + (z.to < 0 ? 'end' : fmt(z.to));
+    return `<div class="rule ${on?'':'off'}"><b>${z.name}</b>
+      <span>${on?'IN FORCE':'not in force'} · ${win}</span></div>`;
+  }).join('');
+
+  const CK = {0:'added', 1:'removed', 2:'validity changed'};
+  document.getElementById('changes').innerHTML = (D.zone_changes||[]).map(c => {
+    const z = D.zones[c.z];
+    return `<div class="chg ${c.at > t ? 'future' : ''}">v${c.v} @ ${fmt(c.at)} —
+      ${z ? z.name : '?'} ${CK[c.k]||''}</div>`;
+  }).join('') || '<div class="chg">no changes</div>';
 
   const KL = {0:['ENTER','enter'],1:['EXIT','exit'],2:['UNCERTAIN','unc'],
               3:['APPROACHING','appr'],4:['DWELL','dwell']};
@@ -244,8 +293,11 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
     d += "{\"name\":\"";
     for (char c : z->name) { if (c != '"' && c != '\\') d += c; }
     d += "\",\"kind\":\""; d += k;
-    d += z->name.rfind("synthetic", 0) == 0 ? "\",\"syn\":1,\"ring\":["
-                                            : "\",\"syn\":0,\"ring\":[";
+    d += z->name.rfind("synthetic", 0) == 0 ? "\",\"syn\":1" : "\",\"syn\":0";
+    d += ",\"sev\":" + std::to_string(int(z->severity));
+    d += ",\"from\":" + std::to_string(z->validity.from);
+    d += ",\"to\":" + std::to_string(z->validity.to == kForever ? -1 : z->validity.to);
+    d += ",\"ring\":[";
     const auto& r = z->shape.outer();
     for (size_t i = 0; i < r.size(); ++i) {
       if (i) d += ",";
@@ -301,7 +353,25 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
   const auto ist = s.index().stats();
   const auto sum = s.summary();
   const auto c = s.counters();
-  d += "],\"stats\":{\"zones\":" + std::to_string(s.zones().size()) +
+  d += "],\"zone_changes\":[";
+  {
+    // Straight from VersionedIndex -- the same changelog an incident investigation
+    // would query, not a re-derivation.
+    const auto changes = s.versioned().changes_between(0, INT64_MAX);
+    bool f2 = true;
+    for (const auto& c : changes) {
+      const auto* z = s.zones().get(c.zone);
+      if (!z || z->name.rfind("synthetic", 0) == 0) continue;
+      if (!f2) d += ",";
+      f2 = false;
+      d += "{\"v\":" + std::to_string(c.version) + ",\"at\":" + std::to_string(c.at) +
+           ",\"z\":" + std::to_string(c.zone) + ",\"k\":" + std::to_string(int(c.kind)) + "}";
+    }
+  }
+  d += "],\"versions\":" + std::to_string(s.versioned().version_count());
+  d += ",\"sharing\":";
+  put_f(d, s.versioned().share_stats().sharing_ratio(), 2);
+  d += ",\"stats\":{\"zones\":" + std::to_string(s.zones().size()) +
        ",\"index\":\"" + s.index().name() + "\"" +
        ",\"avg_candidates\":"; put_f(d, ist.avg_candidates(), 2);
   d += ",\"pruning\":";

@@ -1,12 +1,14 @@
 #include "safetrail/sim/simulator.hpp"
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/quadtree.hpp"
+#include <algorithm>
 #include <cmath>
 
 namespace safetrail::sim {
 
 Simulator::Simulator(SimConfig cfg) : cfg_(cfg), rng_(cfg.seed) {
   index_ = index::make_index(cfg_.index);
+  vindex_ = std::make_unique<index::VersionedIndex>();
   eval_ = std::make_unique<fence::Evaluator>(*index_, zones_, cfg_.eval);
   corr_ = std::make_unique<alert::Correlator>();
   coh_ = std::make_unique<group::CohesionMonitor>();
@@ -47,6 +49,19 @@ void Simulator::reindex() {
   for (index::ZoneId id : zones_.all_ids())
     items.emplace_back(id, zones_.get(id)->shape.bbox());
   index_->build(items);
+
+  // GAP 3: mirror the zone set into the persistent index, one version per zone,
+  // stamped at the moment its validity window opens. That gives the investigation
+  // view a real history to query rather than a synthetic one.
+  vindex_ = std::make_unique<index::VersionedIndex>();
+  std::vector<std::pair<Timestamp, index::ZoneId>> ordered;
+  for (index::ZoneId id : zones_.all_ids())
+    ordered.emplace_back(zones_.get(id)->validity.from, id);
+  std::sort(ordered.begin(), ordered.end());
+  for (const auto& [at, id] : ordered) {
+    const auto* z = zones_.get(id);
+    vindex_->add_zone(id, z->shape.bbox(), z->validity, at);
+  }
 }
 
 void Simulator::spawn_tourists() {

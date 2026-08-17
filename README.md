@@ -38,9 +38,16 @@ make dashboard   # writes dashboard.html — open it, no server needed
 ```
 
 `make dashboard` produces a single self-contained HTML file: animated map, live
-counters, event stream, timeline scrubber, and toggles for the real spatial-index
-node boxes and GPS uncertainty discs. No Leaflet, no tile server, no network —
-because a demo has to work in a room with no wifi.
+counters, event stream, timeline scrubber, an incident-investigation panel showing
+which zone rules were in force at any moment, and toggles for the real
+spatial-index node boxes and GPS uncertainty discs.
+
+**Zero network requests** — no fetch, no XHR, no socket, no CDN, no tile server, no
+font import. The engine serialises its output straight into the file (99.3% of the
+1.6 MB is data; the viewer is 11.7 KB). Open it over `file://` with the network
+physically off and it behaves identically. See
+[docs/DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) for the full pipeline and the
+commands to verify all of it.
 
 ### Measured, on this machine
 
@@ -101,6 +108,7 @@ counterpart in any existing implementation.
 | [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) | Every structure: invariants, complexity targets, why it's here |
 | [ROADMAP.md](docs/ROADMAP.md) | Phased build order with milestones |
 | [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | What breaks in point-in-polygon and how we handle it |
+| [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) | ★ Where every dashboard number comes from, with re-runnable verification |
 
 ## Ground rules
 
