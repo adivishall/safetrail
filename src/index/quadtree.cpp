@@ -1,5 +1,6 @@
 #include "safetrail/index/quadtree.hpp"
 #include "safetrail/index/brute_force.hpp"
+#include "safetrail/index/rtree.hpp"
 #include <algorithm>
 
 namespace safetrail::index {
@@ -33,7 +34,6 @@ static bool fully_contains(const geo::Bbox& outer, const geo::Bbox& inner) {
          inner.min_lon >= outer.min_lon && inner.max_lon <= outer.max_lon;
 }
 
-static void subdivide(Quadtree::Node* n);   // fwd
 
 namespace {
 void insert_into(Quadtree::Node* n, ZoneId id, const geo::Bbox& box,
@@ -98,12 +98,34 @@ void collect_all(const Quadtree::Node* n,
 
 void Quadtree::build(const std::vector<std::pair<ZoneId, geo::Bbox>>& items) {
   root_ = std::make_unique<Node>();
-  root_->region = {-90.0, -180.0, 90.0, 180.0};
   count_ = 0;
+
+  // Fit the root to the DATA, not to the whole planet.
+  //
+  // A world-rooted quadtree (-90..90, -180..180) burns about 11 levels of depth
+  // before its cells are even district-sized, so with max_depth=12 there is almost
+  // no useful subdivision left where the zones actually are. Fitting the root to
+  // the data extent recovers all of that depth. The index overlay in the dashboard
+  // is what made this visible -- the cells were kilometres across.
+  if (items.empty()) {
+    root_->region = {-90.0, -180.0, 90.0, 180.0};
+    return;
+  }
+  geo::Bbox ext = geo::Bbox::empty();
+  for (const auto& it : items) ext.expand(it.second);
+  const double padlat = (ext.max_lat - ext.min_lat) * 0.02 + 1e-6;
+  const double padlon = (ext.max_lon - ext.min_lon) * 0.02 + 1e-6;
+  root_->region = {ext.min_lat - padlat, ext.min_lon - padlon,
+                   ext.max_lat + padlat, ext.max_lon + padlon};
+
   for (const auto& it : items) insert(it.first, it.second);
 }
 
 void Quadtree::insert(ZoneId id, const geo::Bbox& box) {
+  // Late inserts can fall outside a root fitted to the original data. Widening the
+  // root keeps queries correct; it only costs a little pruning quality, and
+  // tests/index/equivalence_test.cpp covers exactly this case.
+  if (!fully_contains(root_->region, box)) root_->region.expand(box);
   insert_into(root_.get(), id, box, cap_, max_depth_);
   ++count_;
 }
@@ -162,6 +184,7 @@ void Quadtree::collect_node_boxes(std::vector<geo::Bbox>& out) const {
 std::unique_ptr<SpatialIndex> make_index(IndexKind kind) {
   switch (kind) {
     case IndexKind::Quadtree: return std::make_unique<Quadtree>();
+    case IndexKind::RTree: return std::make_unique<RTree>();
     default: return std::make_unique<BruteForceIndex>();
   }
 }

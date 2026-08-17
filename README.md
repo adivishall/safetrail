@@ -28,13 +28,37 @@ event logs on reconnect. Keeps a tamper-evident record of everything.
 
 ## Quickstart
 
+No dependencies beyond a C++17 compiler. No cmake required, no libraries to fetch.
+
 ```bash
-make            # build everything
-make test       # run the test suite
-make bench      # spatial index benchmark → bench/results/
-./build/safetrail_server --scenario data/scenarios/quiet_day.json
-# then open http://localhost:8080
+make demo        # run the simulation, print event stream + counters
+make bench       # brute force vs quadtree vs R-tree, + correctness gates
+make test        # unit tests
+make dashboard   # writes dashboard.html — open it, no server needed
 ```
+
+`make dashboard` produces a single self-contained HTML file: animated map, live
+counters, event stream, timeline scrubber, and toggles for the real spatial-index
+node boxes and GPS uncertainty discs. No Leaflet, no tile server, no network —
+because a demo has to work in a room with no wifi.
+
+### Measured, on this machine
+
+```
+index scaling, 100,000 zones, 450 m query:
+  brute force  242.23 us/query
+  quadtree       7.41 us/query   32.7x
+  R-tree         7.45 us/query   32.5x
+
+hysteresis A/B [GAP 8]:  87.6% of false transitions removed (733 -> 91)
+equivalence:             18,000 queries, 0 mismatches vs brute force
+ray cast vs winding:     100,000 points, 0 disagreements
+unit tests:              102 checks, all pass
+```
+
+See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the ceiling is
+~33x and not the ~29,000x originally estimated — the answer is the most
+interesting result in the project.
 
 ## Layout
 

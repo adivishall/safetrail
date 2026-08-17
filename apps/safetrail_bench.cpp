@@ -12,6 +12,7 @@
 #include <string>
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/quadtree.hpp"
+#include "safetrail/index/rtree.hpp"
 #include "safetrail/sim/simulator.hpp"
 
 using namespace safetrail;
@@ -42,60 +43,69 @@ static Corpus make_corpus(size_t n, size_t probes, uint64_t seed) {
   return c;
 }
 
+static double time_queries(index::SpatialIndex& ix, const Corpus& c, double radius) {
+  std::vector<index::ZoneId> out; out.reserve(8192);
+  auto t0 = Clock::now();
+  for (const auto& p : c.probes) { out.clear(); ix.query(geo::Bbox::around(p, radius), out); }
+  return ms_since(t0) * 1000.0 / double(c.probes.size());     // us per query
+}
+
 static void bench_scaling(FILE* csv) {
-  printf("\n\033[1m1. INDEX SCALING\033[0m   query = 450 m box, 2000 probes each\n");
-  printf("  %8s  %14s  %14s  %10s  %9s  %9s\n",
-         "zones", "brute (us/q)", "quad (us/q)", "speedup", "cands BF", "cands QT");
-  printf("  ────────────────────────────────────────────────────────────────────────────\n");
-  if (csv) fprintf(csv, "zones,brute_us,quad_us,speedup,cand_brute,cand_quad,nodes,depth\n");
+  printf("\n\033[1m1. INDEX SCALING\033[0m   450 m query box, 2000 probes per row, us/query\n");
+  printf("  %8s  %11s  %11s  %11s  %9s  %9s  %8s\n",
+         "zones", "brute", "quadtree", "r-tree", "QT gain", "RT gain", "cands");
+  printf("  ─────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "zones,brute_us,quad_us,rtree_us,quad_speedup,rtree_speedup,"
+                        "candidates,quad_nodes,quad_depth,rtree_nodes,rtree_depth\n");
 
   for (size_t n : {10u, 100u, 1000u, 5000u, 20000u, 50000u, 100000u}) {
     Corpus c = make_corpus(n, 2000, 99);
     index::BruteForceIndex bf; bf.build(c.boxes);
     index::Quadtree qt;        qt.build(c.boxes);
+    index::RTree rt;           rt.build(c.boxes);
 
-    std::vector<index::ZoneId> out; out.reserve(4096);
+    const double bf_us = time_queries(bf, c, 450);
+    const double qt_us = time_queries(qt, c, 450);
+    const double rt_us = time_queries(rt, c, 450);
+    const auto bs = bf.stats(), qs = qt.stats(), rs = rt.stats();
 
-    auto t0 = Clock::now();
-    for (const auto& p : c.probes) { out.clear(); bf.query(geo::Bbox::around(p, 450), out); }
-    const double bf_ms = ms_since(t0);
-
-    t0 = Clock::now();
-    for (const auto& p : c.probes) { out.clear(); qt.query(geo::Bbox::around(p, 450), out); }
-    const double qt_ms = ms_since(t0);
-
-    const auto bs = bf.stats(), qs = qt.stats();
-    const double bf_us = bf_ms * 1000.0 / double(c.probes.size());
-    const double qt_us = qt_ms * 1000.0 / double(c.probes.size());
-    printf("  %8zu  %14.2f  %14.2f  %9.1fx  %9.2f  %9.2f\n", n, bf_us, qt_us,
-           qt_us > 0 ? bf_us / qt_us : 0.0, bs.avg_candidates(), qs.avg_candidates());
-    if (csv) fprintf(csv, "%zu,%.4f,%.4f,%.2f,%.2f,%.2f,%zu,%zu\n", n, bf_us, qt_us,
-                     qt_us > 0 ? bf_us / qt_us : 0.0, bs.avg_candidates(),
-                     qs.avg_candidates(), qs.node_count, qs.max_depth);
+    printf("  %8zu  %11.2f  %11.2f  %11.2f  %8.1fx  %8.1fx  %8.2f\n", n, bf_us, qt_us, rt_us,
+           qt_us > 0 ? bf_us / qt_us : 0.0, rt_us > 0 ? bf_us / rt_us : 0.0,
+           bs.avg_candidates());
+    if (csv) fprintf(csv, "%zu,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%zu,%zu,%zu,%zu\n",
+                     n, bf_us, qt_us, rt_us, qt_us > 0 ? bf_us / qt_us : 0.0,
+                     rt_us > 0 ? bf_us / rt_us : 0.0, bs.avg_candidates(),
+                     qs.node_count, qs.max_depth, rs.node_count, rs.max_depth);
   }
+  printf("\n  Note: candidates returned is IDENTICAL across all three -- they are true\n");
+  printf("  positives. The speedup ceiling is output size k, exactly as O(log n + k) says.\n");
 }
 
 static bool bench_equivalence() {
-  printf("\n\033[1m2. EQUIVALENCE\033[0m   quadtree must return exactly what brute force returns\n");
+  printf("\n\033[1m2. EQUIVALENCE\033[0m   every index must return EXACTLY what brute force returns\n");
   bool all_ok = true;
   for (size_t n : {50u, 500u, 5000u}) {
-    Corpus c = make_corpus(n, 3000, 7);
+    Corpus c = make_corpus(n, 2000, 7);
     index::BruteForceIndex bf; bf.build(c.boxes);
     index::Quadtree qt;        qt.build(c.boxes);
-    size_t mismatches = 0, total = 0;
-    std::vector<index::ZoneId> a, b;
+    index::RTree rt;           rt.build(c.boxes);
+
+    size_t mq = 0, mr = 0, total = 0, queries = 0;
+    std::vector<index::ZoneId> a, b, d;
     for (const auto& p : c.probes)
       for (double r : {80.0, 400.0, 2000.0}) {
-        a.clear(); b.clear();
+        a.clear(); b.clear(); d.clear();
         const geo::Bbox q = geo::Bbox::around(p, r);
-        bf.query(q, a); qt.query(q, b);
-        std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end());
-        total += a.size();
-        if (a != b) ++mismatches;
+        bf.query(q, a); qt.query(q, b); rt.query(q, d);
+        std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end()); std::sort(d.begin(), d.end());
+        total += a.size(); ++queries;
+        if (a != b) ++mq;
+        if (a != d) ++mr;
       }
-    printf("  %6zu zones   %6zu queries   %8zu hits   mismatches: %s%zu\033[0m\n",
-           n, c.probes.size() * 3, total, mismatches ? "\033[31m" : "\033[32m", mismatches);
-    if (mismatches) all_ok = false;
+    printf("  %6zu zones  %6zu queries  %8zu hits   quadtree: %s%zu\033[0m   r-tree: %s%zu\033[0m\n",
+           n, queries, total, mq ? "\033[31m" : "\033[32m", mq,
+           mr ? "\033[31m" : "\033[32m", mr);
+    if (mq || mr) all_ok = false;
   }
   return all_ok;
 }

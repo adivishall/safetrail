@@ -66,71 +66,94 @@ traces to a documented gap — see [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
 
 ## The headline result — measured, not projected
 
-The design doc originally claimed a ~29,000x reduction. **Measurement disciplined
-that number down, and understanding why is the most interesting result in the
+The design doc originally claimed ~29,000x. Measurement disciplined that number,
+and **the two rounds of correction are the most interesting content in the
 project.**
 
-### What was measured
+### Three indexes, measured
 
-`make bench`, 2000 probe queries per row, 450 m query box, Apple clang -O2:
+`make bench` — 2000 probe queries per row, 450 m query box, Apple clang -O2:
 
-| zones | brute force | quadtree | speedup | candidates returned |
-|---|---|---|---|---|
-| 10 | 0.04 us | 0.07 us | 0.5x | 0.01 |
-| 100 | 0.14 us | 0.10 us | 1.4x | 0.10 |
-| 1,000 | 1.85 us | 0.25 us | 7.4x | 0.97 |
-| 5,000 | 11.47 us | 1.07 us | 10.8x | 4.90 |
-| 20,000 | 48.24 us | 3.77 us | 12.8x | 19.86 |
-| 50,000 | 119.02 us | 8.87 us | 13.4x | 49.37 |
-| 100,000 | 242.71 us | 17.24 us | **14.1x** | 98.78 |
+| zones | brute force | quadtree | R-tree | QT gain | RT gain | candidates |
+|---|---|---|---|---|---|---|
+| 10 | 0.03 us | 0.04 us | 0.04 us | 0.8x | 0.9x | 0.01 |
+| 100 | 0.12 us | 0.07 us | 0.07 us | 1.7x | 1.6x | 0.10 |
+| 1,000 | 1.84 us | 0.16 us | 0.25 us | 11.4x | 7.3x | 0.97 |
+| 5,000 | 11.23 us | 0.45 us | 0.89 us | 24.9x | 12.6x | 4.90 |
+| 20,000 | 47.74 us | 1.51 us | 2.66 us | 31.5x | 17.9x | 19.86 |
+| 50,000 | 118.83 us | 3.62 us | 4.58 us | 32.9x | 25.9x | 49.37 |
+| 100,000 | 242.23 us | 7.41 us | 7.45 us | **32.7x** | **32.5x** | 98.78 |
 
-### Why 14x and not 29,000x
+Brute force is visibly linear. Both trees converge on ~33x and then stop
+improving, for the reason in the last column.
 
-Look at the last column. At 100,000 zones packed into roughly 40 km2, **98.78
-zones genuinely intersect each 450 m query box.** Those are true positives. No
-index can return fewer results than the query actually has, so the achievable
-speedup is bounded by output size, not by the tree.
+### Why the ceiling is ~33x, not 29,000x
 
-That is precisely what `O(log n + k)` predicts. Brute force grows as `O(n)` —
-visible in the linear brute-force column, 242 us at 100k. The quadtree grows as
-`O(log n + k)`, and with `k ~ 99` the `k` term dominates the `log n` term
-completely. The index is behaving exactly as designed; the original estimate
-simply assumed `k ~ 3`, which requires sparse zones.
+At 100,000 zones over roughly 40 km2, **98.78 zones genuinely intersect each
+450 m query box.** Those are true positives — no index can return fewer results
+than the query actually has. The achievable speedup is bounded by output size, not
+by the tree.
 
-**The zone-density caveat matters more than the speedup figure**, and stating it
-is worth more marks than quoting a big number would be.
+That is exactly what `O(log n + k)` predicts: with `k ~ 99` the `k` term dominates
+`log n` completely. The candidates column is *identical* across all three
+implementations, which is simultaneously the proof of correctness and the
+explanation of the ceiling. The original estimate assumed `k ~ 3`, which requires
+sparse zones.
 
-### The representative operational number
+**Stating the zone-density caveat is worth more than quoting a big number.**
 
-In the actual simulation — 5,008 zones, query radius derived from position
+### Quadtree vs R-tree
+
+The R-tree led at every size until the quadtree was fixed (see below): 12.6x vs
+24.9x at 5,000 zones reversed once the root was fitted. They now tie at 100k.
+
+The structural reason is worth stating: the **quadtree partitions space** on fixed
+subdivisions, so an item straddling a split settles high in the tree no matter how
+small it is. The **R-tree partitions items** into tight envelopes, so nothing is
+forced upward — but envelopes overlap, so a query may descend several branches. At
+uniform zone sizes those effects roughly cancel; at irregular extents the R-tree
+should pull ahead, which is the next experiment.
+
+### The operational number
+
+In the running simulation — 908 zones, query radius derived from position
 uncertainty plus reachable distance rather than a fixed guess:
 
 ```
-pruning: 5008 zones -> 24.27 candidates per query   (206x reduction)
-quadtree: 73 nodes, max depth 12, 202 KB
+pruning: 908 zones -> 4.67 candidates per query   (195x reduction)
 ```
 
-**206x** is the honest headline, because it reflects a real query radius against a
-realistic zone density.
+**195x** reflects a realistic query radius against realistic density.
 
-### A bug this measurement caught
+### Three bugs the measurements caught
 
-The first run reported `1x reduction`. The evaluator was querying a fixed 20 km
-box for zones about 2 km across, so every query returned every zone and the index
-was doing nothing. The fix was to derive the radius from what the query actually
-needs — position uncertainty for containment, plus `speed x horizon` for the
-predictive path. Without the candidates-returned column in the benchmark output,
-that bug would have shipped invisibly, since the results were still *correct*.
+**1. The index pruned nothing (1x).** The evaluator queried a fixed 20 km box for
+zones ~2 km across, so every query returned every zone. The results were still
+*correct*, just pointless — without the candidates-returned column this would have
+shipped invisibly. Radius is now derived from uncertainty + `speed x horizon`.
+
+**2. The quadtree wasted 11 levels of depth.** It was rooted at the whole planet
+(-90..90, -180..180), so with `max_depth = 12` its cells were still kilometres
+across where the zones actually were. **The dashboard's index overlay is what
+revealed this** — the subdivision lines were visibly enormous. Fitting the root to
+the data extent took 100k-zone performance from 14.1x to **32.7x**, a 2.3x
+improvement from a five-line change. This is the strongest argument in the project
+for building the visualisation early.
+
+**3. `validate()` misdiagnosed every bowtie.** It checked zero-area before
+self-intersection, and a bowtie's two lobes cancel to exactly zero signed area, so
+every self-intersecting polygon was reported as merely degenerate. Caught by
+`tests/geo/ray_casting_test.cpp`.
 
 ### Other verified results
 
 | Result | Measured |
 |---|---|
 | Hysteresis A/B (GAP 8) | **87.6% of false transitions removed** — 733 to 91, same seed, same injected noise |
-| Quadtree vs brute force equivalence | 27,000 queries across 3 densities, **0 mismatches** |
+| Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
-| Alert correlation (GAP 5) | 1.30 alerts per incident; 6,587 operator cards suppressed |
-| Unit tests | 90 checks across geometry, index equivalence, rollback DSU — all pass |
+| Alert correlation (GAP 5) | 833 operator cards suppressed |
+| Unit tests | 102 checks across geometry, index equivalence, rollback DSU — all pass |
 
 ## Measurements to produce
 

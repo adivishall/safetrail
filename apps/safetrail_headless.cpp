@@ -7,6 +7,7 @@
 #include <cstring>
 #include <string>
 #include "safetrail/sim/simulator.hpp"
+#include "safetrail/viz/html_export.hpp"
 
 using namespace safetrail;
 
@@ -34,6 +35,7 @@ int main(int argc, char** argv) {
   cfg.duration_ms = 3600000;
   cfg.tick_ms = 1000;
   std::string zones = "data/zones/meghalaya.geojson";
+  std::string html;
   size_t synthetic = 0, show = 18;
 
   for (int i = 1; i < argc; ++i) {
@@ -45,6 +47,8 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--brute")) cfg.index = index::IndexKind::BruteForce;
     else if (!strcmp(argv[i], "--zones") && i + 1 < argc) zones = argv[++i];
     else if (!strcmp(argv[i], "--show") && i + 1 < argc) show = size_t(atoi(argv[++i]));
+    else if (!strcmp(argv[i], "--rtree")) cfg.index = index::IndexKind::RTree;
+    else if (!strcmp(argv[i], "--export-html") && i + 1 < argc) html = argv[++i];
   }
 
   sim::Simulator s(cfg);
@@ -77,7 +81,12 @@ int main(int argc, char** argv) {
            z->shape.vertex_count(), z->shape.perimeter_m(), z->name.c_str());
   }
 
-  s.run();
+  viz::TraceRecorder rec;
+  if (!html.empty()) {
+    while (!s.done()) { s.step(); rec.capture(s); }
+  } else {
+    s.run();
+  }
 
   printf("\n\033[1mevent stream\033[0m  (first %zu of %zu)\n", show, s.events().size());
   printf("  %-8s  %-11s  %-8s  %-28s %s\n", "time", "event", "tourist", "zone", "detail");
@@ -135,6 +144,14 @@ int main(int argc, char** argv) {
   printf("  alerts absorbed      %6llu   operator cards NOT shown\n",
          (unsigned long long)cst.alerts_absorbed);
   printf("  compression ratio    %6.2f alerts per incident\n", cst.compression_ratio());
+
+  if (!html.empty()) {
+    if (rec.write_html(s, html))
+      printf("\n\033[1mdashboard\033[0m  %s  (%zu frames, self-contained -- just open it)\n",
+             html.c_str(), rec.frames());
+    else
+      printf("\n  failed to write %s\n", html.c_str());
+  }
   printf("\n");
   return 0;
 }

@@ -7,10 +7,11 @@ BUILD    := build
 # Modules implemented so far. Stubs are excluded until they have a body --
 # see docs/ROADMAP.md for which phase each belongs to.
 CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containment.cpp \
-        src/ds/dynamic_connectivity.cpp src/index/brute_force.cpp src/index/quadtree.cpp \
+        src/ds/dynamic_connectivity.cpp src/index/brute_force.cpp src/index/quadtree.cpp src/index/rtree.cpp \
         src/util/json.cpp src/fence/zone.cpp src/fence/hysteresis.cpp src/fence/evaluator.cpp \
         src/track/tourist.cpp src/power/adaptive_sampler.cpp src/alert/alert.cpp \
-        src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp
+        src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp \
+        src/viz/html_export.cpp
 
 TESTS := tests/geo/ray_casting_test.cpp tests/index/equivalence_test.cpp \
          tests/ds/dynamic_connectivity_test.cpp
@@ -29,6 +30,10 @@ $(BUILD)/safetrail_bench: $(CORE) apps/safetrail_bench.cpp
 
 demo: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --tourists 40 --hours 1 --synthetic 5000 --show 12
+
+# Writes a single self-contained HTML file -- no server, no network, no Leaflet.
+dashboard: $(BUILD)/safetrail_headless
+	@./$(BUILD)/safetrail_headless --tourists 60 --hours 2 --synthetic 900 --show 6 --export-html dashboard.html
 
 bench: $(BUILD)/safetrail_bench
 	@mkdir -p bench/results
@@ -63,6 +68,7 @@ clean:
 help:
 	@echo "make          build demo + benchmark"
 	@echo "make demo     run the simulation, print the event stream and counters"
+	@echo "make dashboard  build dashboard.html and open it in a browser"
 	@echo "make bench    index scaling, equivalence, hysteresis A/B  -> bench/results/"
 	@echo "make test     unit tests"
 	@echo "make asan     unit tests under ASan/UBSan"

@@ -3,6 +3,7 @@
 #include "../test_harness.hpp"
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/quadtree.hpp"
+#include "safetrail/index/rtree.hpp"
 #include "safetrail/sim/mobility.hpp"
 #include <algorithm>
 
@@ -19,18 +20,22 @@ int main() {
     }
     index::BruteForceIndex bf; bf.build(boxes);
     index::Quadtree qt;        qt.build(boxes);
-    t::ok(bf.size() == qt.size(), "size agrees for n=" + std::to_string(n));
+    index::RTree rt;           rt.build(boxes);
+    t::ok(bf.size() == qt.size(), "quadtree size agrees for n=" + std::to_string(n));
+    t::ok(bf.size() == rt.size(), "r-tree size agrees for n=" + std::to_string(n));
 
-    size_t bad = 0;
+    size_t badq = 0, badr = 0;
     for (int q = 0; q < 400; ++q) {
       const geo::LatLon p{rng.range(25.35, 25.85), rng.range(91.65, 92.15)};
       const geo::Bbox box = geo::Bbox::around(p, rng.range(50, 3000));
-      std::vector<index::ZoneId> a, b;
-      bf.query(box, a); qt.query(box, b);
-      std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end());
-      if (a != b) ++bad;
+      std::vector<index::ZoneId> a, b, d;
+      bf.query(box, a); qt.query(box, b); rt.query(box, d);
+      std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end()); std::sort(d.begin(), d.end());
+      if (a != b) ++badq;
+      if (a != d) ++badr;
     }
-    t::ok(bad == 0, "quadtree == brute force over 400 queries, n=" + std::to_string(n));
+    t::ok(badq == 0, "quadtree == brute force, n=" + std::to_string(n));
+    t::ok(badr == 0, "r-tree == brute force, n=" + std::to_string(n));
   }
 
   // Removal must keep them consistent too.
