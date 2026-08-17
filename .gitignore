@@ -1,0 +1,8 @@
+build/
+build-rel/
+compile_commands.json
+data/osm/*.pbf
+data/osm/*.graph
+bench/results/*.csv
+bench/plots/*.png
+.DS_Store
