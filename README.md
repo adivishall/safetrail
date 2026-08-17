@@ -103,6 +103,7 @@ counterpart in any existing implementation.
 
 | Doc | What's in it |
 |---|---|
+| [TEAM_BRIEF.md](TEAM_BRIEF.md) | ★ Start here — full onboarding: what, why, how to run, status, and open tasks |
 | [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | ★ Research on existing systems, the eleven gaps, and what we deliberately skip |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, the hot loop, data flow, module responsibilities |
 | [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) | Every structure: invariants, complexity targets, why it's here |
