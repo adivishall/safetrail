@@ -145,6 +145,39 @@ self-intersection, and a bowtie's two lobes cancel to exactly zero signed area, 
 every self-intersecting polygon was reported as merely degenerate. Caught by
 `tests/geo/ray_casting_test.cpp`.
 
+### Persistent index — GAP 3, measured
+
+`make bench` section 5. Path copying against the naive alternative of copying the
+whole tree per version:
+
+| versions | nodes allocated | nodes if full copies | sharing | query@past | query@now |
+|---|---|---|---|---|---|
+| 51 | 523 | 1,903 | 3.6x | 0.10 us | 0.10 us |
+| 201 | 2,582 | 14,633 | 5.7x | 0.15 us | 0.17 us |
+| 1,001 | 14,025 | 158,257 | 11.3x | 0.34 us | 0.43 us |
+| 5,001 | 71,314 | 930,257 | **13.0x** | 1.08 us | 1.56 us |
+
+Two results worth stating separately.
+
+**Sharing improves as history grows** — 3.6x at 51 versions, 13.0x at 5,001. That
+is the point of path copying: each mutation allocates O(depth) new nodes and shares
+every untouched subtree by refcount, so the marginal cost of keeping another
+version falls as the tree gets wider. Retaining 5,000 versions costs 71k nodes
+where full copies would cost 930k.
+
+**Querying the past is as cheap as querying the present.** There is no replay, no
+log reconstruction, no rebuild — a historical query is the same descent from a
+different root pointer. (The past column is sometimes *faster* simply because a
+mid-history version holds fewer zones.)
+
+A validity-only change allocates **zero** new nodes, since the geometry is
+untouched and the new version shares the entire tree. That case is asserted in
+`tests/index/versioned_index_test.cpp`.
+
+**The correctness gate:** the test builds a brute-force index of exactly what was
+live at each of 120 historical versions and asserts the persistent index agrees —
+1,440 queries, 0 mismatches. Removing a zone provably does not rewrite history.
+
 ### Other verified results
 
 | Result | Measured |
@@ -153,7 +186,7 @@ every self-intersecting polygon was reported as merely degenerate. Caught by
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | 102 checks across geometry, index equivalence, rollback DSU — all pass |
+| Unit tests | **117 checks** across geometry, index equivalence, rollback DSU, persistent index — all pass |
 
 ## Measurements to produce
 

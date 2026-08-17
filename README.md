@@ -53,7 +53,8 @@ index scaling, 100,000 zones, 450 m query:
 hysteresis A/B [GAP 8]:  87.6% of false transitions removed (733 -> 91)
 equivalence:             18,000 queries, 0 mismatches vs brute force
 ray cast vs winding:     100,000 points, 0 disagreements
-unit tests:              102 checks, all pass
+persistent index [GAP 3]: 13.0x structural sharing at 5,001 versions
+unit tests:              117 checks, all pass
 ```
 
 See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the ceiling is

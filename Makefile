@@ -8,13 +8,14 @@ BUILD    := build
 # see docs/ROADMAP.md for which phase each belongs to.
 CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containment.cpp \
         src/ds/dynamic_connectivity.cpp src/index/brute_force.cpp src/index/quadtree.cpp src/index/rtree.cpp \
+        src/index/versioned_index.cpp \
         src/util/json.cpp src/fence/zone.cpp src/fence/hysteresis.cpp src/fence/evaluator.cpp \
         src/track/tourist.cpp src/power/adaptive_sampler.cpp src/alert/alert.cpp \
         src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp \
         src/viz/html_export.cpp
 
 TESTS := tests/geo/ray_casting_test.cpp tests/index/equivalence_test.cpp \
-         tests/ds/dynamic_connectivity_test.cpp
+         tests/ds/dynamic_connectivity_test.cpp tests/index/versioned_index_test.cpp
 
 .PHONY: all demo bench test check clean asan cmake-build help
 

@@ -104,17 +104,18 @@ A number, not a feature.
 
 **Exit:** greedy vs optimal total response time, side by side.
 
-## Phase 9 — Time travel (week 11–12) `[GAP 3]`
+## Phase 9 — Time travel `[GAP 3]`  ✅ DONE
 
-The most advanced structure. Do it when the codebase is stable.
+- [x] `index/versioned_index.hpp` — path-copying quadtree, immutable shared nodes
+- [x] `ds/interval_tree.hpp` — AVL-balanced, subtree-max-high augmentation
+- [x] Validity intervals; `active_at(t)` uses the interval tree
+- [x] `query_at(timestamp, box)` — spatial prune first, then per-candidate validity
+- [x] Structural sharing metric + benchmark section 5
+- [x] Cross-checked against brute force at 120 historical versions, 0 mismatches
+- [ ] UI: incident investigation view — "the rules at 14:32"  *(still open)*
 
-- [ ] `index/versioned_index.hpp` — path-copying quadtree
-- [ ] Validity intervals in the interval tree
-- [ ] `query_at(timestamp, ...)`
-- [ ] UI: incident investigation view — "the rules at 14:32"
-- [ ] Structural sharing metric
-
-**Exit:** query the zone set as it was last Tuesday.
+**Measured:** 13.0x sharing at 5,001 versions; querying the past costs the same as
+the present; a validity-only change allocates zero nodes.
 
 ## Phase 10 — Offline and power (week 12–13) `[GAP 6, 7]`
 
