@@ -99,7 +99,7 @@ void Simulator::spawn_tourists() {
     m.truth = {glat + rng_.range(-0.002, 0.002),
                rng_.range(cfg_.roam.min_lon, cfg_.roam.max_lon)};
     m.speed_mps = rng_.range(0.9, 1.9);
-    t.last_fix = apply_gps_error(m.truth, 0, cfg_.gps, rng_);
+    t.last_fix = apply_gps_error(m.truth, 0, cfg_.gps, m.drift, rng_);
 
     tourists_.push_back(std::move(t));
     mobility_.push_back(std::move(m));
@@ -120,7 +120,7 @@ void Simulator::step() {
 
   for (size_t i = 0; i < tourists_.size(); ++i) {
     const geo::LatLon truth = step_mobility(mobility_[i], dt, now_ms_, cfg_.roam, rng_);
-    tourists_[i].last_fix = apply_gps_error(truth, now_ms_, cfg_.gps, rng_);
+    tourists_[i].last_fix = apply_gps_error(truth, now_ms_, cfg_.gps, mobility_[i].drift, rng_);
     track::Ping p{};
     p.fix = tourists_[i].last_fix;
     tourists_[i].pings.push(p);

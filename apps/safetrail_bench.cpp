@@ -140,38 +140,44 @@ static bool bench_containment() {
 }
 
 static void bench_hysteresis(FILE* csv) {
-  printf("\n\033[1m3. HYSTERESIS A/B  [GAP 8]\033[0m   identical seed and noise, filter on vs off\n");
-  printf("  %-12s  %10s  %10s  %10s  %12s\n",
-         "hysteresis", "enters", "exits", "transitions", "suppressed");
-  printf("  ──────────────────────────────────────────────────────────────────\n");
-  if (csv) fprintf(csv, "hysteresis,enters,exits,transitions,suppressed\n");
+  printf("\n\033[1m3. HYSTERESIS A/B  [GAP 8]\033[0m   filter on vs off, under TWO noise models\n");
+  printf("  %-26s %11s  %11s  %10s\n", "noise model", "transitions", "transitions", "removed");
+  printf("  %-26s %11s  %11s  %10s\n", "", "hyst OFF", "hyst ON", "");
+  printf("  ────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "noise_model,correlation,trans_off,trans_on,removed_pct\n");
 
-  uint64_t base_trans = 0;
-  for (int mode = 0; mode < 2; ++mode) {
-    sim::SimConfig cfg;
-    cfg.tourists = 60; cfg.groups = 6; cfg.seed = 20260817;
-    cfg.duration_ms = 1800000; cfg.tick_ms = 1000;
-    cfg.eval.hysteresis.enabled = (mode == 1);
-    sim::Simulator s(cfg);
-    std::string err;
-    if (!s.load_zones("data/zones/meghalaya.geojson", &err)) { printf("  %s\n", err.c_str()); return; }
-    s.spawn_tourists();
-    s.run();
-    const auto sum = s.summary();
-    const auto c = s.counters();
-    const uint64_t trans = sum.enters + sum.exits;
-    printf("  %-12s  %10llu  %10llu  %10llu  %12llu\n", mode ? "ON" : "OFF",
-           (unsigned long long)sum.enters, (unsigned long long)sum.exits,
-           (unsigned long long)trans, (unsigned long long)c.flaps_suppressed);
-    if (csv) fprintf(csv, "%s,%llu,%llu,%llu,%llu\n", mode ? "on" : "off",
-                     (unsigned long long)sum.enters, (unsigned long long)sum.exits,
-                     (unsigned long long)trans, (unsigned long long)c.flaps_suppressed);
-    if (mode == 0) base_trans = trans;
-    else if (base_trans)
-      printf("\n  \033[1mfalse transitions removed: %.1f%%\033[0m  (%llu -> %llu)\n",
-             100.0 * (1.0 - double(trans) / double(base_trans)),
-             (unsigned long long)base_trans, (unsigned long long)trans);
+  // Two noise regimes:
+  //   white  (rho=0)   independent per-tick error -- the naive, jumpy model that
+  //                    flatters hysteresis because it flaps far more than reality
+  //   drift  (rho=0.9) temporally-correlated smooth drift -- what a real GPS
+  //                    receiver actually produces. The HONEST test.
+  const struct { const char* name; double rho; } models[] = {
+    {"white noise (rho=0)", 0.0}, {"realistic drift (rho=0.9)", 0.9}};
+
+  for (const auto& nm : models) {
+    uint64_t base = 0, kept = 0;
+    for (int mode = 0; mode < 2; ++mode) {
+      sim::SimConfig cfg;
+      cfg.tourists = 60; cfg.groups = 6; cfg.seed = 20260817;
+      cfg.duration_ms = 1800000; cfg.tick_ms = 1000;
+      cfg.gps.correlation = nm.rho;
+      cfg.eval.hysteresis.enabled = (mode == 1);
+      sim::Simulator s(cfg);
+      std::string err;
+      if (!s.load_zones("data/zones/shillong_osm.geojson", &err)) { printf("  %s\n", err.c_str()); return; }
+      s.spawn_tourists();
+      s.run();
+      const uint64_t trans = s.summary().enters + s.summary().exits;
+      if (mode == 0) base = trans; else kept = trans;
+    }
+    const double removed = base ? 100.0 * (1.0 - double(kept) / double(base)) : 0.0;
+    printf("  %-26s %11llu  %11llu  %9.1f%%\n", nm.name,
+           (unsigned long long)base, (unsigned long long)kept, removed);
+    if (csv) fprintf(csv, "%s,%.1f,%llu,%llu,%.1f\n", nm.name, nm.rho,
+                     (unsigned long long)base, (unsigned long long)kept, removed);
   }
+  printf("\n  The realistic-drift row is the honest headline: hysteresis still removes\n");
+  printf("  the bulk of false transitions even when the noise is NOT artificially jumpy.\n");
 }
 
 static void bench_versioned(FILE* csv) {

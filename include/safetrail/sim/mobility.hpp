@@ -33,16 +33,34 @@ struct GpsErrorModel {
   double multipath_m  = 35.0;   // dense/steep terrain
   double multipath_probability = 0.25;
   double dropout_probability   = 0.02;   // no fix at all this tick
+
+  // Temporal correlation of the error, as an AR(1) coefficient in [0,1).
+  // Real GPS error does NOT teleport each second -- it drifts smoothly as the
+  // satellite geometry and multipath change, so consecutive fixes are correlated.
+  // Modelling that faithfully is the honest stress for the hysteresis filter:
+  //   rho = 0    -> independent white noise each tick (the naive, jumpy model)
+  //   rho = 0.9  -> smooth drift, what a real receiver produces
+  // We default to 0.9 and report the hysteresis result against BOTH.
+  double correlation = 0.9;
   bool   enabled = true;
 };
 
+// Per-device error state for the AR(1) process. Unitless (steady-state variance
+// ~1); scaled by the current sigma at each fix. Carried on MobilityState so each
+// tourist's drift evolves independently and reproducibly.
+struct GpsDrift { double e = 0.0; double n = 0.0; };
+
 // Applies error to a true position, returning what the device would report.
+// `drift` is read AND updated: the AR(1) process needs the previous error to
+// produce a correlated next one. Pass the same GpsDrift for a given device every
+// tick. (A throwaway GpsDrift gives the old independent-per-call behaviour.)
 geo::UncertainPoint apply_gps_error(const geo::LatLon& truth, int64_t t_ms,
-                                    const GpsErrorModel& m, Rng& rng);
+                                    const GpsErrorModel& m, GpsDrift& drift, Rng& rng);
 
 struct MobilityState {
   MobilityKind kind = MobilityKind::RandomWaypoint;
   geo::LatLon  truth{};              // ground truth, never exposed to the engine
+  GpsDrift     drift{};              // AR(1) GPS error state for this device
   geo::LatLon  target{};
   double       speed_mps = 1.4;      // walking pace
   std::vector<geo::LatLon> route;

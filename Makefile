@@ -14,8 +14,12 @@ CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containme
         src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp \
         src/viz/html_export.cpp
 
-TESTS := tests/geo/ray_casting_test.cpp tests/index/equivalence_test.cpp \
-         tests/ds/dynamic_connectivity_test.cpp tests/index/versioned_index_test.cpp
+TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.cpp \
+         tests/index/equivalence_test.cpp tests/index/versioned_index_test.cpp \
+         tests/ds/dynamic_connectivity_test.cpp tests/ds/interval_tree_test.cpp \
+         tests/ds/circular_buffer_test.cpp tests/alert/correlator_test.cpp \
+         tests/group/cohesion_test.cpp tests/golden/scenario_replay_test.cpp \
+         tests/golden/hysteresis_ab_test.cpp
 
 .PHONY: all demo bench test check clean asan cmake-build help
 

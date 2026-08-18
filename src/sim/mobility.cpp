@@ -18,7 +18,7 @@ double Rng::normal() {
 }
 
 geo::UncertainPoint apply_gps_error(const geo::LatLon& truth, int64_t t_ms,
-                                    const GpsErrorModel& m, Rng& rng) {
+                                    const GpsErrorModel& m, GpsDrift& drift, Rng& rng) {
   geo::UncertainPoint p{};
   p.t_ms = t_ms;
   if (!m.enabled) { p.pos = truth; p.accuracy_m = 1.0; return p; }
@@ -29,11 +29,21 @@ geo::UncertainPoint apply_gps_error(const geo::LatLon& truth, int64_t t_ms,
   }
   const bool multipath = rng.uniform() < m.multipath_probability;
   const double sigma = multipath ? m.multipath_m : m.open_sky_m;
-  // Displace in a random direction by a normally-distributed magnitude. Reported
-  // accuracy is the 68% radius, i.e. sigma -- which is what real devices report,
-  // and it is why a single fix can legitimately land outside its own radius.
-  const double mag = std::fabs(rng.normal()) * sigma;
-  p.pos = geo::offset(truth, rng.range(0, 360), mag);
+
+  // AR(1) drift, per axis (east, north):
+  //     e_t = rho * e_{t-1} + sqrt(1 - rho^2) * N(0,1)
+  // The sqrt(1-rho^2) innovation term keeps the steady-state variance at 1
+  // regardless of rho, so the displacement magnitude stays ~sigma and the
+  // reported accuracy remains honest. rho=0 collapses to independent white noise.
+  const double rho = m.correlation < 0 ? 0 : (m.correlation > 0.999 ? 0.999 : m.correlation);
+  const double innov = std::sqrt(1.0 - rho * rho);
+  drift.e = rho * drift.e + innov * rng.normal();
+  drift.n = rho * drift.n + innov * rng.normal();
+
+  // Offset truth by (drift.e east, drift.n north) metres, scaled by sigma.
+  const double east_m = drift.e * sigma, north_m = drift.n * sigma;
+  geo::LatLon q = geo::offset(truth, east_m >= 0 ? 90.0 : 270.0, std::fabs(east_m));
+  p.pos = geo::offset(q, north_m >= 0 ? 0.0 : 180.0, std::fabs(north_m));
   p.accuracy_m = sigma;
   return p;
 }

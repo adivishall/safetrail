@@ -159,7 +159,7 @@ This two-layer split is the most important idea in the simulation:
 
 Because *we* hold the truth and the engine doesn't, every accuracy claim is
 checkable — that is what "ground truth" means, and it is why the project can
-report *"87.6% of false alerts removed"* rather than just *"it seems to work."*
+report *"91% of false alerts removed under realistic drift"* rather than just *"it seems to work."*
 `apply_gps_error()` deliberately emits an `UncertainPoint` (lat, lon, accuracy,
 time) — the exact shape a real phone GPS reading has, which is what makes the
 real-deployment swap a one-line change.

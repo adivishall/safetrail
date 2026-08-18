@@ -61,7 +61,7 @@ manager, no internet.
 ```bash
 git clone https://github.com/adivishall/safetrail
 cd safetrail
-make test        # 117 checks, should all pass
+make test        # 222 checks across 11 real test files, all pass
 make demo        # run the simulation, watch the event stream
 make bench       # the measurements — this is the money shot
 make dashboard   # writes dashboard.html, open it in any browser
@@ -114,7 +114,7 @@ reporting current state.
 ### Data flow
 
 ```
-data/zones/meghalaya.geojson
+data/zones/shillong_osm.geojson   (real OpenStreetMap data)
     → ZoneStore (validates geometry, rejects self-intersecting polygons)
     → SpatialIndex (quadtree / R-tree) + VersionedIndex (history)
     → Simulator: mobility models → GPS error injection
@@ -139,7 +139,7 @@ Each traces to a documented gap. Details in
 | 5 | One landslide, forty alert cards | Correlate them into **one incident** with forty people on it | ✅ done |
 | 6 | "Offline-first" that isn't | Theirs queues requests. Can't reach PostGIS = can't check a single zone. We ship the index to the device | ⬜ todo |
 | 7 | Continuous GPS = 8–12% battery/hour | Sample based on how close the danger is | ✅ done |
-| 8 | Drift makes fences fire constantly | Hysteresis filter. **Removes 87.6% of false alerts** | ✅ done |
+| 8 | Drift makes fences fire constantly | Hysteresis filter. **Removes 91% of false alerts** (measured under realistic correlated drift) | ✅ done |
 | 9 | Ethereum for a tamper-proof log | A Merkle log gives the same property offline, in ~200 lines, no chain | ⬜ todo |
 | 10 | No validation on hand-drawn zones | Self-intersecting polygons make the geometry return garbage. We reject them | ⚠️ basic version done |
 | 11 | Nobody owns the alert across district lines | Resolve jurisdiction from nested boundaries | ⬜ todo |
@@ -222,12 +222,12 @@ actually has. The ceiling is output size, not the tree. That's exactly what
 
 | Result | Measured |
 |---|---|
-| Hysteresis filter (GAP 8) | **87.6%** of false transitions removed — 733 → 91, same seed and noise |
+| Hysteresis filter (GAP 8) | **91.2%** removed under realistic drift, 92.3% under white noise — both models, same seed |
 | Persistent index (GAP 3) | **13.0×** node sharing at 5,001 versions; querying the past costs the same as the present |
 | Index equivalence | 18,000 queries — quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **117 checks**, all pass |
+| Unit tests | **222 checks across 11 real test files**, all pass |
 
 ### Three bugs the measurements caught
 
@@ -348,6 +348,7 @@ That's how we caught all three bugs above.
 | [ROADMAP.md](docs/ROADMAP.md) | Phase plan and what to build next |
 | [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | The ten ways point-in-polygon breaks |
 | [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) | Where every number comes from, verifiable |
+| [DESIGN_DEFENSE.md](docs/DESIGN_DEFENSE.md) | ★ Answers to the hard viva questions — worst case, noise model, hand-written rule, scope |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | How to deploy — dashboard to Pages, engine as binaries, and the on-device story |
 | [PROJECT_DESCRIPTION.md](docs/PROJECT_DESCRIPTION.md) | The formal writeup for our guide |
 

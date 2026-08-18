@@ -63,11 +63,11 @@ index scaling, 100,000 zones, 450 m query:
   quadtree       7.41 us/query   32.7x
   R-tree         7.45 us/query   32.5x
 
-hysteresis A/B [GAP 8]:  87.6% of false transitions removed (733 -> 91)
+hysteresis A/B [GAP 8]:  91.2% removed under realistic drift, 92.3% under white noise
 equivalence:             18,000 queries, 0 mismatches vs brute force
 ray cast vs winding:     100,000 points, 0 disagreements
 persistent index [GAP 3]: 13.0x structural sharing at 5,001 versions
-unit tests:              117 checks, all pass
+unit tests:              222 checks across 11 real test files, all pass
 ```
 
 See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the ceiling is
@@ -117,6 +117,7 @@ counterpart in any existing implementation.
 | [ROADMAP.md](docs/ROADMAP.md) | Phased build order with milestones |
 | [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | What breaks in point-in-polygon and how we handle it |
 | [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) | ★ Where every dashboard number comes from, with re-runnable verification |
+| [DESIGN_DEFENSE.md](docs/DESIGN_DEFENSE.md) | ★ Answers to the hard viva questions — worst case, noise model, hand-written rule, scope |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | How to deploy — dashboard to Pages, engine as binaries, and the on-device story |
 
 ## Ground rules

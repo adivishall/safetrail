@@ -1,3 +1,3 @@
-hysteresis,enters,exits,transitions,suppressed
-off,375,358,733,0
-on,55,36,91,66
+noise_model,correlation,trans_off,trans_on,removed_pct
+white noise (rho=0),0.0,1995,153,92.3
+realistic drift (rho=0.9),0.9,1633,143,91.2
