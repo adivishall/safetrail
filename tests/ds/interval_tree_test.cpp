@@ -1,5 +1,7 @@
 // AVL interval tree: overlap/stab correctness vs brute force, plus the AVL bound.
 #include "../test_harness.hpp"
+#include <array>
+#include <string>
 #include "safetrail/ds/interval_tree.hpp"
 #include "safetrail/sim/mobility.hpp"
 #include <algorithm>

@@ -1,6 +1,8 @@
 // RollbackDSU vs the O(n^2) flood-fill oracle, plus the rollback property that
 // plain path-compressed DSU cannot provide.
 #include "../test_harness.hpp"
+#include <string>
+#include <vector>
 #include "safetrail/ds/dynamic_connectivity.hpp"
 #include "safetrail/sim/mobility.hpp"
 #include <algorithm>

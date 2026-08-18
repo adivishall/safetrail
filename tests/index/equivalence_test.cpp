@@ -1,6 +1,8 @@
 // Every index must return exactly what brute force returns. Without this a
 // benchmark can compare a correct slow thing against a fast wrong thing.
 #include "../test_harness.hpp"
+#include <string>
+#include <vector>
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/quadtree.hpp"
 #include "safetrail/index/rtree.hpp"

@@ -4,6 +4,8 @@
 //   - structural sharing actually happens (else it is just N full copies)
 //   - every historical version agrees with a brute-force index of what was live then
 #include "../test_harness.hpp"
+#include <string>
+#include <vector>
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/versioned_index.hpp"
 #include "safetrail/sim/mobility.hpp"

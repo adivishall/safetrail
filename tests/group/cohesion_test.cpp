@@ -1,5 +1,6 @@
 // GAP 4: a declared group that splits into two clusters must be detected.
 #include "../test_harness.hpp"
+#include <vector>
 #include "safetrail/group/cohesion.hpp"
 using namespace safetrail;
 using namespace safetrail::group;

@@ -1,5 +1,6 @@
 // GAP 5: many alerts clustered in space+time collapse into ONE incident.
 #include "../test_harness.hpp"
+#include <vector>
 #include "safetrail/alert/correlator.hpp"
 using namespace safetrail;
 using namespace safetrail::alert;

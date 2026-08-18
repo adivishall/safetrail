@@ -1,6 +1,7 @@
 // GAP 8: hysteresis must remove the majority of false transitions under BOTH
 // noise models, and must never suppress a genuine sustained crossing.
 #include "../test_harness.hpp"
+#include <string>
 #include "safetrail/sim/simulator.hpp"
 using namespace safetrail;
 
