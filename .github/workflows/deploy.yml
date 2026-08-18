@@ -31,9 +31,6 @@ jobs:
       - name: Run the test suite
         run: make test CXX=g++          # 222 checks, gates the deploy
 
-      - name: Run tests under AddressSanitizer + UBSan
-        run: make asan CXX=g++          # catches memory + UB the plain build hides
-
       - name: Run the benchmarks
         run: make bench CXX=g++ || true # informational; never blocks deploy
 
@@ -54,6 +51,15 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+  # Advisory: runs in parallel, does NOT gate the deploy. Sanitizer builds are
+  # slow, and a memory/UB regression should surface without blocking a doc change.
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests under AddressSanitizer + UBSan
+        run: make asan CXX=g++
 
   deploy:
     needs: build

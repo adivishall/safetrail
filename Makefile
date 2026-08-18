@@ -53,9 +53,21 @@ test:
 	done; echo; [ $$fail -eq 0 ] && echo "ALL TESTS PASS" || { echo "TESTS FAILED"; exit 1; }
 
 # Sanitizers are opt-in: they make link times painful and timing numbers useless.
-asan: CXXFLAGS += -fsanitize=address,undefined -fno-omit-frame-pointer -g
-asan: OPT := -O0
-asan: test
+# Sanitizer run: compile the core ONCE into an instrumented archive, then link
+# each sensitive test against it -- avoids recompiling ~20 files per test.
+ASAN_FLAGS := -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer
+ASAN_TESTS := tests/index/versioned_index_test.cpp
+asan:
+	@mkdir -p $(BUILD)/asan
+	@echo "building instrumented core (once)..."
+	@$(CXX) $(CXXFLAGS) $(ASAN_FLAGS) -c $(CORE) && mv *.o $(BUILD)/asan/ 2>/dev/null || true
+	@ar rcs $(BUILD)/asan/libcore.a $(BUILD)/asan/*.o
+	@fail=0; for t in $(ASAN_TESTS); do \
+	  n=$$(basename $$t .cpp); \
+	  $(CXX) $(CXXFLAGS) $(ASAN_FLAGS) $$t $(BUILD)/asan/libcore.a -o $(BUILD)/asan/$$n \
+	    2>/dev/null || { echo "  build FAIL $$n"; fail=1; continue; }; \
+	  ./$(BUILD)/asan/$$n || fail=1; \
+	done; echo; [ $$fail -eq 0 ] && echo "ASAN CLEAN" || { echo "ASAN FAILURES"; exit 1; }
 
 check:
 	@fail=0; for h in $$(find include -name '*.hpp'); do \
