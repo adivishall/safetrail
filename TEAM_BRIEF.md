@@ -341,6 +341,7 @@ That's how we caught all three bugs above.
 | Doc | Why |
 |---|---|
 | **This file** | Start here |
+| [WALKTHROUGH.md](docs/WALKTHROUGH.md) | ★ Start-to-finish trace of one run with diagrams — how the whole thing works |
 | [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | The research: what exists, the eleven gaps, what we deliberately skip |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, the hot loop, data flow |
 | [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) | Every structure, complexity, and all measured results |
