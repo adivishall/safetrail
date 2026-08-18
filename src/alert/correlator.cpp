@@ -2,6 +2,7 @@
 #include "safetrail/ds/dynamic_connectivity.hpp"
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <cmath>
 #include <cstdlib>
 

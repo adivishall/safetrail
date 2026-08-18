@@ -347,6 +347,7 @@ That's how we caught all three bugs above.
 | [ROADMAP.md](docs/ROADMAP.md) | Phase plan and what to build next |
 | [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | The ten ways point-in-polygon breaks |
 | [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) | Where every number comes from, verifiable |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | How to deploy — dashboard to Pages, engine as binaries, and the on-device story |
 | [PROJECT_DESCRIPTION.md](docs/PROJECT_DESCRIPTION.md) | The formal writeup for our guide |
 
 ---

@@ -116,6 +116,7 @@ counterpart in any existing implementation.
 | [ROADMAP.md](docs/ROADMAP.md) | Phased build order with milestones |
 | [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | What breaks in point-in-polygon and how we handle it |
 | [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) | ★ Where every dashboard number comes from, with re-runnable verification |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | How to deploy — dashboard to Pages, engine as binaries, and the on-device story |
 
 ## Ground rules
 
