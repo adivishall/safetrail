@@ -13,29 +13,53 @@ directly into the HTML file at generation time, as a JavaScript object literal.
 
 Two categories, and it matters that they are not confused.
 
-### Real, authored input
+### Real, fetched input
 
-`data/zones/meghalaya.geojson` — a standard GeoJSON `FeatureCollection`, 8
-features, 4,679 bytes, hand-authored. This is the source of truth for zone
-geometry, classification, severity, dwell limits, and validity windows.
+`data/zones/shillong_osm.geojson` — 38 zones whose geometry is **real
+OpenStreetMap data**, fetched from the Overpass API for the area around Shillong,
+Meghalaya (bbox 25.50–25.72 N, 91.78–91.98 E). These are actual reservoirs,
+lakes, forests, and a waterfall cliff at their true coordinates, including named
+tourist landmarks like **Wards Lake** and **Sonapani Waterfall Cliff**.
+
+The fetch-and-convert pipeline is reproducible:
 
 ```bash
-python3 -c "import json;d=json.load(open('data/zones/meghalaya.geojson'));print(json.dumps(d['features'][1]['properties'],indent=1))"
+# 1. fetch (the Overpass query is in tools/, HTTP POST to overpass-api.de)
+curl -s -X POST -d @tools/overpass.ql https://overpass-api.de/api/interpreter -o /tmp/osm.json
+# 2. convert OSM ways -> validated GeoJSON zones
+python3 tools/osm_to_zones.py
+```
+
+`tools/osm_to_zones.py` classifies each OSM feature into our zone schema (water →
+caution, quarry/cliff → restricted, forest → advisory), simplifies the boundary
+with Ramer–Douglas–Peucker, and **drops any polygon that is self-intersecting,
+degenerate, or too small** — because `ZoneStore::load_geojson` rejects the whole
+file on the first invalid polygon (GAP 10). Of 96 real closed rings fetched, 38
+survive selection and validation.
+
+```bash
+python3 -c "import json;d=json.load(open('data/zones/shillong_osm.geojson'));print(json.dumps(d['features'][1]['properties'],indent=1))"
 ```
 
 ```json
 {
- "name": "Landslide Slope - NH6 km12",
- "kind": "restricted",
+ "name": "Wards Lake",
+ "kind": "caution",
  "severity": 4,
- "max_dwell_s": 300,
- "active_from_s": 2700,
- "rule_note": "activated 45 min in, after rainfall"
+ "osm_id": 131468994,
+ "source": "OpenStreetMap",
+ "active_from_s": 1800,
+ "active_to_s": 5400,
+ "rule_note": "spillway discharge window"
 }
 ```
 
-Coordinates are real Meghalaya positions around Shillong (25.52–25.62 N,
-91.80–91.96 E) in GeoJSON `[lon, lat]` order.
+Coordinates are real Meghalaya positions (25.52–25.74 N, 91.78–92.01 E) in
+GeoJSON `[lon, lat]` order, carrying the originating `osm_id` and
+`"source": "OpenStreetMap"` on every feature.
+
+The older `data/zones/meghalaya.geojson` (8 hand-drawn zones) is kept as a small
+fixture but is no longer the default dataset.
 
 ### Simulated input
 
@@ -44,14 +68,17 @@ Coordinates are real Meghalaya positions around Shillong (25.52–25.62 N,
 - **GPS error.** Injected by `apply_gps_error()` — 4 m open sky, 35 m multipath at
   25% probability, 2% dropout. These are the measured regimes cited in
   [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
-- **Synthetic zones.** 900 procedurally generated polygons, present only to give
-  the spatial index a realistic workload. Rendered as faint density so they do not
-  compete with the authored zones.
+- **Synthetic filler zones.** Procedurally generated polygons (400–5000 depending
+  on the run), present only to give the spatial index a realistic workload at
+  scale. Rendered as faint density so they do not compete with the real zones,
+  and tagged `syn:1` in the export so nothing confuses them with real geography.
 
-**This is deliberate, not a shortcut.** Real tourist tracking data does not exist
-for this problem, and simulation is what provides *ground truth* — we know exactly
-where every tourist truly was, so we can measure whether the engine got the answer
-right. A recording of real GPS traces would not let us do that.
+**This split is deliberate.** The *geography* is real — fetched from OpenStreetMap,
+so the zones are genuine hazards at genuine coordinates. The *tourists* are
+simulated, because no real tourist-tracking dataset exists for this problem and
+simulation is what provides *ground truth*: we know exactly where every tourist
+truly was, so we can measure whether the engine got the answer right. A recording
+of real GPS traces would not let us do that.
 
 ### What is genuinely computed
 
@@ -64,7 +91,7 @@ connectivity, the persistent index. None of it is stubbed, mocked, or precompute
 ## 2. The pipeline, hop by hop
 
 ```
-data/zones/meghalaya.geojson              4,679 bytes on disk
+data/zones/shillong_osm.geojson           real OSM geometry on disk
         │
         ▼  util::Json::parse_file()               src/util/json.cpp
    hand-written JSON parser, no library
@@ -233,26 +260,42 @@ The persistent index is not decoration; the dashboard queries its history.
 
 Zone validity windows in the authored dataset:
 
-| zone | in force | reason |
+| zone (real OSM feature) | in force | illustrative rule |
 |---|---|---|
-| Border Buffer — Sector 4 | always | permanent restriction |
-| Landslide Slope — NH6 km12 | 00:45 → end | activated after rainfall |
-| Quarry Edge — Mawlai | 00:00 → 01:00 | lifted when blasting ended |
-| River Crossing — Seasonal | 00:30 → 01:30 | river in spate |
-| others | always | permanent |
+| Sonapani Waterfall Cliff | always | permanent restriction |
+| Wards Lake | 00:30 → 01:30 | spillway discharge window |
+| Love Jungle | 00:45 → end | landslide risk after rainfall |
+| all others | always | permanent |
+
+The geometry is real; the validity *windows* are illustrative operational rules
+layered on top, so the GAP 3 time-travel demo has something to show. That
+distinction is stated in the file's `metadata.note`.
 
 Scrubbing the timeline re-answers "what were the rules at this moment":
 
-- **at 00:01** — Landslide Slope and River Crossing read *not in force* and render
-  as dashed ghosts. Quarry Edge is in force.
-- **at 00:53** — all 8 in force; the Landslide Slope has become solid.
-- **at 01:36** — exactly two drop out: Quarry Edge (lifted 01:00) and River
-  Crossing (ended 01:30). Six remain.
+- **at 00:01** — Wards Lake (spillway window 00:30–01:30) and Love Jungle
+  (landslide window opens 00:45) read *not in force* and render as dashed ghosts.
+- **at 00:53** — both are in force; the earlier ghosts have become solid.
+- **at 01:36** — Wards Lake has dropped back out (window ended 01:30) while Love
+  Jungle stays in force to the end.
+
+Verify by scrubbing, or non-visually:
+
+```bash
+python3 -c "
+import re,json
+d=json.loads(re.search(r'const D = (\{.*?\});',open('dashboard.html').read(),re.S).group(1))
+def at(ms): return [z['name'] for z in d['zones'] if not z['syn']
+                    and ms>=z['from'] and (z['to']<0 or ms<z['to'])
+                    and (z['from']>0 or z['to']>=0)]
+print('time-varying zones in force at 00:01:', at(60000))
+print('time-varying zones in force at 00:53:', at(3180000))"
+```
 
 The **zone change log** panel is rendered from
 `VersionedIndex::changes_between()` — the same changelog an incident
 investigation would query, not a re-derivation in JavaScript. The counters panel
-reports 909 retained versions at 13.8× node sharing, read from
+reports the retained version count and node-sharing ratio, read from
 `share_stats()`.
 
 Crucially, the evaluator consults the *same* `Validity` objects each tick

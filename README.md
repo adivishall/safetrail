@@ -37,6 +37,12 @@ make test        # unit tests
 make dashboard   # writes dashboard.html — open it, no server needed
 ```
 
+The default dataset is **real OpenStreetMap geography** — actual reservoirs,
+forests, and landmarks (Wards Lake, Sonapani Waterfall Cliff) around Shillong,
+Meghalaya, fetched via the Overpass API and converted by `tools/osm_to_zones.py`.
+Regenerate it any time with that script; see
+[docs/DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md).
+
 `make dashboard` produces a single self-contained HTML file: animated map, live
 counters, event stream, timeline scrubber, an incident-investigation panel showing
 which zone rules were in force at any moment, and toggles for the real

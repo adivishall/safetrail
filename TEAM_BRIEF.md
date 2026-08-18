@@ -252,17 +252,21 @@ Bug 2 is the strongest argument we have for building the visualisation early.
 
 You will be asked this. The answer has two halves.
 
-**Real:** `data/zones/meghalaya.geojson` — 8 hand-authored zones at genuine
-Shillong coordinates, with validity windows (the landslide slope activates 45
-minutes in "after rainfall"; the quarry restriction lifts at 60 minutes).
+**Real:** the zone geography is **fetched from OpenStreetMap** (Overpass API) —
+38 actual reservoirs, forests, and landmarks around Shillong, including **Wards
+Lake** and **Sonapani Waterfall Cliff**, at their true coordinates. Reproduce with
+`curl ... | python3 tools/osm_to_zones.py`. The converter validates and drops
+self-intersecting polygons so the engine loads them cleanly (GAP 10).
 
-**Simulated:** the tourists, the GPS noise, and 900 filler zones that exist to
-give the index a realistic workload.
+**Simulated:** the tourists, the GPS noise, and the extra filler zones that pad
+the index to 100k for the scaling benchmark. The validity *windows* (Wards Lake's
+spillway hours, etc.) are illustrative rules layered onto the real geometry.
 
-**This is deliberate, not a shortcut.** No real tourist tracking data exists for
-this problem, and simulation is what gives us *ground truth* — we know exactly
-where every tourist truly was, so we can measure whether the engine got the right
-answer. A recording of real GPS traces couldn't tell us that.
+**This split is deliberate.** The geography is real. The tourists are simulated
+because no real tourist-tracking dataset exists for this problem, and simulation
+is what gives us *ground truth* — we know exactly where every tourist truly was,
+so we can measure whether the engine got the right answer. A recording of real GPS
+traces couldn't tell us that.
 
 Everything between input and output is genuinely computed. Nothing is mocked.
 

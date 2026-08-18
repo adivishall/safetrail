@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
   cfg.groups = 6;
   cfg.duration_ms = 3600000;
   cfg.tick_ms = 1000;
-  std::string zones = "data/zones/meghalaya.geojson";
+  std::string zones = "data/zones/shillong_osm.geojson";
   std::string html;
   size_t synthetic = 0, show = 18;
 

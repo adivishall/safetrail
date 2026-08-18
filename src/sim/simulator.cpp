@@ -18,6 +18,19 @@ Simulator::~Simulator() = default;
 bool Simulator::load_zones(const std::string& path, std::string* err) {
   if (!zones_.load_geojson(path, err)) return false;
   reindex();
+
+  // Fit the tourist roam area to the loaded zones so the simulation adapts to any
+  // dataset -- real OSM data spans a different extent than the old demo box, and
+  // tourists wandering outside every zone would exercise nothing. Inset slightly
+  // so they start inside the zone field rather than on its edge.
+  geo::Bbox ext = geo::Bbox::empty();
+  for (index::ZoneId id : zones_.all_ids()) ext.expand(zones_.get(id)->shape.bbox());
+  if (ext.max_lat > ext.min_lat) {
+    const double ilat = (ext.max_lat - ext.min_lat) * 0.08;
+    const double ilon = (ext.max_lon - ext.min_lon) * 0.08;
+    cfg_.roam = {ext.min_lat + ilat, ext.min_lon + ilon,
+                 ext.max_lat - ilat, ext.max_lon - ilon};
+  }
   return true;
 }
 

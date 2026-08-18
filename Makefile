@@ -30,11 +30,11 @@ $(BUILD)/safetrail_bench: $(CORE) apps/safetrail_bench.cpp
 	@$(CXX) $(CXXFLAGS) $(OPT) $^ -o $@
 
 demo: $(BUILD)/safetrail_headless
-	@./$(BUILD)/safetrail_headless --tourists 40 --hours 1 --synthetic 5000 --show 12
+	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 40 --hours 1 --synthetic 5000 --show 12
 
 # Writes a single self-contained HTML file -- no server, no network, no Leaflet.
 dashboard: $(BUILD)/safetrail_headless
-	@./$(BUILD)/safetrail_headless --tourists 60 --hours 2 --synthetic 900 --show 6 --export-html dashboard.html
+	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 60 --hours 2 --synthetic 400 --show 6 --export-html dashboard.html
 
 bench: $(BUILD)/safetrail_bench
 	@mkdir -p bench/results
