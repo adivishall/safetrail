@@ -244,7 +244,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **236 checks across 12 real test files**, all pass |
+| Unit tests | **233 checks across 12 real test files**, all pass |
 
 ## Measurements to produce
 

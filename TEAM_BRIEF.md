@@ -61,7 +61,7 @@ manager, no internet.
 ```bash
 git clone https://github.com/adivishall/safetrail
 cd safetrail
-make test        # 236 checks across 12 real test files, all pass
+make test        # 233 checks across 12 real test files, all pass
 make demo        # run the simulation, watch the event stream
 make bench       # the measurements — this is the money shot
 make dashboard   # writes dashboard.html, open it in any browser
@@ -341,6 +341,7 @@ That's how we caught all three bugs above.
 | Doc | Why |
 |---|---|
 | **This file** | Start here |
+| [PRESENTATION.md](docs/PRESENTATION.md) | ★ A-to-Z slide-by-slide walkthrough to present to your guide |
 | [WALKTHROUGH.md](docs/WALKTHROUGH.md) | ★ Start-to-finish trace of one run with diagrams — how the whole thing works |
 | [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | The research: what exists, the eleven gaps, what we deliberately skip |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, the hot loop, data flow |
