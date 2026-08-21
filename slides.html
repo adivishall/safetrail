@@ -1,0 +1,281 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>safetrail — presentation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#0e1116;--panel:#161b22;--line:#2a323d;--fg:#e6edf3;--dim:#8b949e;
+        --r:#f85149;--o:#d29922;--g:#3fb950;--b:#58a6ff;--u:#bc8cff}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--fg);overflow:hidden;
+       font:16px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}
+  #deck{height:100vh;width:100vw;position:relative}
+  .slide{position:absolute;inset:0;display:none;flex-direction:column;
+         justify-content:center;padding:6vh 8vw;opacity:0;
+         transition:opacity .25s ease}
+  .slide.on{display:flex;opacity:1}
+  h1{font-size:clamp(28px,5vw,56px);line-height:1.15;letter-spacing:-.5px;margin-bottom:.4em}
+  h2{font-size:clamp(20px,3.2vw,34px);color:var(--b);margin-bottom:.7em;font-weight:600}
+  h3{font-size:13px;text-transform:uppercase;letter-spacing:2px;color:var(--dim);
+     margin-bottom:1.4em;font-weight:600}
+  p{font-size:clamp(15px,2vw,21px);max-width:60ch;color:var(--fg);margin-bottom:.7em}
+  .dim{color:var(--dim)}
+  ul{list-style:none;max-width:70ch}
+  li{font-size:clamp(14px,1.9vw,20px);margin-bottom:.55em;padding-left:1.4em;position:relative}
+  li::before{content:"▸";position:absolute;left:0;color:var(--b)}
+  .big{font-size:clamp(22px,3vw,32px);color:var(--fg);border-left:3px solid var(--b);
+       padding-left:.7em;max-width:64ch;line-height:1.4}
+  table{border-collapse:collapse;font-size:clamp(12px,1.6vw,17px);margin-top:.5em}
+  td,th{padding:.35em .9em;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;font-size:.85em;text-transform:uppercase;letter-spacing:1px}
+  code,.mono{font-family:inherit;color:var(--u)}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+      padding:1em 1.2em;font-size:clamp(11px,1.5vw,16px);overflow-x:auto;
+      color:var(--fg);margin:.6em 0;max-width:80ch}
+  .num{color:var(--g);font-weight:700}
+  .tag{display:inline-block;background:var(--panel);border:1px solid var(--line);
+       border-radius:5px;padding:.1em .6em;font-size:.7em;color:var(--dim);margin-left:.5em}
+  .r{color:var(--r)}.o{color:var(--o)}.gr{color:var(--g)}.bl{color:var(--b)}.pu{color:var(--u)}
+  .cols{display:flex;gap:3em;flex-wrap:wrap}
+  .grid2{display:grid;grid-template-columns:auto 1fr;gap:.4em 1.4em;font-size:clamp(13px,1.7vw,18px);max-width:72ch}
+  .grid2 b{color:var(--b)}
+  footer{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:space-between;
+         align-items:center;padding:14px 24px;font-size:12px;color:var(--dim);
+         border-top:1px solid var(--line);background:var(--bg)}
+  #bar{position:fixed;top:0;left:0;height:3px;background:var(--b);transition:width .25s}
+  .kbd{border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--dim)}
+  .center{align-items:center;text-align:center}
+  .center ul,.center p,.center .big{text-align:left}
+  a{color:var(--b)}
+</style>
+<div id="bar"></div>
+<div id="deck">
+
+  <section class="slide center">
+    <h3>Data Structures · Course Project</h3>
+    <h1>safetrail</h1>
+    <p class="big">A hand-written geofencing engine for tourist safety in
+       low-connectivity terrain.</p>
+    <p class="dim" style="margin-top:2em">SIH 2025 · Problem statement SIH25002 ·
+       Ministry of Development of North Eastern Region</p>
+    <p class="dim">github.com/adivishall/safetrail · adivishall.github.io/safetrail</p>
+  </section>
+
+  <section class="slide">
+    <h3>01 · The problem</h3>
+    <h1>Know when a tourist walks into danger — in real time.</h1>
+    <p>Remote Northeast India. Difficult terrain, patchy mobile coverage, tourists
+       who don't know the local hazards:</p>
+    <ul>
+      <li><span class="r">landslide slopes</span> and quarry edges</li>
+      <li><span class="r">restricted border zones</span></li>
+      <li><span class="o">deep-water lakeshores</span> and seasonal river crossings</li>
+    </ul>
+    <p class="dim">We took the problem — not the expected solution.</p>
+  </section>
+
+  <section class="slide">
+    <h3>02 · The idea that defines the project</h3>
+    <p class="big">Every existing implementation hands the hard part to a database.
+       <span class="bl">We wrote that engine ourselves.</span></p>
+    <table>
+      <tr><th>The hard part</th><th>They use</th><th>We did</th></tr>
+      <tr><td>"Is this point inside this zone?"</td><td class="dim">PostGIS ST_Contains</td><td class="gr">hand-wrote the geometry</td></tr>
+      <tr><td>"Which zones are near here?"</td><td class="dim">PostGIS GiST tree</td><td class="gr">hand-wrote the spatial index</td></tr>
+      <tr><td>Tamper-proof records</td><td class="dim">Ethereum contract</td><td class="gr">hand-wrote a Merkle log</td></tr>
+    </table>
+    <p class="dim" style="margin-top:1.2em">This makes it a data-structures project
+       instead of a web app — and fixes problems delegating to a cloud DB can't.</p>
+  </section>
+
+  <section class="slide">
+    <h3>03 · Why it matters — the eleven gaps (8 built)</h3>
+    <div class="grid2">
+      <b>1</b><span>GPS is not a point → answer <span class="pu">Inside / Outside / Uncertain</span></span>
+      <b>2</b><span>Alerts fire too late → <span class="pu">predict</span> the crossing ("ETA 4 min")</span>
+      <b>3</b><span>Zones are static → they turn on/off, and we can <span class="pu">rewind time</span></span>
+      <b>4</b><span>Tourists tracked alone → model <span class="pu">groups</span>, detect stragglers</span>
+      <b>5</b><span>40 alerts for one landslide → <span class="pu">correlate</span> into one incident</span>
+      <b>7</b><span>Continuous GPS kills battery → <span class="pu">sample by proximity</span> to danger</span>
+      <b>8</b><span>Drift fires fences constantly → <span class="pu">hysteresis</span>, −91% false alerts</span>
+      <b>9</b><span>Ethereum for tamper-proofing → <span class="pu">Merkle log</span>, offline, no chain</span>
+    </div>
+    <p class="dim" style="margin-top:1.4em">Research + citations in GAP_ANALYSIS.md.
+       Three more are designed, not yet built — marked honestly.</p>
+  </section>
+
+  <section class="slide">
+    <h3>04 · How it works — plainly</h3>
+    <h2>Every second, for each tourist:</h2>
+    <ul>
+      <li><b>Narrow down</b> — which zones are even <i>near</i> them? A tree answers
+          without checking all of them (a book's index vs reading every page).</li>
+      <li><b>Check precisely</b> — are they actually inside? Real polygon geometry.</li>
+      <li><b>Report only changes</b> — "entered" / "exited", never "still inside"
+          forever. That's a usable alert list vs a scrolling wall.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h3>05 · How it works — technically</h3>
+    <p>It all lives in one function, <code>Evaluator::evaluate()</code>:</p>
+    <pre>1. usability gate    discard noisy fixes              O(1)
+2. <span class="bl">spatial prune     100k zones → ~2 candidates  O(log n + k)</span>  ← the point
+3. temporal filter   which are in force now?          O(1)
+4. exact geometry    Inside / Outside / Uncertain     O(k·V)
+5. hysteresis        real crossing, or GPS jitter?    O(1)
+6. transition diff   did state CHANGE? → Event        O(k)
+7. prediction        heading toward a zone? → ETA     O(k·V)</pre>
+    <p><b>Step 2 is the whole performance story.</b> Without the index:
+       <span class="num">200 × 100,000 × 40 = 800 million</span> ops/tick.
+       With it: <span class="num">~27,000</span>.</p>
+  </section>
+
+  <section class="slide">
+    <h3>06 · The data structures we built</h3>
+    <p class="dim">All hand-written — no std::map/set/priority_queue, no Boost, no PostGIS.</p>
+    <table>
+      <tr><th>Structure</th><th>Role</th><th>Complexity</th></tr>
+      <tr><td>Quadtree</td><td>primary spatial index</td><td>O(log n + k) avg</td></tr>
+      <tr><td>R-tree</td><td>second index, the comparison</td><td>O(log n + k) avg</td></tr>
+      <tr><td>Brute force</td><td>correctness oracle + baseline</td><td>O(n)</td></tr>
+      <tr><td>AVL interval tree</td><td>zone validity in time</td><td>O(log n + k) <span class="gr">guaranteed</span></td></tr>
+      <tr><td>Circular buffer</td><td>GPS history per tourist</td><td>O(1)</td></tr>
+      <tr><td class="pu">Persistent quadtree</td><td>time-travel queries</td><td>O(depth)/change</td></tr>
+      <tr><td class="pu">Rollback union-find</td><td>group cohesion</td><td>O(log n) find</td></tr>
+      <tr><td class="pu">Merkle tree (RFC 6962)</td><td>tamper-evident log</td><td>proof O(log n)</td></tr>
+    </table>
+    <p class="dim" style="margin-top:1em">Plus SHA-256 from scratch, ray casting, winding number, three-valued containment.</p>
+  </section>
+
+  <section class="slide">
+    <h3>07 · Three showpiece structures</h3>
+    <ul>
+      <li><b class="pu">Persistent quadtree</b> — nodes are immutable; a change copies
+          one path and <i>shares</i> the rest by reference count. Whole history for a
+          fraction of the cost: <span class="num">13× sharing</span> across 5,000
+          versions. Answers "what were the rules at 14:32?"</li>
+      <li><b class="pu">Rollback union-find</b> — groups split as well as merge, so we
+          must <i>undo</i> unions → can't use path compression. Union-by-rank alone:
+          O(log n) find, O(1) rollback. <span class="dim">The trade-off is the analysis.</span></li>
+      <li><b class="pu">Merkle evidence log</b> — every event committed to a root;
+          inclusion proofs verify offline; consistency proofs show the log was only
+          appended to. <span class="dim">Ethereum's property, in 300 lines that are ours.</span></li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h3>08 · The data is real</h3>
+    <ul>
+      <li><b class="gr">Geography: real.</b> 38 zones from <b>OpenStreetMap</b> via
+          Overpass — actual reservoirs, forests, and landmarks around Shillong
+          (<span class="o">Wards Lake</span>, <span class="r">Sonapani Waterfall
+          Cliff</span>) at true coordinates.</li>
+      <li><b class="bl">Tourists: simulated.</b> No real tracking data exists — and
+          simulation gives <b>ground truth</b>: we know where each tourist truly was,
+          so we can <i>measure</i> if the engine was right.</li>
+      <li><b>Reaches the dashboard without travelling.</b> Zero network requests.
+          One HTML file, 99.3% data, opens over file:// with the network off.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h3>09 · Results — measured, not claimed</h3>
+    <table>
+      <tr><td>Spatial index speedup (100k zones)</td><td class="num">32.7× / 32.5×</td></tr>
+      <tr><td>Candidate pruning (real run)</td><td class="num">181×</td></tr>
+      <tr><td>Hysteresis false-alert removal</td><td class="num">91.2%</td><td class="dim">realistic drift</td></tr>
+      <tr><td>Persistent index sharing (5k versions)</td><td class="num">13×</td></tr>
+      <tr><td>Index equivalence</td><td class="num">0 mismatches</td><td class="dim">18,000 queries</td></tr>
+      <tr><td>Ray casting vs winding number</td><td class="num">0 disagreements</td><td class="dim">100k points</td></tr>
+      <tr><td>Unit tests</td><td class="num">233 checks</td><td class="dim">12 files, all pass</td></tr>
+    </table>
+  </section>
+
+  <section class="slide">
+    <h3>09 · The most interesting result</h3>
+    <p class="big">We predicted a ~29,000× speedup. Measurement brought it to
+       <span class="num">33×</span> — and explaining <i>why</i> is worth more than
+       the big number.</p>
+    <p>At 100k dense zones, ~99 genuinely overlap each query. Those are <b>correct
+       answers</b> — no index can return fewer results than exist. The ceiling is
+       output size, exactly as <code>O(log n + k)</code> predicts.</p>
+    <p class="dim">Stating that honestly is the point. Three real bugs were caught
+       only by the measurements — one by looking at the visualisation.</p>
+  </section>
+
+  <section class="slide">
+    <h3>10 · Honest engineering — before you ask</h3>
+    <ul>
+      <li><b>Worst case:</b> quadtree/R-tree are O(n) worst case (they partition
+          space, not data). The <span class="gr">AVL interval tree</span> is the one
+          with a guaranteed O(log n).</li>
+      <li><b>Scope:</b> 23 modules built, ~13 designed-but-stubbed. Marked ◻/✅
+          throughout — never a stub claimed as done.</li>
+      <li><b>The tourists are simulated.</b> Real geography, simulated people, on purpose.</li>
+      <li><b>The dashboard is a deterministic replay</b>, not a live server.</li>
+    </ul>
+    <p class="dim" style="margin-top:1em">This is a strength, not a confession — it's
+       what separates a graded project from a sales pitch.</p>
+  </section>
+
+  <section class="slide">
+    <h3>11 · Live demo</h3>
+    <pre>make test      # 233 checks pass — proves it works
+make demo      # events stream over real geography
+make bench     # the speedup + correctness numbers
+make dashboard # open dashboard.html — scrub the timeline</pre>
+    <ul>
+      <li>Dots moving over <b>real Shillong reservoirs</b>; zones light up on entry.</li>
+      <li>Toggle <b>index overlay</b> — the actual quadtree cells (this made a bug
+          visible and doubled our performance).</li>
+      <li><b>Scrub past 00:45</b> — Wards Lake &amp; Love Jungle activate and lapse.
+          The persistent index answering "what were the rules then?".</li>
+    </ul>
+  </section>
+
+  <section class="slide center">
+    <h3>The close</h3>
+    <p class="big">We built the geofencing engine every competing team imports from
+       PostGIS — the quadtree, the R-tree, the persistent time-travel index, the
+       containment geometry, a tamper-evident Merkle log — by hand, analysed it
+       honestly including where it degrades, measured it against real OpenStreetMap
+       geography, and shipped it as a single self-contained dashboard anyone can
+       open offline.</p>
+    <p class="dim" style="margin-top:2em">Thank you. · github.com/adivishall/safetrail</p>
+  </section>
+
+</div>
+<footer>
+  <span>safetrail</span>
+  <span><span class="kbd">←</span> <span class="kbd">→</span> navigate ·
+        <span class="kbd">F</span> fullscreen · <span id="count"></span></span>
+</footer>
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0;
+  const bar=document.getElementById('bar'), count=document.getElementById('count');
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('on',k===i));
+    bar.style.width=((i+1)/slides.length*100)+'%';
+    count.textContent=(i+1)+' / '+slides.length;
+    location.hash=i+1;
+  }
+  addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){show(i+1);e.preventDefault();}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){show(i-1);e.preventDefault();}
+    else if(e.key==='Home'){show(0);}
+    else if(e.key==='End'){show(slides.length-1);}
+    else if(e.key==='f'||e.key==='F'){
+      if(!document.fullscreenElement)document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+  // click right/left half to advance/retreat; swipe on touch
+  addEventListener('click',e=>{ if(e.clientX>innerWidth/2)show(i+1);else show(i-1); });
+  let tx=0; addEventListener('touchstart',e=>tx=e.touches[0].clientX);
+  addEventListener('touchend',e=>{const d=e.changedTouches[0].clientX-tx;
+    if(Math.abs(d)>40)show(i+(d<0?1:-1));});
+  show(parseInt(location.hash.slice(1))-1||0);
+</script>

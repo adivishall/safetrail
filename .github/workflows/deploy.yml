@@ -39,6 +39,7 @@ jobs:
           make dashboard CXX=g++
           mkdir -p _site
           cp dashboard.html _site/index.html
+          cp slides.html _site/slides.html
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
