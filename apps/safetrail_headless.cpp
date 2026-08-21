@@ -8,6 +8,7 @@
 #include <string>
 #include "safetrail/sim/simulator.hpp"
 #include "safetrail/viz/html_export.hpp"
+#include "safetrail/evidence/merkle_log.hpp"
 
 using namespace safetrail;
 
@@ -144,6 +145,32 @@ int main(int argc, char** argv) {
   printf("  alerts absorbed      %6llu   operator cards NOT shown\n",
          (unsigned long long)cst.alerts_absorbed);
   printf("  compression ratio    %6.2f alerts per incident\n", cst.compression_ratio());
+
+  // ── GAP 9: tamper-evident evidence log of this run's events ────────────────
+  // Every event becomes an append-only log entry. The Merkle root commits to the
+  // whole stream; an inclusion proof lets a responder verify any single event
+  // offline against just the root. Rewriting any past event changes the root.
+  {
+    evidence::MerkleLog evlog;
+    for (const auto& e : s.events()) {
+      char rec_line[128];
+      snprintf(rec_line, sizeof rec_line, "%lld|%d|T%u|Z%u",
+               (long long)e.t_ms, int(e.kind), e.tourist, e.zone);
+      evlog.append(std::string(rec_line));
+    }
+    printf("\n\033[1mevidence log [GAP 9]\033[0m  tamper-evident, offline-verifiable\n");
+    printf("  events committed     %6llu\n", (unsigned long long)evlog.size());
+    printf("  merkle root          %s\n", evidence::to_hex(evlog.root()).substr(0, 32).c_str());
+    if (evlog.size() > 0) {
+      const uint64_t idx = evlog.size() / 2;
+      auto proof = evlog.prove(idx);
+      std::vector<uint8_t> entry; evlog.get(idx, entry);
+      auto leaf = evidence::leaf_hash(entry.data(), entry.size());
+      const bool ok = proof.verify(leaf, evlog.root());
+      printf("  inclusion proof #%llu   %zu hashes, verifies: %s\n",
+             (unsigned long long)idx, proof.path.size(), ok ? "yes" : "NO");
+    }
+  }
 
   if (!html.empty()) {
     if (rec.write_html(s, html))

@@ -224,6 +224,11 @@ the fact.
 
 **Structures:** Merkle tree, inclusion proof generation and verification.
 
+**Status: ✅ built.** RFC 6962 tree with SHA-256 implemented from scratch (checked
+against NIST vectors), O(log n) inclusion proofs, and consistency proofs verified
+across all prefix pairs. Wired into the demo: every run commits its event stream to
+a Merkle root and verifies a sample inclusion proof. See `src/evidence/`.
+
 ---
 
 ### Gap 10 — Zone authoring with no validation

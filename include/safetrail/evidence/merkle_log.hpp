@@ -40,6 +40,12 @@ Hash sha256(const uint8_t* data, size_t len);
 Hash sha256_pair(const Hash& l, const Hash& r);
 std::string to_hex(const Hash& h);
 
+// RFC 6962 leaf hash: SHA256(0x00 || entry). Distinct 0x00 prefix (vs 0x01 for
+// internal nodes) is the domain separation that makes the tree second-preimage
+// resistant. A verifier computes this from the entry it holds, then calls
+// InclusionProof::verify(leaf_hash, root).
+Hash leaf_hash(const uint8_t* data, size_t len);
+
 // ─── Inclusion proof ────────────────────────────────────────────────────────
 struct InclusionProof {
   uint64_t          index = 0;      // leaf position

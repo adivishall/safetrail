@@ -33,7 +33,7 @@ completed work. Do not read a `◻` row as delivered.
 | ◻ designed | Hash table | `ds/hash_table.hpp` | O(1) expected | Open-addressed entity lookup |
 | ◻ designed | Timer wheel | `ds/timer_wheel.hpp` | O(1) amortised | Escalation deadlines, benchmarked vs interval tree |
 | ◻ designed | Adjacency list | `graph/road_graph.hpp` | — | Road network from OSM |
-| ◻ designed | Merkle tree | `evidence/merkle_log.hpp` | append O(1) am. · proof O(log n) | Tamper-evident log (Gap 9) |
+| ✅ built | **Merkle tree** (RFC 6962) | `evidence/merkle_log.hpp` | append O(1) am. · proof O(log n) | Tamper-evident log (Gap 9), SHA-256 from scratch |
 
 ## Algorithms on those structures
 
@@ -66,19 +66,20 @@ traces to a documented gap — see [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
 | ✅ built | **Adaptive rate controller** | `power/adaptive_sampler.hpp` | O(1) per tick | **7** — sampling as a function of risk distance |
 | ◻ designed | Lamport clocks | `sync/lamport.hpp` | O(1)/event · merge O(n log n) | **6** — offline event ordering |
 | ◻ designed | Index serialisation | `index/spatial_index.hpp` | O(n) | **6** — ship the index to the device |
-| ◻ designed | Merkle consistency proof | `evidence/merkle_log.hpp` | O(log n) | **9** — proves append, not just inclusion |
+| ✅ built | **Merkle inclusion + consistency proofs** | `evidence/merkle_log.hpp` | O(log n) | **9** — proves append, not just inclusion. Verified on all prefix pairs |
 | ◻ designed | Polygon nesting hierarchy | `jurisdiction/hierarchy.hpp` | build O(n²V) · resolve O(log n) | **11** — jurisdiction ownership |
 
 ### Honest count
 
-**Built and tested: 5 core structures** (quadtree, R-tree, brute-force, AVL
-interval tree, circular buffer) **+ 2 advanced structures** (persistent
-path-copying quadtree, rollback union-find) **+ 8 algorithms/mechanisms** (ray
-casting, winding number, self-intersection check, three-valued containment, signed
-distance, predictive crossing, spatio-temporal clustering, hysteresis, adaptive
-sampling).
+**Built and tested: 6 core structures** (quadtree, R-tree, brute-force, AVL
+interval tree, circular buffer, Merkle tree) **+ 2 advanced structures**
+(persistent path-copying quadtree, rollback union-find) **+ 9 algorithms/mechanisms**
+(ray casting, winding number, self-intersection check, three-valued containment,
+signed distance, predictive crossing, spatio-temporal clustering, hysteresis,
+adaptive sampling) **+ SHA-256** implemented from scratch and checked against NIST
+vectors.
 
-**Designed but not yet built (◻): 15 items** — the routing/dispatch stack,
+**Designed but not yet built (◻): 13 items** — the routing/dispatch stack,
 offline sync, Merkle log, geohash, k-d tree, and the faster sweep-line. These are
 the roadmap ([ROADMAP.md](ROADMAP.md)), and the headers define their interfaces,
 but their bodies are stubs. They are counted here as *planned*, never as done.
@@ -243,7 +244,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **222 checks across 11 real test files**, all pass |
+| Unit tests | **236 checks across 12 real test files**, all pass |
 
 ## Measurements to produce
 

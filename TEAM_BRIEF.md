@@ -61,7 +61,7 @@ manager, no internet.
 ```bash
 git clone https://github.com/adivishall/safetrail
 cd safetrail
-make test        # 222 checks across 11 real test files, all pass
+make test        # 236 checks across 12 real test files, all pass
 make demo        # run the simulation, watch the event stream
 make bench       # the measurements — this is the money shot
 make dashboard   # writes dashboard.html, open it in any browser
@@ -140,7 +140,7 @@ Each traces to a documented gap. Details in
 | 6 | "Offline-first" that isn't | Theirs queues requests. Can't reach PostGIS = can't check a single zone. We ship the index to the device | ⬜ todo |
 | 7 | Continuous GPS = 8–12% battery/hour | Sample based on how close the danger is | ✅ done |
 | 8 | Drift makes fences fire constantly | Hysteresis filter. **Removes 91% of false alerts** (measured under realistic correlated drift) | ✅ done |
-| 9 | Ethereum for a tamper-proof log | A Merkle log gives the same property offline, in ~200 lines, no chain | ⬜ todo |
+| 9 | Ethereum for a tamper-proof log | A Merkle log (RFC 6962, SHA-256 from scratch) gives the same property offline, no chain | ✅ done |
 | 10 | No validation on hand-drawn zones | Self-intersecting polygons make the geometry return garbage. We reject them | ⚠️ basic version done |
 | 11 | Nobody owns the alert across district lines | Resolve jurisdiction from nested boundaries | ⬜ todo |
 
@@ -148,7 +148,7 @@ Each traces to a documented gap. Details in
 
 ## 6. Where the project actually stands
 
-Honest status. **21 modules implemented, 28 still stubs.**
+Honest status. **23 modules implemented, 28 still stubs.**
 
 ### Working
 
