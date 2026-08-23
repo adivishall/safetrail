@@ -47,6 +47,18 @@
   .center{align-items:center;text-align:center}
   .center ul,.center p,.center .big{text-align:left}
   a{color:var(--b)}
+
+  @media print{
+    @page{size:1280px 720px;margin:0}
+    html,body{overflow:visible;height:auto;background:#0e1116;
+              -webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #bar,footer{display:none!important}
+    #deck{height:auto}
+    .slide{position:relative!important;display:flex!important;opacity:1!important;
+           inset:auto!important;width:1280px;height:720px;
+           page-break-after:always;break-after:page;overflow:hidden}
+    .slide:last-child{page-break-after:auto}
+  }
 </style>
 <div id="bar"></div>
 <div id="deck">

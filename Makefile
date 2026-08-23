@@ -42,6 +42,14 @@ demo: $(BUILD)/safetrail_headless
 dashboard: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 60 --hours 2 --synthetic 400 --show 6 --export-html dashboard.html
 
+# Render the slide deck to a PDF (one landscape page per slide) via headless Chrome.
+CHROME ?= /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+pdf:
+	@"$(CHROME)" --headless --disable-gpu --no-pdf-header-footer \
+	  --print-to-pdf="$(PWD)/safetrail-slides.pdf" --print-to-pdf-no-header \
+	  --virtual-time-budget=4000 "file://$(PWD)/slides.html" 2>/dev/null
+	@echo "wrote safetrail-slides.pdf"
+
 bench: $(BUILD)/safetrail_bench
 	@mkdir -p bench/results
 	@./$(BUILD)/safetrail_bench --out bench/results
