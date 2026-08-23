@@ -121,22 +121,23 @@ returns both `Plan.total_m` values; the A/B is `assigner_test`'s headline invari
 **Measured:** 13.0x sharing at 5,001 versions; querying the past costs the same as
 the present; a validity-only change allocates zero nodes.
 
-## Phase 10 — Offline and power (week 12–13) `[GAP 6, 7]`
+## Phase 10 — Offline and power (week 12–13) `[GAP 6, 7]`  ✅ DONE (structures)
 
-- [ ] Index serialise/deserialise
-- [ ] `sync/lamport.hpp`, `OfflineQueue`, `Reconciler`
-- [ ] `power/adaptive_sampler.hpp`
-- [ ] `tests/sync/lamport_test.cpp` — idempotent merge, skewed clocks
-- [ ] Scenario: device offline 2 h, reconnects, timeline stays correct
+- [x] Index serialise/deserialise — geohash blob, round-trips to identical queries
+- [x] `sync/lamport.hpp`, `OfflineQueue`, `Reconciler` — idempotent, deterministic
+- [x] `power/adaptive_sampler.hpp`
+- [x] `tests/sync/lamport_test.cpp` — idempotent merge, skewed clocks, disk round trip
+- [ ] Scenario: device offline 2 h, reconnects, timeline stays correct  *(sim wiring, still open)*
 
 **Exit:** battery projection vs fixed polling at matched recall.
 
-## Phase 11 — Evidence and authoring (week 13) `[GAP 9, 10]`
+## Phase 11 — Evidence and authoring (week 13) `[GAP 9, 10]`  ✅ DONE (structures)
 
-- [ ] `evidence/merkle_log.hpp` + `sha256.cpp` — inclusion and consistency proofs
-- [ ] QR digital ID, offline verification
-- [ ] `geo/sweep_line.hpp` — Bentley–Ottmann self-intersection
-- [ ] Zone editor validation, overlap warnings
+- [x] `evidence/merkle_log.hpp` + `sha256.cpp` — inclusion and consistency proofs
+- [ ] QR digital ID, offline verification  *(app-layer, still open)*
+- [x] `geo/sweep_line.hpp` — Shamos–Hoey sweep self-intersection (verdict == validate())
+- [x] `jurisdiction/hierarchy.hpp` — polygon nesting, deepest-owner resolve `[GAP 11]`
+- [ ] Zone editor validation, overlap warnings  *(app-layer, still open)*
 
 ## Phase 12 — Measure everything (week 14+)
 

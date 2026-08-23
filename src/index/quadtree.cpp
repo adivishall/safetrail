@@ -1,6 +1,7 @@
 #include "safetrail/index/quadtree.hpp"
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/rtree.hpp"
+#include "safetrail/index/geohash.hpp"
 #include <algorithm>
 
 namespace safetrail::index {
@@ -185,6 +186,7 @@ std::unique_ptr<SpatialIndex> make_index(IndexKind kind) {
   switch (kind) {
     case IndexKind::Quadtree: return std::make_unique<Quadtree>();
     case IndexKind::RTree: return std::make_unique<RTree>();
+    case IndexKind::Geohash: return std::make_unique<Geohash>();
     default: return std::make_unique<BruteForceIndex>();
   }
 }

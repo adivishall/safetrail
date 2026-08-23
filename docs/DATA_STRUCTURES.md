@@ -27,11 +27,11 @@ completed work. Do not read a `◻` row as delivered.
 | ✅ built | **Brute force** | `index/brute_force.hpp` | O(n) | **Never deleted.** Correctness oracle + speedup denominator |
 | ✅ built | **Interval tree** | `ds/interval_tree.hpp` | query O(log n + k) | AVL-balanced; zone validity spans (Gap 3). Real O(log n) guarantee |
 | ✅ built | **Circular buffer** | `ds/circular_buffer.hpp` | push/access O(1) | Fixed-window GPS ping history, bounded memory per tourist |
-| ◻ designed | Geohash | `index/geohash.hpp` | encode O(1) · query O(p + k) | Third index + offline serialisation format |
-| ◻ designed | k-d tree | `index/kd_tree.hpp` | build O(n log n) · NN O(log n) avg | Nearest-responder queries |
+| ✅ built | **Geohash** | `index/geohash.hpp` | encode O(1) · query O(range + k) | Third index (Morton/Z-order) + offline serialisation format; == brute force |
+| ✅ built | **k-d tree** | `index/kd_tree.hpp` | build O(n log n) · NN O(log n) avg | Nearest-responder / nearest-hazard queries; NN & k-NN vs linear-scan oracle |
 | ✅ built | **Binary heap** | `ds/priority_queue.hpp` | push/pop O(log n) | Min-heap; the Dijkstra/A* frontier, and the alert-triage frontier |
-| ◻ designed | Hash table | `ds/hash_table.hpp` | O(1) expected | Open-addressed entity lookup |
-| ◻ designed | Timer wheel | `ds/timer_wheel.hpp` | O(1) amortised | Escalation deadlines, benchmarked vs interval tree |
+| ✅ built | **Hash table** | `ds/hash_table.hpp` | O(1) expected | Open-addressed, linear probing, tombstone delete; vs linear-scan oracle |
+| ✅ built | **Timer wheel** | `ds/timer_wheel.hpp` | O(1) amortised | Escalation deadlines; single-level hashed wheel vs brute-force due-set oracle |
 | ✅ built | **Adjacency list** | `graph/road_graph.hpp` | space O(V+E) · neighbours O(deg) | Weighted road graph; synthetic grid generator (no OSM extract shipped) |
 | ✅ built | **Merkle tree** (RFC 6962) | `evidence/merkle_log.hpp` | append O(1) am. · proof O(log n) | Tamper-evident log (Gap 9), SHA-256 from scratch |
 
@@ -41,9 +41,9 @@ completed work. Do not read a `◻` row as delivered.
 |---|---|---|---|---|
 | ✅ built | Ray casting | `geo/containment.hpp` | O(V) | Point-in-polygon, the fundamental test |
 | ✅ built | Winding number | `geo/containment.hpp` | O(V) | Independent 2nd implementation; cross-validates ray casting |
-| ✅ built | Self-intersection check | `geo/polygon.hpp` | O(V²) | Zone validation (Gap 10). Simple pairwise; Bentley–Ottmann is the ◻ upgrade |
+| ✅ built | Self-intersection check | `geo/polygon.hpp` | O(V²) | Zone validation (Gap 10). Simple pairwise; the sweep-line below is the faster path |
 | ✅ built | Douglas–Peucker | `tools/osm_to_zones.py` | O(n log n) avg | Boundary simplification (in the data-prep tool) |
-| ◻ designed | Bentley–Ottmann | `geo/sweep_line.hpp` | O((n+k) log n) | Faster self-intersection detection |
+| ✅ built | **Sweep-line (Shamos–Hoey)** | `geo/sweep_line.hpp` | O(n²) status-vector today; O(n log n) with a BST status | Faster self-intersection detection; verdict == `validate()`, verified |
 | ✅ built | **Dijkstra / A*** | `graph/dijkstra.hpp`, `astar.hpp` | O((V+E) log V) | Responder routing. Dijkstra checked vs Floyd–Warshall; A* uses an admissible haversine heuristic, verified to expand ≤ Dijkstra |
 | ✅ built | **Kuhn's / Hungarian** | `graph/bipartite_match.hpp` | O(VE) / O(n³) | Responder→incident assignment. Both checked against exhaustive search |
 
@@ -64,27 +64,31 @@ traces to a documented gap — see [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
 | ✅ built | **Spatio-temporal DSU clustering** | `alert/correlator.hpp` | O(n α(n)) | **5** — forty alerts collapse into one incident |
 | ✅ built | **Hysteresis state machine** | `fence/hysteresis.hpp` | O(1) per observation | **8** — drift suppression, measured under two noise models |
 | ✅ built | **Adaptive rate controller** | `power/adaptive_sampler.hpp` | O(1) per tick | **7** — sampling as a function of risk distance |
-| ◻ designed | Lamport clocks | `sync/lamport.hpp` | O(1)/event · merge O(n log n) | **6** — offline event ordering |
-| ◻ designed | Index serialisation | `index/spatial_index.hpp` | O(n) | **6** — ship the index to the device |
+| ✅ built | **Lamport clocks + reconciler** | `sync/lamport.hpp` | O(1)/event · merge O(n log n) | **6** — offline event ordering; idempotent, deterministic, clock-skew-proof |
+| ✅ built | **Index serialisation** | `index/geohash.hpp` | O(n) | **6** — ship the geohash index to the device; round-trips identically |
 | ✅ built | **Merkle inclusion + consistency proofs** | `evidence/merkle_log.hpp` | O(log n) | **9** — proves append, not just inclusion. Verified on all prefix pairs |
-| ◻ designed | Polygon nesting hierarchy | `jurisdiction/hierarchy.hpp` | build O(n²V) · resolve O(log n) | **11** — jurisdiction ownership |
+| ✅ built | **Polygon nesting hierarchy** | `jurisdiction/hierarchy.hpp` | build O(n²V) · resolve O(depth·V) | **11** — jurisdiction ownership; resolve == smallest-containing oracle |
 
 ### Honest count
 
-**Built and tested: 8 core structures** (quadtree, R-tree, brute-force, AVL
-interval tree, circular buffer, Merkle tree, binary heap, adjacency-list graph)
+**Built and tested: 12 core structures** (quadtree, R-tree, brute-force, AVL
+interval tree, circular buffer, Merkle tree, binary heap, adjacency-list graph,
+geohash/Morton index, k-d tree, open-addressed hash table, hashed timing wheel)
 **+ 2 advanced structures** (persistent path-copying quadtree, rollback union-find)
-**+ 13 algorithms/mechanisms** (ray casting, winding number, self-intersection
-check, three-valued containment, signed distance, predictive crossing,
-spatio-temporal clustering, hysteresis, adaptive sampling, Dijkstra, A*, Kuhn's
-matching, Hungarian assignment) **+ SHA-256** implemented from scratch and checked
-against NIST vectors. Every one is exercised by the test suite (2,005 checks).
+**+ 16 algorithms/mechanisms** (ray casting, winding number, self-intersection
+check, Shamos–Hoey sweep-line, three-valued containment, signed distance,
+predictive crossing, spatio-temporal clustering, hysteresis, adaptive sampling,
+Dijkstra, A*, Kuhn's matching, Hungarian assignment, Lamport reconciliation,
+polygon-nesting resolution) **+ SHA-256** implemented from scratch and checked
+against NIST vectors. Every one is exercised by the test suite (10,862 checks
+across 23 files).
 
-**Designed but not yet built (◻): 6 items** — offline sync (Lamport clocks, index
-serialisation), geohash, k-d tree, the faster Bentley–Ottmann sweep-line, and the
-jurisdiction nesting hierarchy. These are the roadmap ([ROADMAP.md](ROADMAP.md)),
-and the headers define their interfaces, but their bodies are stubs. They are
-counted here as *planned*, never as done.
+**Designed but not yet built (◻): none.** Every structure and algorithm in this
+inventory is implemented, exercised, and checked against a brute-force oracle. The
+only remaining `TODO(impl)` stubs in the tree are deliberately-unbuilt app scaffolding
+(`server/` — the project is serverless by design; see the README) and helpers
+whose logic lives in another file (e.g. haversine in `geo/point.cpp`, predictive
+crossing in `fence/evaluator.cpp`, Douglas–Peucker in the data-prep tool).
 
 ---
 
@@ -103,6 +107,10 @@ has to include the worst case — and for the spatial indexes it is not O(log n)
 | Binary heap | O(log n) push/pop | **O(log n)** | ✓ — complete tree, height ⌊log₂ n⌋ |
 | Dijkstra (heap) | O((V+E) log V) | **O((V+E) log V)** | ✓ — non-negative weights; lazy-deletion frontier |
 | Hungarian assignment | O(n³) | **O(n³)** | ✓ — fixed n phases, each O(n²) |
+| k-d tree | O(log n) NN | **O(n)** | ✗ — not balanced; pathological on clustered data, like the quadtree |
+| Hash table | O(1) get/put | **O(n)** | ✗ — probe chains degrade under a bad hash; amortised O(1) at ≤0.7 load |
+| Timing wheel | O(1) schedule/expire | **O(n) per tick** | ✗ — amortised O(1); a slot can hold many entries |
+| Geohash query | O(range + k) | **O(n)** | ✗ — Z-order gaps can over-scan; exact after refine |
 
 **Why the quadtree can degrade to O(n).** It subdivides *space* on a fixed grid,
 not *data*. If every zone falls in one small region (which is realistic — hazards
@@ -249,7 +257,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **2,005 checks across 16 real test files**, all pass |
+| Unit tests | **10,862 checks across 23 real test files**, all pass |
 
 ## Measurements to produce
 
