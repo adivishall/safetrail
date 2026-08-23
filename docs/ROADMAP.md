@@ -95,14 +95,18 @@ A number, not a feature.
 
 **Exit:** the landslide scenario produces one incident card, not forty.
 
-## Phase 8 — Dispatch (week 10–11)
+## Phase 8 — Dispatch (week 10–11)  ✅ DONE (routing/matching/assignment)
 
-- [ ] `graph/road_graph.hpp` from OSM, `dijkstra.hpp`, `astar.hpp`
-- [ ] `graph/bipartite_match.hpp` — Kuhn's, then Hungarian
-- [ ] `dispatch/assigner.hpp` — greedy vs optimal, both kept
-- [ ] `jurisdiction/hierarchy.hpp` `[GAP 11]`
+- [x] `graph/road_graph.hpp` — weighted adjacency list + deterministic synthetic
+      grid generator (no OSM extract shipped; real OSM drops in behind the same interface)
+- [x] `graph/dijkstra.hpp` — hand-written binary-heap frontier, checked vs Floyd–Warshall
+- [x] `graph/astar.hpp` — admissible haversine heuristic; expands ≤ Dijkstra, same distances
+- [x] `graph/bipartite_match.hpp` — Kuhn's (max cardinality) and Hungarian (min-cost), both vs brute force
+- [x] `dispatch/assigner.hpp` — greedy vs optimal, both kept; optimal ties brute-force min, never worse than greedy
+- [ ] `jurisdiction/hierarchy.hpp` `[GAP 11]`  *(still open)*
 
-**Exit:** greedy vs optimal total response time, side by side.
+**Exit:** greedy vs optimal total response time, side by side — the assigner
+returns both `Plan.total_m` values; the A/B is `assigner_test`'s headline invariant.
 
 ## Phase 9 — Time travel `[GAP 3]`  ✅ DONE
 
