@@ -29,7 +29,7 @@ jobs:
         run: g++ --version
 
       - name: Run the test suite
-        run: make test CXX=g++          # 2,005 checks, gates the deploy
+        run: make test CXX=g++          # 10,862 checks, gates the deploy
 
       - name: Run the benchmarks
         run: make bench CXX=g++ || true # informational; never blocks deploy
