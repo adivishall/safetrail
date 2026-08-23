@@ -22,9 +22,11 @@ delegating to a server-side spatial database makes impossible.
 Tracks a population of tourists across a region. Evaluates their position against
 time-varying hazard zones with explicit GPS uncertainty. Predicts boundary
 crossings before they happen. Detects group fragmentation and stragglers.
-Correlates floods of related alerts into single incidents. Dispatches the nearest
-responder along a real road route. Runs fully offline on a device and reconciles
-event logs on reconnect. Keeps a tamper-evident record of everything.
+Correlates floods of related alerts into single incidents. Assigns responders to
+incidents over a road network — shortest paths by Dijkstra/A*, and a provably
+optimal global assignment by the Hungarian algorithm, not just greedy nearest-first.
+Runs fully offline on a device and reconciles event logs on reconnect. Keeps a
+tamper-evident record of everything.
 
 ## Quickstart
 
@@ -67,7 +69,7 @@ hysteresis A/B [GAP 8]:  91.2% removed under realistic drift, 92.3% under white 
 equivalence:             18,000 queries, 0 mismatches vs brute force
 ray cast vs winding:     100,000 points, 0 disagreements
 persistent index [GAP 3]: 13.0x structural sharing at 5,001 versions
-unit tests:              222 checks across 11 real test files, all pass
+unit tests:              2,005 checks across 16 real test files, all pass
 ```
 
 See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the ceiling is

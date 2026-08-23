@@ -13,15 +13,20 @@ CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containme
         src/track/tourist.cpp src/power/adaptive_sampler.cpp src/alert/alert.cpp \
         src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp \
         src/viz/html_export.cpp \
-        src/evidence/sha256.cpp src/evidence/merkle_log.cpp
+        src/evidence/sha256.cpp src/evidence/merkle_log.cpp \
+        src/graph/road_graph.cpp src/graph/dijkstra.cpp src/graph/astar.cpp \
+        src/graph/bipartite_match.cpp src/dispatch/assigner.cpp
 
 TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.cpp \
          tests/index/equivalence_test.cpp tests/index/versioned_index_test.cpp \
          tests/ds/dynamic_connectivity_test.cpp tests/ds/interval_tree_test.cpp \
-         tests/ds/circular_buffer_test.cpp tests/alert/correlator_test.cpp \
+         tests/ds/circular_buffer_test.cpp tests/ds/priority_queue_test.cpp \
+         tests/alert/correlator_test.cpp \
          tests/group/cohesion_test.cpp tests/golden/scenario_replay_test.cpp \
          tests/golden/hysteresis_ab_test.cpp \
-         tests/evidence/merkle_log_test.cpp
+         tests/evidence/merkle_log_test.cpp \
+         tests/graph/shortest_path_test.cpp tests/graph/matching_test.cpp \
+         tests/dispatch/assigner_test.cpp
 
 .PHONY: all demo bench test check clean asan cmake-build help
 
