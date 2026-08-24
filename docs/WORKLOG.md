@@ -8,6 +8,19 @@ Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
 ---
 
+### 2026-08-23 — Real OSM roads loadable (closes the synthetic caveat)
+
+**What:** Added `RoadGraph::save_file/load_file` (a plain-text road format) and
+`tools/osm_to_roads.py`, which fetches real Shillong highways from OpenStreetMap
+and writes that format. The simulator loads a roads file if given, else the grid.
+
+**Why:** Removes the one honesty caveat in dispatch — routing can now run on real
+roads, not just a synthetic grid. (Run the script online to fetch; nothing shipped.)
+
+**Impact:** +5 checks (save/load round-trip preserves shortest paths). All pass.
+
+---
+
 ### 2026-08-23 — Benchmarks for routing and dispatch
 
 **What:** Added two measurements to `make bench`: A* vs Dijkstra (node

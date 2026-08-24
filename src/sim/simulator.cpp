@@ -175,9 +175,12 @@ void Simulator::step() {
 void Simulator::dispatch_responders() {
   if (!cfg_.dispatch) return;
 
-  // Build a synthetic road grid over the roam area and place responders on it, once.
+  // Load a real OSM road network if one was given, else build a synthetic grid
+  // over the roam area. Place responders on it, once.
   if (roads_.node_count() == 0) {
-    roads_ = graph::RoadGraph::grid(cfg_.roam, 12, 12, cfg_.seed);
+    std::string err;
+    if (cfg_.roads_path.empty() || !roads_.load_file(cfg_.roads_path, &err))
+      roads_ = graph::RoadGraph::grid(cfg_.roam, 12, 12, cfg_.seed);
     for (size_t i = 0; i < cfg_.responders && roads_.node_count() > 0; ++i) {
       dispatch::Responder r;
       r.pos = roads_.pos(graph::NodeId(rng_.below(uint32_t(roads_.node_count()))));
