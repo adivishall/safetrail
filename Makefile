@@ -33,6 +33,7 @@ TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.c
          tests/dispatch/assigner_test.cpp \
          tests/index/kd_tree_test.cpp tests/index/geohash_test.cpp \
          tests/geo/sweep_line_test.cpp tests/sync/lamport_test.cpp \
+         tests/sync/offline_scenario_test.cpp \
          tests/jurisdiction/hierarchy_test.cpp \
          tests/alert/triage_escalation_test.cpp tests/track/anomaly_test.cpp
 
