@@ -8,6 +8,18 @@ Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
 ---
 
+### 2026-08-23 — Benchmarks for routing and dispatch
+
+**What:** Added two measurements to `make bench`: A* vs Dijkstra (node
+expansions) and greedy vs optimal dispatch (total travel), each writing a CSV.
+
+**Why:** Report material — quantifies the new graph/dispatch work.
+
+**Impact (measured):** A* expands ~77% fewer nodes than Dijkstra; Hungarian saves
+6.5–15.7% travel over greedy and is never worse (200/200 layouts).
+
+---
+
 ### 2026-08-23 — Dispatch wired into the simulator
 
 **What:** After a run, the simulator now builds a road grid, places responders,
