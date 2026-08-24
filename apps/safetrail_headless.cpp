@@ -146,6 +146,18 @@ int main(int argc, char** argv) {
          (unsigned long long)cst.alerts_absorbed);
   printf("  compression ratio    %6.2f alerts per incident\n", cst.compression_ratio());
 
+  // ── Phase 8: responder dispatch over the road network, greedy vs optimal ───
+  printf("\n\033[1mdispatch\033[0m  greedy vs optimal responder assignment\n");
+  printf("  incidents covered    %6llu   (of %llu open)\n",
+         (unsigned long long)sum.dispatched,
+         (unsigned long long)(sum.dispatched + sum.unassigned));
+  printf("  greedy total         %8.0f m\n", sum.greedy_response_m);
+  printf("  optimal total        %8.0f m", sum.optimal_response_m);
+  if (sum.greedy_response_m > sum.optimal_response_m + 1.0)
+    printf("   \033[32m%.0f m saved by Hungarian\033[0m",
+           sum.greedy_response_m - sum.optimal_response_m);
+  printf("\n");
+
   // ── GAP 9: tamper-evident evidence log of this run's events ────────────────
   // Every event becomes an append-only log entry. The Merkle root commits to the
   // whole stream; an inclusion proof lets a responder verify any single event
