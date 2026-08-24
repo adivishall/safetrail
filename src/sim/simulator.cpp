@@ -169,9 +169,40 @@ void Simulator::step() {
   ++sum_.ticks;
 }
 
+// Assign responders to the incidents the correlator opened, over a road network:
+// greedy nearest-first vs the Hungarian optimum, side by side. This is where the
+// graph + dispatch stack meets the simulation.  [Phase 8]
+void Simulator::dispatch_responders() {
+  if (!cfg_.dispatch) return;
+
+  // Build a synthetic road grid over the roam area and place responders on it, once.
+  if (roads_.node_count() == 0) {
+    roads_ = graph::RoadGraph::grid(cfg_.roam, 12, 12, cfg_.seed);
+    for (size_t i = 0; i < cfg_.responders && roads_.node_count() > 0; ++i) {
+      dispatch::Responder r;
+      r.pos = roads_.pos(graph::NodeId(rng_.below(uint32_t(roads_.node_count()))));
+      responders_.add(r);
+    }
+    responders_.snap_all(roads_);
+  }
+
+  std::vector<dispatch::Incident> incidents;
+  for (const auto* inc : corr_->open_incidents())
+    incidents.push_back({inc->id, inc->centroid, graph::kNoNode});
+  dispatch::snap_incidents(incidents, roads_);
+
+  const auto greedy  = dispatch::assign_greedy(responders_, incidents, roads_);
+  const auto optimal = dispatch::assign_optimal(responders_, incidents, roads_);
+  sum_.dispatched         = optimal.dispatches.size();
+  sum_.unassigned         = optimal.unassigned;
+  sum_.greedy_response_m  = greedy.total_m;
+  sum_.optimal_response_m = optimal.total_m;
+}
+
 void Simulator::run() {
   while (!done()) step();
   sum_.incidents = corr_->stats().incidents_opened;
+  dispatch_responders();
 }
 
 }  // namespace safetrail::sim

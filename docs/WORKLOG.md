@@ -8,6 +8,20 @@ Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
 ---
 
+### 2026-08-23 — Dispatch wired into the simulator
+
+**What:** After a run, the simulator now builds a road grid, places responders,
+and assigns them to the correlator's incidents — greedy vs optimal (Hungarian)
+side by side. The headless demo prints both totals.
+
+**Why:** Makes the README's "assigns responders over a road network" claim real
+in the running engine, not just in unit tests. Completes Phase 8's exit goal.
+
+**Impact:** New Summary fields (dispatched / greedy_response_m / optimal_response_m);
+all tests still pass (replay unaffected — dispatch runs after the event loop).
+
+---
+
 ### 2026-08-23 — Alert triage/escalation + anomaly detection
 
 **What:** Built `alert/triage` (orders alerts by urgency using the binary heap),
