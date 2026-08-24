@@ -13,7 +13,7 @@ CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containme
         src/track/tourist.cpp src/power/adaptive_sampler.cpp src/alert/alert.cpp \
         src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp \
         src/viz/html_export.cpp \
-        src/evidence/sha256.cpp src/evidence/merkle_log.cpp \
+        src/evidence/sha256.cpp src/evidence/merkle_log.cpp src/evidence/digital_id.cpp \
         src/graph/road_graph.cpp src/graph/dijkstra.cpp src/graph/astar.cpp \
         src/graph/bipartite_match.cpp src/dispatch/assigner.cpp \
         src/index/geohash.cpp src/geo/sweep_line.cpp \
@@ -28,7 +28,7 @@ TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.c
          tests/alert/correlator_test.cpp \
          tests/group/cohesion_test.cpp tests/golden/scenario_replay_test.cpp \
          tests/golden/hysteresis_ab_test.cpp \
-         tests/evidence/merkle_log_test.cpp \
+         tests/evidence/merkle_log_test.cpp tests/evidence/digital_id_test.cpp \
          tests/graph/shortest_path_test.cpp tests/graph/matching_test.cpp \
          tests/dispatch/assigner_test.cpp \
          tests/index/kd_tree_test.cpp tests/index/geohash_test.cpp \

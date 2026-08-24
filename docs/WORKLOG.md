@@ -6,6 +6,19 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-24 — Zone editor: draw zones with live validation
+
+**What:** New `web/zone_editor.html` — click to draw a hazard zone, get a live self-intersection and overlap warning (JS port of the exact C++ orient/segs_cross logic), and export GeoJSON that ZoneStore loads directly. Found and fixed two real bugs while testing: a syntax error in the finish-button handler (extra closing paren), and a view-bounds bug where the map re-fit to the in-progress draft after every click, which silently distorted shapes mid-draw (a bowtie could stop looking like one).
+
+**Impact:** Verified end-to-end against the real C++ engine: an exported 2-zone file loads and validates OK; a self-intersecting export is correctly REJECTED with the same "self-intersecting" reason the live editor warned about.
+
+### 2026-08-24 — QR digital ID + fully offline verification (GAP 9)
+
+**What:** New `evidence/digital_id.hpp/.cpp` — registers a tourist identity record in the Merkle log, encodes the compact text payload a QR code would carry (index + inclusion proof), and verifies it using ONLY a cached root + the presented record, no log access, no network.
+
+**Impact:** 17 checks: genuine IDs verify, forged/wrong/corrupted/stale-root cases are all rejected with a reason. Text payload round-trips exactly.
+
+
 ### 2026-08-24 — True O(n log n) sweep-line (AVL status)
 
 **What:** Replaced the sorted-vector active set in the Shamos-Hoey sweep with a hand-written AVL-balanced BST, giving real O(log n) insert/erase/neighbour queries instead of O(n). Fixed a subtle bug this surfaced: two ring-adjacent edges meeting at a shared vertex tie exactly at that x, which can flip their recorded tree order and break later erase/neighbour lookups -- fixed by evaluating the ordering comparator a hair before the sweep position instead of exactly at it.

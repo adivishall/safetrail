@@ -131,13 +131,17 @@ the present; a validity-only change allocates zero nodes.
 
 **Exit:** battery projection vs fixed polling at matched recall.
 
-## Phase 11 — Evidence and authoring (week 13) `[GAP 9, 10]`  ✅ DONE (structures)
+## Phase 11 — Evidence and authoring (week 13) `[GAP 9, 10]`  ✅ DONE
 
 - [x] `evidence/merkle_log.hpp` + `sha256.cpp` — inclusion and consistency proofs
-- [ ] QR digital ID, offline verification  *(app-layer, still open)*
-- [x] `geo/sweep_line.hpp` — Shamos–Hoey sweep self-intersection (verdict == validate())
+- [x] `evidence/digital_id.hpp` — QR payload encode/decode, fully offline verification
+      against a cached root; tamper/forgery/stale-root cases rejected
+- [x] `geo/sweep_line.hpp` — Shamos–Hoey sweep self-intersection, AVL status (O((n+k) log n)),
+      verdict == validate()
 - [x] `jurisdiction/hierarchy.hpp` — polygon nesting, deepest-owner resolve `[GAP 11]`
-- [ ] Zone editor validation, overlap warnings  *(app-layer, still open)*
+- [x] Zone editor — `web/zone_editor.html`, live self-intersection + overlap warnings,
+      exports GeoJSON `ZoneStore::load_geojson` reads directly (round-trip verified against
+      the real engine, including a real rejected-bowtie case)
 
 ## Phase 12 — Measure everything (week 14+)
 

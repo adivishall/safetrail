@@ -67,6 +67,7 @@ traces to a documented gap — see [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
 | ✅ built | **Lamport clocks + reconciler** | `sync/lamport.hpp` | O(1)/event · merge O(n log n) | **6** — offline event ordering; idempotent, deterministic, clock-skew-proof |
 | ✅ built | **Index serialisation** | `index/geohash.hpp` | O(n) | **6** — ship the geohash index to the device; round-trips identically |
 | ✅ built | **Merkle inclusion + consistency proofs** | `evidence/merkle_log.hpp` | O(log n) | **9** — proves append, not just inclusion. Verified on all prefix pairs |
+| ✅ built | **QR digital ID** | `evidence/digital_id.hpp` | encode O(log n) · verify O(log n) | **9** — fully offline verification against a cached root; forged/corrupted/wrong-record cases rejected |
 | ✅ built | **Polygon nesting hierarchy** | `jurisdiction/hierarchy.hpp` | build O(n²V) · resolve O(depth·V) | **11** — jurisdiction ownership; resolve == smallest-containing oracle |
 
 ### Honest count
@@ -75,13 +76,13 @@ traces to a documented gap — see [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
 interval tree, circular buffer, Merkle tree, binary heap, adjacency-list graph,
 geohash/Morton index, k-d tree, open-addressed hash table, hashed timing wheel)
 **+ 2 advanced structures** (persistent path-copying quadtree, rollback union-find)
-**+ 16 algorithms/mechanisms** (ray casting, winding number, self-intersection
+**+ 17 algorithms/mechanisms** (ray casting, winding number, self-intersection
 check, Shamos–Hoey sweep-line, three-valued containment, signed distance,
 predictive crossing, spatio-temporal clustering, hysteresis, adaptive sampling,
 Dijkstra, A*, Kuhn's matching, Hungarian assignment, Lamport reconciliation,
-polygon-nesting resolution) **+ SHA-256** implemented from scratch and checked
-against NIST vectors. Every one is exercised by the test suite (10,924 checks
-across 26 files).
+polygon-nesting resolution, QR digital ID verification) **+ SHA-256** implemented
+from scratch and checked against NIST vectors. Every one is exercised by the test
+suite (10,941 checks across 27 files).
 
 **Designed but not yet built (◻): none.** Every structure and algorithm in this
 inventory is implemented, exercised, and checked against a brute-force oracle. The
@@ -257,7 +258,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **10,924 checks across 26 real test files**, all pass |
+| Unit tests | **10,941 checks across 27 real test files**, all pass |
 
 ## Measurements to produce
 
