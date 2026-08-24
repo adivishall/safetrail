@@ -69,7 +69,7 @@ hysteresis A/B [GAP 8]:  91.2% removed under realistic drift, 92.3% under white 
 equivalence:             18,000 queries, 0 mismatches vs brute force
 ray cast vs winding:     100,000 points, 0 disagreements
 persistent index [GAP 3]: 13.0x structural sharing at 5,001 versions
-unit tests:              10,915 checks across 25 real test files, all pass
+unit tests:              10,924 checks across 26 real test files, all pass
 ```
 
 See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the ceiling is

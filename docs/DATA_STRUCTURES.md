@@ -80,8 +80,8 @@ check, Shamos–Hoey sweep-line, three-valued containment, signed distance,
 predictive crossing, spatio-temporal clustering, hysteresis, adaptive sampling,
 Dijkstra, A*, Kuhn's matching, Hungarian assignment, Lamport reconciliation,
 polygon-nesting resolution) **+ SHA-256** implemented from scratch and checked
-against NIST vectors. Every one is exercised by the test suite (10,915 checks
-across 25 files).
+against NIST vectors. Every one is exercised by the test suite (10,924 checks
+across 26 files).
 
 **Designed but not yet built (◻): none.** Every structure and algorithm in this
 inventory is implemented, exercised, and checked against a brute-force oracle. The
@@ -257,7 +257,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **10,915 checks across 25 real test files**, all pass |
+| Unit tests | **10,924 checks across 26 real test files**, all pass |
 
 ## Measurements to produce
 

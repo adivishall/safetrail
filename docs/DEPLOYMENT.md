@@ -32,7 +32,7 @@ checkout → make test  →  make bench  →  make dashboard  →  publish to Pa
              (gate)      (artifact)     (real OSM data)     (_site/index.html)
 ```
 
-The deploy is **gated on the test suite** — 10,915 checks must pass or nothing
+The deploy is **gated on the test suite** — 10,924 checks must pass or nothing
 publishes. The benchmark CSVs are uploaded as a downloadable artifact on every
 run. The generated `dashboard.html` becomes the live site.
 
