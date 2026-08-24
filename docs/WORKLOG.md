@@ -6,6 +6,13 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-24 — Per-tourist tracking in the dashboard
+
+**What:** Click any tourist dot to track them — a panel shows their digital ID, group, live status, speed, accuracy, and position, and their trail is drawn on the map. Serialized per-tourist identity into the export.
+
+**Impact:** Each individual tourist can now be tracked in the end product. Verified in-browser.
+
+
 ### 2026-08-24 — Battery-projection benchmark (GAP 7)
 
 **What:** Added `make bench` measurement driving the adaptive sampler over an 8h trek.

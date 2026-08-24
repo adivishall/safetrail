@@ -85,6 +85,7 @@ static const char* kShell = R"HTML(<!doctype html>
 <div id="wrap">
   <div id="stage"><canvas id="c"></canvas></div>
   <aside>
+    <h2>tracked tourist</h2><div id="track"><div class="m" style="color:var(--dim)">click a dot on the map to track a tourist</div></div>
     <h2>counters</h2><table id="stats"></table>
     <h2>rules in force <span id="asof" style="color:var(--b)"></span></h2>
     <div id="rules"></div>
@@ -103,7 +104,7 @@ static const char* kShell = R"HTML(<!doctype html>
 <script>
 const D = __DATA__;
 const cv = document.getElementById('c'), cx = cv.getContext('2d');
-let frame = 0, playing = true, showQT = false, showAcc = false, showDisp = false;
+let frame = 0, playing = true, showQT = false, showAcc = false, showDisp = false, selected = -1;
 const scrub = document.getElementById('scrub');
 scrub.max = D.frames.length - 1;
 
@@ -204,6 +205,22 @@ function draw() {
     if (st === 2) { cx.strokeStyle = '#f8514966'; cx.lineWidth = 4; cx.stroke(); }
   }
 
+  if (selected >= 0 && selected < f.lat.length) {
+    cx.strokeStyle = 'rgba(255,255,255,.55)'; cx.lineWidth = 1.5;
+    cx.beginPath();
+    let started = false;
+    for (let fi = 0; fi <= frame; fi++) {
+      const ff = D.frames[fi];
+      if (selected >= ff.lat.length) continue;
+      const x = X(ff.lon[selected]), y = Y(ff.lat[selected]);
+      started ? cx.lineTo(x, y) : cx.moveTo(x, y); started = true;
+    }
+    cx.stroke();
+    const x = X(f.lon[selected]), y = Y(f.lat[selected]);
+    cx.beginPath(); cx.arc(x, y, 8, 0, 6.284);
+    cx.strokeStyle = '#fff'; cx.lineWidth = 2; cx.stroke();
+  }
+
   if (showDisp) {
     cx.strokeStyle = 'rgba(63,185,80,.6)'; cx.lineWidth = 1.4;
     for (const l of (D.dispatch || [])) {
@@ -277,7 +294,48 @@ function panel() {
   }).join('') || '<div class="m" style="color:var(--dim)">no events yet</div>';
 }
 
-function render() { draw(); panel(); scrub.value = frame; }
+function jdist(a, b, c, d) {
+  const R = 6371008.8, rad = Math.PI / 180, dp = (c - a) * rad, dl = (d - b) * rad;
+  const s = Math.sin(dp/2)**2 + Math.cos(a*rad)*Math.cos(c*rad)*Math.sin(dl/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+function trackPanel() {
+  const el = document.getElementById('track');
+  const f = D.frames[frame];
+  if (selected < 0 || selected >= f.lat.length) {
+    el.innerHTML = '<div class="m" style="color:var(--dim)">click a dot on the map to track a tourist</div>';
+    return;
+  }
+  const t = (D.tourists && D.tourists[selected]) || {did: '?', grp: '?'};
+  const st = f.state[selected];
+  const stName = st === 2 ? 'INSIDE zone' : st === 1 ? 'uncertain' : 'clear';
+  const stCol = st === 2 ? 'var(--r)' : st === 1 ? 'var(--u)' : 'var(--g)';
+  let spd = 0;
+  if (frame > 0) {
+    const p = D.frames[frame - 1], dt = (f.t_ms - p.t_ms) / 1000;
+    if (dt > 0 && selected < p.lat.length)
+      spd = jdist(f.lat[selected], f.lon[selected], p.lat[selected], p.lon[selected]) / dt;
+  }
+  el.innerHTML = `<table>
+    <tr><td>id</td><td>${t.did}</td></tr>
+    <tr><td>group</td><td>party-${t.grp}</td></tr>
+    <tr><td>status</td><td style="color:${stCol}">${stName}</td></tr>
+    <tr><td>speed</td><td>${spd.toFixed(1)} m/s</td></tr>
+    <tr><td>accuracy</td><td>±${(f.acc[selected]||0).toFixed(0)} m</td></tr>
+    <tr><td>position</td><td>${f.lat[selected].toFixed(4)}, ${f.lon[selected].toFixed(4)}</td></tr>
+  </table>`;
+}
+cv.addEventListener('click', ev => {
+  const r = cv.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
+  const f = D.frames[frame];
+  let best = -1, bd = 400;
+  for (let i = 0; i < f.lat.length; i++) {
+    const dx = X(f.lon[i]) - px, dy = Y(f.lat[i]) - py, d = dx*dx + dy*dy;
+    if (d < bd) { bd = d; best = i; }
+  }
+  selected = best; render();
+});
+function render() { draw(); panel(); trackPanel(); scrub.value = frame; }
 document.getElementById('play').onclick = e => {
   playing = !playing; e.target.textContent = playing ? 'pause' : 'play';
 };
@@ -412,6 +470,14 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
       if (i) d += ",";
       d += "["; put_f(d, dl[i][0]); d += ","; put_f(d, dl[i][1]);
       d += ","; put_f(d, dl[i][2]); d += ","; put_f(d, dl[i][3]); d += "]";
+    } }
+  d += "],\"tourists\":[";
+  { const auto& ts = s.tourists();
+    for (size_t i = 0; i < ts.size(); ++i) {
+      if (i) d += ",";
+      d += "{\"did\":\"";
+      for (char c : ts[i].digital_id) if (c != '"' && c != '\\') d += c;
+      d += "\",\"grp\":" + std::to_string(ts[i].group) + "}";
     } }
   d += "]}";
 
