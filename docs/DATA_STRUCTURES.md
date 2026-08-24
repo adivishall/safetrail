@@ -32,7 +32,7 @@ completed work. Do not read a `◻` row as delivered.
 | ✅ built | **Binary heap** | `ds/priority_queue.hpp` | push/pop O(log n) | Min-heap; the Dijkstra/A* frontier, and the alert-triage frontier |
 | ✅ built | **Hash table** | `ds/hash_table.hpp` | O(1) expected | Open-addressed, linear probing, tombstone delete; vs linear-scan oracle |
 | ✅ built | **Timer wheel** | `ds/timer_wheel.hpp` | O(1) amortised | Escalation deadlines; single-level hashed wheel vs brute-force due-set oracle |
-| ✅ built | **Adjacency list** | `graph/road_graph.hpp` | space O(V+E) · neighbours O(deg) | Weighted road graph; synthetic grid generator (no OSM extract shipped) |
+| ✅ built | **Adjacency list** | `graph/road_graph.hpp` | space O(V+E) · neighbours O(deg) | Weighted road graph; loads real OSM roads (`tools/osm_to_roads.py`) or a synthetic grid |
 | ✅ built | **Merkle tree** (RFC 6962) | `evidence/merkle_log.hpp` | append O(1) am. · proof O(log n) | Tamper-evident log (Gap 9), SHA-256 from scratch |
 
 ## Algorithms on those structures
@@ -80,7 +80,7 @@ check, Shamos–Hoey sweep-line, three-valued containment, signed distance,
 predictive crossing, spatio-temporal clustering, hysteresis, adaptive sampling,
 Dijkstra, A*, Kuhn's matching, Hungarian assignment, Lamport reconciliation,
 polygon-nesting resolution) **+ SHA-256** implemented from scratch and checked
-against NIST vectors. Every one is exercised by the test suite (10,910 checks
+against NIST vectors. Every one is exercised by the test suite (10,915 checks
 across 25 files).
 
 **Designed but not yet built (◻): none.** Every structure and algorithm in this
@@ -257,7 +257,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **10,910 checks across 25 real test files**, all pass |
+| Unit tests | **10,915 checks across 25 real test files**, all pass |
 
 ## Measurements to produce
 

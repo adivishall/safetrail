@@ -180,7 +180,7 @@ All from `make bench` / `make test`:
 | Index equivalence (correctness) | 18,000 queries, **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, **0 disagreements** |
 | Merkle tamper detection | forged entries + rewritten history **rejected** |
-| Unit tests | **10,910 checks across 25 real files, all pass** |
+| Unit tests | **10,915 checks across 25 real files, all pass** |
 
 **The most interesting result:** our design doc predicted a ~29,000× speedup.
 Measurement brought it down to 33×, and *explaining why* is worth more than the big
@@ -211,7 +211,7 @@ from a sales pitch. Full prep for hard questions: docs/DESIGN_DEFENSE.md.*
 ## 11. Live demo (do this) 
 
 ```bash
-make test        # 10,910 checks pass — proves it works
+make test        # 10,915 checks pass — proves it works
 make demo        # watch events stream over real geography
 make bench       # the speedup + correctness numbers
 make dashboard   # open dashboard.html — animated map, scrub the timeline
@@ -234,7 +234,7 @@ Or just open the **live URL** — it's the same file, deployed via CI to GitHub 
   oracle — that's how we caught our bugs.
 - **Determinism:** same seed → byte-identical output, which makes the replay and
   every A/B comparison valid.
-- **CI on every push:** builds on g++, runs 10,910 checks (gates the deploy), runs
+- **CI on every push:** builds on g++, runs 10,915 checks (gates the deploy), runs
   AddressSanitizer/UBSan (advisory), regenerates the dashboard, publishes to Pages.
 - **No dependencies:** `git clone && make`, nothing else. No cmake, no libraries.
 

@@ -1,6 +1,7 @@
 #include "safetrail/graph/road_graph.hpp"
 
 #include <cfloat>
+#include <cstdio>
 
 namespace safetrail::graph {
 
@@ -49,6 +50,51 @@ struct Rng {
   double centered() { return unit() * 2.0 - 1.0; }                              // [-1,1)
 };
 }  // namespace
+
+bool RoadGraph::save_file(const std::string& path) const {
+  std::FILE* f = std::fopen(path.c_str(), "w");
+  if (!f) return false;
+  std::fprintf(f, "safetrail-roads 1\n%zu\n", nodes_.size());
+  for (const auto& n : nodes_) std::fprintf(f, "%.9f %.9f\n", n.lat, n.lon);
+  // Emit each undirected road once (u < v), dropping the mirrored back-edge.
+  size_t undirected = 0;
+  for (size_t u = 0; u < adj_.size(); ++u)
+    for (const auto& e : adj_[u]) if (u < size_t(e.to)) ++undirected;
+  std::fprintf(f, "%zu\n", undirected);
+  for (size_t u = 0; u < adj_.size(); ++u)
+    for (const auto& e : adj_[u]) if (u < size_t(e.to)) std::fprintf(f, "%zu %d\n", u, e.to);
+  std::fclose(f);
+  return true;
+}
+
+bool RoadGraph::load_file(const std::string& path, std::string* err) {
+  std::FILE* f = std::fopen(path.c_str(), "r");
+  if (!f) { if (err) *err = "cannot open " + path; return false; }
+  auto fail = [&](const char* m) { if (err) *err = m; std::fclose(f); return false; };
+
+  int version = 0;
+  if (std::fscanf(f, "safetrail-roads %d", &version) != 1 || version != 1)
+    return fail("bad header or version");
+
+  nodes_.clear(); adj_.clear(); edge_count_ = 0;
+  size_t nc = 0;
+  if (std::fscanf(f, "%zu", &nc) != 1) return fail("bad node count");
+  for (size_t i = 0; i < nc; ++i) {
+    double lat = 0, lon = 0;
+    if (std::fscanf(f, "%lf %lf", &lat, &lon) != 2) return fail("bad node line");
+    add_node({lat, lon});
+  }
+  size_t ec = 0;
+  if (std::fscanf(f, "%zu", &ec) != 1) return fail("bad edge count");
+  for (size_t i = 0; i < ec; ++i) {
+    long u = 0, v = 0;
+    if (std::fscanf(f, "%ld %ld", &u, &v) != 2) return fail("bad edge line");
+    if (!valid(NodeId(u)) || !valid(NodeId(v))) return fail("edge references a missing node");
+    add_road(NodeId(u), NodeId(v));
+  }
+  std::fclose(f);
+  return true;
+}
 
 RoadGraph RoadGraph::grid(const geo::Bbox& area, int rows, int cols,
                           uint64_t seed, double jitter_frac,

@@ -29,6 +29,7 @@ struct SimConfig {
   index::IndexKind index = index::IndexKind::Quadtree;
   size_t   responders    = 8;        // dispatch: available responders on the road net
   bool     dispatch      = true;     // assign responders to incidents at end of run
+  std::string roads_path;            // real OSM road file; empty -> synthetic grid
   bool     verbose = false;
 };
 

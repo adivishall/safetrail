@@ -130,5 +130,26 @@ int main() {
     t::ok(astar_leq == trials, "A* expands <= dijkstra on every query (guidance helps)");
   }
 
+  // ── 4. Road graph save -> load round trip preserves shortest paths ─────────
+  {
+    geo::Bbox area{25.50, 91.80, 25.62, 91.95};
+    RoadGraph g = RoadGraph::grid(area, 7, 7, /*seed=*/99);
+    const std::string path = "/tmp/safetrail_roads_test.txt";
+    t::ok(g.save_file(path), "save road graph to file");
+    RoadGraph loaded;
+    std::string err;
+    t::ok(loaded.load_file(path, &err), "load road graph from file");
+    t::ok(loaded.node_count() == g.node_count(), "node count survives round trip");
+    t::ok(loaded.edge_count() == g.edge_count(), "edge count survives round trip");
+    // Distances from node 0 must match.
+    const auto a = dijkstra(g, 0);
+    const auto b = dijkstra(loaded, 0);
+    bool same = true;
+    // 9-decimal degrees is sub-millimetre; distances match to well under a metre.
+    for (NodeId v = 0; v < NodeId(g.node_count()); ++v)
+      if (std::fabs(a.dist[size_t(v)] - b.dist[size_t(v)]) > 1e-3) same = false;
+    t::ok(same, "shortest paths identical after round trip");
+  }
+
   return t::report("graph/shortest_path");
 }

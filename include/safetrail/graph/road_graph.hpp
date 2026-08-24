@@ -19,6 +19,7 @@
 // run and benchmark on. A real OSM adjacency list drops in behind the same
 // interface via add_node/add_edge.
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "safetrail/geo/bbox.hpp"
 #include "safetrail/geo/point.hpp"
@@ -58,6 +59,18 @@ class RoadGraph {
   // dispatch cost matrix, and the documented place a k-d tree would slot in
   // (see docs/DATA_STRUCTURES.md, the nearest-responder row).
   NodeId nearest_node(geo::LatLon p) const;
+
+  // ── file I/O ──────────────────────────────────────────────────────────────
+  // A plain-text road network, so a real OpenStreetMap extract (produced by
+  // tools/osm_to_roads.py) can replace the synthetic grid behind the same
+  // interface. Format:
+  //   safetrail-roads 1
+  //   <node_count>
+  //   <lat> <lon>            (x node_count)
+  //   <edge_count>
+  //   <u> <v>                (x edge_count; undirected, weight = great-circle length)
+  bool save_file(const std::string& path) const;
+  bool load_file(const std::string& path, std::string* err = nullptr);
 
   // ── synthetic generator ───────────────────────────────────────────────────
   // A jittered rows x cols lattice over `area`, 4-connected (grid streets) plus a
