@@ -74,7 +74,7 @@ int main() {
   }
 
   // ── Polygons: sweep verdict == Polygon::validate() self-intersection ────────
-  int poly_agree = 0, poly_trials = 300;
+  int poly_agree = 0, poly_trials = 1000;
   for (int trial = 0; trial < poly_trials; ++trial) {
     const int n = 3 + int(rng.next() % 8);
     Ring r;

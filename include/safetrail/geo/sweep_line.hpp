@@ -15,11 +15,20 @@
 // become newly adjacent when one is removed. That is O(n) intersection tests
 // instead of O(n^2), and it answers the existence question exactly.
 //
-// Complexity note, stated honestly: the active set here is a sorted std::vector,
-// so insert/erase are O(n) and the whole thing is O(n^2) worst case -- but it
-// performs only O(n) of the expensive segment-cross tests (vs O(n^2) for the
-// all-pairs check), which is the cost that dominates. A balanced-BST active set is
-// the drop-in that takes it to a true O(n log n); the algorithm above is unchanged.
+// Complexity: the active set is a hand-written balanced BST (AVL, in the .cpp),
+// giving O(log n) insert, erase, predecessor, and successor -- so the whole sweep
+// is O((n+k) log n): O(n) events, each doing O(log n) tree work plus O(1)
+// amortised neighbour-cross tests.
+//
+// A subtlety worth stating for the report: the BST is ordered by each segment's
+// y-coordinate AT THE SWEEP LINE, which moves. Two ring-adjacent edges sharing a
+// vertex reach the exact same y at the moment they meet -- a legitimate touch,
+// not a crossing -- and naively evaluating the comparator exactly at that x can
+// flip their recorded order, which corrupts later erase/neighbour queries (they
+// search using the *current* comparator for a node placed under the *old* one).
+// The fix is to evaluate ordering a hair before the sweep position rather than
+// exactly at it, so a coincidental meeting point never flips a decision already
+// baked into the tree's shape.
 #include <vector>
 #include "safetrail/geo/point.hpp"
 #include "safetrail/geo/polygon.hpp"

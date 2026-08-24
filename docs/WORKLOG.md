@@ -6,6 +6,13 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-24 — True O(n log n) sweep-line (AVL status)
+
+**What:** Replaced the sorted-vector active set in the Shamos-Hoey sweep with a hand-written AVL-balanced BST, giving real O(log n) insert/erase/neighbour queries instead of O(n). Fixed a subtle bug this surfaced: two ring-adjacent edges meeting at a shared vertex tie exactly at that x, which can flip their recorded tree order and break later erase/neighbour lookups -- fixed by evaluating the ordering comparator a hair before the sweep position instead of exactly at it.
+
+**Impact:** Sweep is now genuinely O((n+k) log n). Verified against Polygon::validate() on 1000+ random polygons and an O(n^2) all-pairs oracle on 300 random segment sets, all passing.
+
+
 ### 2026-08-24 — Real OSM roads + dispatch shows greedy-vs-optimal gap
 
 **What:** Fetched real Shillong road network (144,090 nodes / 147,039 edges) via osm_to_roads.py; the demo now routes on it. Dispatch now targets the top ~major incidents (capped near responder count), so greedy and optimal diverge.
