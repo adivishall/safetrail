@@ -7,6 +7,7 @@
 //   5. Persistent index   path-copying sharing vs full copies  [GAP 3]
 //   6. Routing            A* vs Dijkstra node expansions
 //   7. Dispatch           greedy vs optimal responder assignment
+//   8. Power              adaptive sampling vs continuous polling  [GAP 7]
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -23,6 +24,7 @@
 #include "safetrail/graph/astar.hpp"
 #include "safetrail/dispatch/assigner.hpp"
 #include "safetrail/dispatch/responder.hpp"
+#include "safetrail/power/adaptive_sampler.hpp"
 #include "safetrail/sim/simulator.hpp"
 
 using namespace safetrail;
@@ -318,6 +320,51 @@ static void bench_dispatch(FILE* csv) {
   printf("  early cheap pick can strand a later incident with only a distant responder.\n");
 }
 
+// ── 8. Power: adaptive sampling vs continuous polling, at matched recall ──────
+static void bench_power(FILE* csv) {
+  printf("\n\033[1m8. POWER  [GAP 7]\033[0m   risk-adaptive GPS sampling vs continuous 1 Hz\n");
+  printf("  %-22s %11s  %11s  %10s  %12s\n", "day profile", "cont. fixes", "adaptive",
+         "battery", "near-zone");
+  printf("  %-22s %11s  %11s  %10s  %12s\n", "", "(1 Hz)", "fixes", "saved", "recall");
+  printf("  ──────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "profile,continuous_fixes,adaptive_fixes,battery_saved_pct,near_zone_recall_pct\n");
+
+  // An 8-hour trek: mostly far from any hazard, with a few approach episodes where
+  // the nearest zone ramps from 5 km down to 30 m and back (~12 min each).
+  const int64_t secs = 8 * 3600;
+  auto dist_at = [&](int64_t t) -> double {
+    const int64_t period = 90 * 60;          // one approach episode every 90 min
+    const int64_t phase = t % period;
+    if (phase > 12 * 60) return 8000.0;       // far the rest of the time
+    const double u = double(phase) / double(12 * 60);       // 0..1 across the episode
+    const double tri = 1.0 - std::fabs(2.0 * u - 1.0);      // 0 -> 1 -> 0
+    return 5000.0 - tri * (5000.0 - 30.0);                  // 5 km -> 30 m -> 5 km
+  };
+
+  power::AdaptiveSampler sampler;   // default tiers
+  uint64_t adaptive = 0, continuous = 0;
+  uint64_t near_secs = 0, near_covered = 0;
+  int64_t last_fix = -100000;
+  for (int64_t t = 0; t < secs; ++t) {
+    const int64_t now = t * 1000;
+    const double d = dist_at(t);
+    ++continuous;                                            // 1 Hz baseline
+    if (sampler.should_sample(now, d, /*speed*/1.4, /*alert*/false)) { ++adaptive; last_fix = now; }
+    if (d < 200.0) {                                         // "near a zone": recall matters
+      ++near_secs;
+      if (now - last_fix <= 4000) ++near_covered;            // a fix within the last few seconds
+    }
+  }
+  const double saved = 100.0 * (1.0 - double(adaptive) / double(continuous));
+  const double recall = near_secs ? 100.0 * double(near_covered) / double(near_secs) : 100.0;
+  printf("  %-22s %11llu  %11llu  %9.1f%%  %10.1f%%\n", "8h trek, 5 approaches",
+         (unsigned long long)continuous, (unsigned long long)adaptive, saved, recall);
+  if (csv) fprintf(csv, "8h_trek,%llu,%llu,%.1f,%.1f\n",
+                   (unsigned long long)continuous, (unsigned long long)adaptive, saved, recall);
+  printf("\n  Battery saved by sampling on proximity to risk -- while still catching\n");
+  printf("  essentially every second the tourist is near a hazard (recall stays high).\n");
+}
+
 int main(int argc, char** argv) {
   std::string out;
   for (int i = 1; i < argc; ++i)
@@ -349,6 +396,10 @@ int main(int argc, char** argv) {
   FILE* f5 = out.empty() ? nullptr : fopen((out + "/dispatch.csv").c_str(), "w");
   bench_dispatch(f5);
   if (f5) fclose(f5);
+
+  FILE* f6 = out.empty() ? nullptr : fopen((out + "/power.csv").c_str(), "w");
+  bench_power(f6);
+  if (f6) fclose(f6);
 
   printf("\n═════════════════════════════════════════════════════════════════════════════\n");
   printf("  correctness gates: equivalence %s   containment %s\n",

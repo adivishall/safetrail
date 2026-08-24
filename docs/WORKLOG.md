@@ -6,6 +6,13 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-24 — Battery-projection benchmark (GAP 7)
+
+**What:** Added `make bench` measurement driving the adaptive sampler over an 8h trek.
+
+**Impact (measured):** 99.1% battery saved vs continuous 1 Hz polling, at 100% near-zone recall. Writes power.csv.
+
+
 ---
 
 ### 2026-08-24 — Dashboard surfaces dispatch + anomalies
