@@ -8,6 +8,21 @@ Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
 ---
 
+### 2026-08-23 — Alert triage/escalation + anomaly detection
+
+**What:** Built `alert/triage` (orders alerts by urgency using the binary heap),
+`alert/escalation` (fires unacknowledged-alert deadlines using the timer wheel +
+hash table), and `track/anomaly` + `track/trajectory` (detects signal-loss,
+stationary, and route-deviation from the GPS ping history).
+
+**Why:** These app modules were the remaining designed stubs, and they put the
+heap/wheel/hash-table structures to real use — a clean story for the report.
+
+**Impact:** +48 checks (now 10,910 across 25 files), all passing. Each checked
+against a brute-force oracle.
+
+---
+
 ### 2026-08-23 — All remaining data structures built (batch 2)
 
 **What:** Implemented the last 8 designed-but-stubbed structures/algorithms, each

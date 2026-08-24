@@ -17,7 +17,8 @@ CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containme
         src/graph/road_graph.cpp src/graph/dijkstra.cpp src/graph/astar.cpp \
         src/graph/bipartite_match.cpp src/dispatch/assigner.cpp \
         src/index/geohash.cpp src/geo/sweep_line.cpp \
-        src/sync/lamport.cpp src/jurisdiction/hierarchy.cpp
+        src/sync/lamport.cpp src/jurisdiction/hierarchy.cpp \
+        src/track/trajectory.cpp src/track/anomaly.cpp
 
 TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.cpp \
          tests/index/equivalence_test.cpp tests/index/versioned_index_test.cpp \
@@ -32,7 +33,8 @@ TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.c
          tests/dispatch/assigner_test.cpp \
          tests/index/kd_tree_test.cpp tests/index/geohash_test.cpp \
          tests/geo/sweep_line_test.cpp tests/sync/lamport_test.cpp \
-         tests/jurisdiction/hierarchy_test.cpp
+         tests/jurisdiction/hierarchy_test.cpp \
+         tests/alert/triage_escalation_test.cpp tests/track/anomaly_test.cpp
 
 .PHONY: all demo bench test check clean asan cmake-build help
 
