@@ -33,7 +33,8 @@ out;
 
 def fetch():
     data = urllib.parse.urlencode({"data": QUERY}).encode()
-    req = urllib.request.Request(OVERPASS, data=data)
+    req = urllib.request.Request(OVERPASS, data=data,
+                                 headers={"User-Agent": "safetrail/1.0 (OSM road import)"})
     with urllib.request.urlopen(req, timeout=120) as r:
         return json.load(r)
 

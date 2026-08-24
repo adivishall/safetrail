@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
   sim::SimConfig cfg;
   cfg.tourists = 40;
   cfg.groups = 6;
+  cfg.roads_path = "data/osm/roads.txt";   // real OSM roads if present, else synthetic grid
   cfg.duration_ms = 3600000;
   cfg.tick_ms = 1000;
   std::string zones = "data/zones/shillong_osm.geojson";

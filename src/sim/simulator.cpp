@@ -240,9 +240,19 @@ void Simulator::dispatch_responders() {
     responders_.snap_all(roads_);
   }
 
+  // Dispatch to the most SERIOUS open incidents (most people, then highest
+  // severity), capped near the responder count so the assignment is a real
+  // contest -- this is where greedy nearest-first and the Hungarian optimum
+  // actually diverge. It also bounds the work on a large real road graph.
+  auto open = corr_->open_incidents();
+  std::sort(open.begin(), open.end(), [](const alert::Incident* a, const alert::Incident* b) {
+    if (a->people() != b->people()) return a->people() > b->people();
+    return a->max_severity > b->max_severity;
+  });
+  const size_t cap = cfg_.responders * 3 + 1;
   std::vector<dispatch::Incident> incidents;
-  for (const auto* inc : corr_->open_incidents())
-    incidents.push_back({inc->id, inc->centroid, graph::kNoNode});
+  for (size_t i = 0; i < open.size() && i < cap; ++i)
+    incidents.push_back({open[i]->id, open[i]->centroid, graph::kNoNode});
   dispatch::snap_incidents(incidents, roads_);
 
   const auto greedy  = dispatch::assign_greedy(responders_, incidents, roads_);

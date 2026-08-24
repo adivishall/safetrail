@@ -6,6 +6,13 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-24 — Real OSM roads + dispatch shows greedy-vs-optimal gap
+
+**What:** Fetched real Shillong road network (144,090 nodes / 147,039 edges) via osm_to_roads.py; the demo now routes on it. Dispatch now targets the top ~major incidents (capped near responder count), so greedy and optimal diverge.
+
+**Impact:** Demo shows e.g. 2,080 m saved by Hungarian over greedy, on real roads. All tests pass.
+
+
 ### 2026-08-24 — Per-tourist tracking in the dashboard
 
 **What:** Click any tourist dot to track them — a panel shows their digital ID, group, live status, speed, accuracy, and position, and their trail is drawn on the map. Serialized per-tourist identity into the export.
