@@ -97,12 +97,13 @@ static const char* kShell = R"HTML(<!doctype html>
   <input type="range" id="scrub" min="0" value="0">
   <button id="qt">index overlay</button>
   <button id="acc">accuracy discs</button>
+  <button id="disp">dispatch</button>
   <span style="color:var(--dim);font-size:10px">discs indicative, not to scale</span>
 </footer>
 <script>
 const D = __DATA__;
 const cv = document.getElementById('c'), cx = cv.getContext('2d');
-let frame = 0, playing = true, showQT = false, showAcc = false;
+let frame = 0, playing = true, showQT = false, showAcc = false, showDisp = false;
 const scrub = document.getElementById('scrub');
 scrub.max = D.frames.length - 1;
 
@@ -203,6 +204,18 @@ function draw() {
     if (st === 2) { cx.strokeStyle = '#f8514966'; cx.lineWidth = 4; cx.stroke(); }
   }
 
+  if (showDisp) {
+    cx.strokeStyle = 'rgba(63,185,80,.6)'; cx.lineWidth = 1.4;
+    for (const l of (D.dispatch || [])) {
+      cx.beginPath(); cx.moveTo(X(l[1]), Y(l[0])); cx.lineTo(X(l[3]), Y(l[2])); cx.stroke();
+    }
+    for (const r of (D.responders || [])) {
+      const x = X(r[1]), y = Y(r[0]);
+      cx.fillStyle = '#3fb950'; cx.fillRect(x - 3, y - 3, 6, 6);
+      cx.strokeStyle = '#0e1116'; cx.lineWidth = 1; cx.strokeRect(x - 3, y - 3, 6, 6);
+    }
+  }
+
   const hh = n => String(n).padStart(2, '0');
   const s = Math.floor(f.t_ms / 1000);
   document.getElementById('clock').textContent =
@@ -220,6 +233,9 @@ function panel() {
     ['pruning', D.stats.pruning.toFixed(0) + 'x'],
     ['flaps suppressed [GAP 8]', D.stats.flaps],
     ['alerts', D.stats.alerts], ['incidents [GAP 5]', D.stats.incidents],
+    ['anomalies', D.stats.anomalies], ['responders dispatched', D.stats.dispatched],
+    ['greedy travel', (D.stats.greedy_m | 0).toLocaleString() + ' m'],
+    ['optimal travel [Phase 8]', (D.stats.optimal_m | 0).toLocaleString() + ' m'],
     ['index versions [GAP 3]', D.versions], ['node sharing', D.sharing.toFixed(1) + 'x'],
   ];
   document.getElementById('stats').innerHTML =
@@ -267,6 +283,7 @@ document.getElementById('play').onclick = e => {
 };
 document.getElementById('qt').onclick = e => { showQT = !showQT; e.target.classList.toggle('on'); render(); };
 document.getElementById('acc').onclick = e => { showAcc = !showAcc; e.target.classList.toggle('on'); render(); };
+document.getElementById('disp').onclick = e => { showDisp = !showDisp; e.target.classList.toggle('on'); render(); };
 scrub.oninput = () => { frame = +scrub.value; playing = false;
   document.getElementById('play').textContent = 'play'; render(); };
 addEventListener('resize', () => { resize(); render(); });
@@ -378,7 +395,25 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
   put_f(d, ist.avg_candidates() > 0 ? double(s.zones().size()) / ist.avg_candidates() : 0.0, 2);
   d += ",\"flaps\":" + std::to_string(c.flaps_suppressed) +
        ",\"alerts\":" + std::to_string(sum.alerts) +
-       ",\"incidents\":" + std::to_string(s.correlator().stats().incidents_opened) + "}}";
+       ",\"anomalies\":" + std::to_string(sum.anomalies) +
+       ",\"dispatched\":" + std::to_string(sum.dispatched) +
+       ",\"greedy_m\":"; put_f(d, sum.greedy_response_m, 0);
+  d += ",\"optimal_m\":"; put_f(d, sum.optimal_response_m, 0);
+  d += ",\"incidents\":" + std::to_string(s.correlator().stats().incidents_opened) + "}";
+  d += ",\"responders\":[";
+  { const auto& rp = s.responders();
+    for (size_t i = 0; i < rp.size(); ++i) {
+      if (i) d += ",";
+      d += "["; put_f(d, rp[i].pos.lat); d += ","; put_f(d, rp[i].pos.lon); d += "]";
+    } }
+  d += "],\"dispatch\":[";
+  { const auto& dl = s.dispatch_lines();
+    for (size_t i = 0; i < dl.size(); ++i) {
+      if (i) d += ",";
+      d += "["; put_f(d, dl[i][0]); d += ","; put_f(d, dl[i][1]);
+      d += ","; put_f(d, dl[i][2]); d += ","; put_f(d, dl[i][3]); d += "]";
+    } }
+  d += "]}";
 
   std::string html = kShell;
   const size_t dp = html.find("__DATA__");

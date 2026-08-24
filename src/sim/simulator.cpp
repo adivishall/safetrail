@@ -251,12 +251,27 @@ void Simulator::dispatch_responders() {
   sum_.unassigned         = optimal.unassigned;
   sum_.greedy_response_m  = greedy.total_m;
   sum_.optimal_response_m = optimal.total_m;
+
+  // Record the optimal assignment as lines (responder -> incident) for the viewer.
+  dispatch_lines_.clear();
+  for (const auto& dsp : optimal.dispatches) {
+    const geo::LatLon rp = responders_[size_t(dsp.responder)].pos;
+    for (const auto& inc : incidents)
+      if (inc.id == dsp.incident) {
+        dispatch_lines_.push_back({rp.lat, rp.lon, inc.pos.lat, inc.pos.lon});
+        break;
+      }
+  }
+}
+
+void Simulator::finalize() {
+  sum_.incidents = corr_->stats().incidents_opened;
+  dispatch_responders();
 }
 
 void Simulator::run() {
   while (!done()) step();
-  sum_.incidents = corr_->stats().incidents_opened;
-  dispatch_responders();
+  finalize();
 }
 
 }  // namespace safetrail::sim

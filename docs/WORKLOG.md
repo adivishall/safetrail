@@ -1,3 +1,9 @@
+### 2026-08-24 — Dashboard surfaces dispatch + anomalies
+
+**What:** Added a "dispatch" overlay (responder markers + optimal responder→incident lines on the map) and new counters (anomalies, responders dispatched, greedy vs optimal travel). Fixed the export path to run dispatch (finalize()).
+
+**Impact:** The new graph/dispatch and anomaly work is now visible in dashboard.html. Verified in-browser, no console errors.
+
 # Work Log
 
 ### 2026-08-24 — Anomaly detection wired into the live pipeline

@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
   viz::TraceRecorder rec;
   if (!html.empty()) {
     while (!s.done()) { s.step(); rec.capture(s); }
+    s.finalize();
   } else {
     s.run();
   }

@@ -1,5 +1,6 @@
 #pragma once
 // Discrete-time simulator. Owns the world; drives the evaluator.
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -46,6 +47,7 @@ class Simulator {
 
   void run();                              // to duration_ms
   void step();                             // one tick
+  void finalize();                         // post-run: incident count + dispatch (run() calls it)
 
   int64_t now_ms() const { return now_ms_; }
   bool done() const { return now_ms_ >= cfg_.duration_ms; }
@@ -69,6 +71,11 @@ class Simulator {
   };
   Summary summary() const { return sum_; }
 
+  // For the dashboard: responder positions and the optimal responder->incident
+  // dispatch lines (resp_lat, resp_lon, inc_lat, inc_lon).
+  const dispatch::ResponderPool& responders() const { return responders_; }
+  const std::vector<std::array<double, 4>>& dispatch_lines() const { return dispatch_lines_; }
+
  private:
   SimConfig cfg_;
   Rng rng_;
@@ -87,6 +94,7 @@ class Simulator {
   std::vector<track::AnomalyKind> anomaly_raw_;     // last raw reading (for confirmation)
   std::vector<int> anomaly_run_;                    // consecutive ticks of the raw reading
   std::vector<int64_t> collapse_at_;                // time each tourist stops moving (kForever = never)
+  std::vector<std::array<double, 4>> dispatch_lines_;   // optimal responder->incident lines, for viz
   int64_t now_ms_ = 0;
   Summary sum_{};
   void reindex();
