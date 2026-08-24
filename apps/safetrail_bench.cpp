@@ -4,6 +4,9 @@
 //   2. Equivalence        every index must agree with brute force, exactly
 //   3. Hysteresis A/B     false-alert reduction under injected GPS noise  [GAP 8]
 //   4. Containment cross-check   ray casting vs winding number
+//   5. Persistent index   path-copying sharing vs full copies  [GAP 3]
+//   6. Routing            A* vs Dijkstra node expansions
+//   7. Dispatch           greedy vs optimal responder assignment
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -13,7 +16,13 @@
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/quadtree.hpp"
 #include "safetrail/index/rtree.hpp"
+#include "safetrail/index/geohash.hpp"
 #include "safetrail/index/versioned_index.hpp"
+#include "safetrail/graph/road_graph.hpp"
+#include "safetrail/graph/dijkstra.hpp"
+#include "safetrail/graph/astar.hpp"
+#include "safetrail/dispatch/assigner.hpp"
+#include "safetrail/dispatch/responder.hpp"
 #include "safetrail/sim/simulator.hpp"
 
 using namespace safetrail;
@@ -223,6 +232,92 @@ static void bench_versioned(FILE* csv) {
   printf("  replay or reconstruction, just a different root pointer.\n");
 }
 
+// ── 6. Routing: A* vs Dijkstra, node expansions on the road grid ──────────────
+static void bench_routing(FILE* csv) {
+  printf("\n\033[1m6. ROUTING  A* vs DIJKSTRA\033[0m   single-pair queries on a road grid\n");
+  printf("  %8s  %8s  %12s  %12s  %9s  %10s  %10s\n", "nodes", "queries",
+         "dijkstra exp", "A* expanded", "less work", "dijkstra us", "A* us");
+  printf("  ────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "nodes,queries,dijkstra_expanded,astar_expanded,work_reduction_pct,"
+                        "dijkstra_us,astar_us\n");
+
+  const geo::Bbox area{25.40, 91.70, 25.75, 92.05};
+  for (int side : {8, 16, 24, 32}) {
+    graph::RoadGraph g = graph::RoadGraph::grid(area, side, side, /*seed=*/7);
+    sim::Rng rng(123);
+    const int Q = 400;
+    unsigned long long dij_exp = 0, ast_exp = 0;
+    double dij_ms = 0, ast_ms = 0;
+    int done = 0;
+    for (int q = 0; q < Q; ++q) {
+      const graph::NodeId s = graph::NodeId(rng.below(uint32_t(g.node_count())));
+      const graph::NodeId d = graph::NodeId(rng.below(uint32_t(g.node_count())));
+      auto t0 = Clock::now();
+      const auto sp = graph::dijkstra(g, s, d);
+      dij_ms += ms_since(t0);
+      t0 = Clock::now();
+      const auto as = graph::astar(g, s, d);
+      ast_ms += ms_since(t0);
+      if (!sp.reachable(d) || !as.found) continue;
+      dij_exp += sp.nodes_expanded;
+      ast_exp += as.nodes_expanded;
+      ++done;
+    }
+    const double reduction = dij_exp ? 100.0 * (1.0 - double(ast_exp) / double(dij_exp)) : 0.0;
+    printf("  %8zu  %8d  %12.1f  %12.1f  %8.1f%%  %10.2f  %10.2f\n", g.node_count(), done,
+           done ? double(dij_exp) / done : 0.0, done ? double(ast_exp) / done : 0.0, reduction,
+           dij_ms * 1000.0 / Q, ast_ms * 1000.0 / Q);
+    if (csv) fprintf(csv, "%zu,%d,%.2f,%.2f,%.1f,%.4f,%.4f\n", g.node_count(), done,
+                     done ? double(dij_exp) / done : 0.0, done ? double(ast_exp) / done : 0.0,
+                     reduction, dij_ms * 1000.0 / Q, ast_ms * 1000.0 / Q);
+  }
+  printf("\n  A* returns the SAME shortest path as Dijkstra but settles fewer nodes --\n");
+  printf("  the map-distance heuristic steers the search toward the target.\n");
+}
+
+// ── 7. Dispatch: greedy vs optimal (Hungarian) responder assignment ───────────
+static void bench_dispatch(FILE* csv) {
+  printf("\n\033[1m7. DISPATCH  GREEDY vs OPTIMAL\033[0m   total responder travel, averaged over 200 layouts\n");
+  printf("  %10s  %12s  %12s  %10s  %10s\n", "responders", "greedy m", "optimal m",
+         "saved", "greedy>=opt");
+  printf("  ──────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "size,greedy_avg_m,optimal_avg_m,saved_pct,optimal_never_worse\n");
+
+  const geo::Bbox area{25.40, 91.70, 25.75, 92.05};
+  graph::RoadGraph g = graph::RoadGraph::grid(area, 16, 16, /*seed=*/9);
+  for (int size : {5, 10, 20, 40}) {
+    sim::Rng rng(555);
+    double sum_greedy = 0, sum_opt = 0;
+    int trials = 200, never_worse = 0;
+    for (int tr = 0; tr < trials; ++tr) {
+      dispatch::ResponderPool pool;
+      for (int i = 0; i < size; ++i) {
+        dispatch::Responder r;
+        r.pos = g.pos(graph::NodeId(rng.below(uint32_t(g.node_count()))));
+        pool.add(r);
+      }
+      pool.snap_all(g);
+      std::vector<dispatch::Incident> inc;
+      for (int i = 0; i < size; ++i)
+        inc.push_back({IncidentId(i), g.pos(graph::NodeId(rng.below(uint32_t(g.node_count())))),
+                       graph::kNoNode});
+      dispatch::snap_incidents(inc, g);
+      const auto gr = dispatch::assign_greedy(pool, inc, g);
+      const auto op = dispatch::assign_optimal(pool, inc, g);
+      sum_greedy += gr.total_m;
+      sum_opt += op.total_m;
+      if (op.total_m <= gr.total_m + 1.0) ++never_worse;
+    }
+    const double saved = sum_greedy > 0 ? 100.0 * (1.0 - sum_opt / sum_greedy) : 0.0;
+    printf("  %10d  %12.0f  %12.0f  %9.1f%%  %6d/%d\n", size, sum_greedy / trials,
+           sum_opt / trials, saved, never_worse, trials);
+    if (csv) fprintf(csv, "%d,%.1f,%.1f,%.1f,%d\n", size, sum_greedy / trials,
+                     sum_opt / trials, saved, never_worse == trials ? 1 : 0);
+  }
+  printf("\n  Hungarian is never worse than greedy and typically cheaper -- greedy's\n");
+  printf("  early cheap pick can strand a later incident with only a distant responder.\n");
+}
+
 int main(int argc, char** argv) {
   std::string out;
   for (int i = 1; i < argc; ++i)
@@ -246,6 +341,14 @@ int main(int argc, char** argv) {
   FILE* f3 = out.empty() ? nullptr : fopen((out + "/versioned_index.csv").c_str(), "w");
   bench_versioned(f3);
   if (f3) fclose(f3);
+
+  FILE* f4 = out.empty() ? nullptr : fopen((out + "/routing.csv").c_str(), "w");
+  bench_routing(f4);
+  if (f4) fclose(f4);
+
+  FILE* f5 = out.empty() ? nullptr : fopen((out + "/dispatch.csv").c_str(), "w");
+  bench_dispatch(f5);
+  if (f5) fclose(f5);
 
   printf("\n═════════════════════════════════════════════════════════════════════════════\n");
   printf("  correctness gates: equivalence %s   containment %s\n",
