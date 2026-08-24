@@ -1,5 +1,17 @@
 # Work Log
 
+### 2026-08-24 — Anomaly detection wired into the live pipeline
+
+**What:** The simulator now runs anomaly detection each tick and raises
+stationary / signal-lost / off-route alerts (with confirmation debounce). A small
+fraction of tourists "collapse" (stop moving) mid-run to exercise it.
+
+**Impact:** Anomalies now appear in a run (≈115 in the default demo) and flow into
+incidents/dispatch. All tests still pass.
+
+---
+
+
 A plain-language, running record of every change made to the project, newest
 first. Each entry says **what** changed, **why**, and the **impact** — so you can
 follow the project's history without reading diffs.

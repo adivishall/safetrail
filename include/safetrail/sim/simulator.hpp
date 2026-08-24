@@ -13,6 +13,7 @@
 #include "safetrail/index/spatial_index.hpp"
 #include "safetrail/index/versioned_index.hpp"
 #include "safetrail/sim/mobility.hpp"
+#include "safetrail/track/anomaly.hpp"
 #include "safetrail/track/tourist.hpp"
 
 namespace safetrail::sim {
@@ -30,6 +31,7 @@ struct SimConfig {
   size_t   responders    = 8;        // dispatch: available responders on the road net
   bool     dispatch      = true;     // assign responders to incidents at end of run
   std::string roads_path;            // real OSM road file; empty -> synthetic grid
+  double   collapse_fraction = 0.05; // fraction of tourists who stop moving mid-run (injury)
   bool     verbose = false;
 };
 
@@ -60,7 +62,7 @@ class Simulator {
   struct Summary {
     uint64_t ticks = 0, enters = 0, exits = 0, uncertain = 0, approaching = 0,
              dwell = 0, cohesion_events = 0;
-    uint64_t alerts = 0, incidents = 0;
+    uint64_t alerts = 0, incidents = 0, anomalies = 0;
     // Dispatch: greedy vs optimal responder assignment over the road network.
     uint64_t dispatched = 0, unassigned = 0;
     double   greedy_response_m = 0.0, optimal_response_m = 0.0;
@@ -81,6 +83,10 @@ class Simulator {
   std::vector<fence::Event> tick_events_, all_events_;
   graph::RoadGraph roads_;
   dispatch::ResponderPool responders_;
+  std::vector<track::AnomalyKind> anomaly_state_;   // confirmed anomaly per tourist
+  std::vector<track::AnomalyKind> anomaly_raw_;     // last raw reading (for confirmation)
+  std::vector<int> anomaly_run_;                    // consecutive ticks of the raw reading
+  std::vector<int64_t> collapse_at_;                // time each tourist stops moving (kForever = never)
   int64_t now_ms_ = 0;
   Summary sum_{};
   void reindex();

@@ -118,6 +118,7 @@ int main(int argc, char** argv) {
   printf("  approaching [GAP 2]  %6llu   predicted before crossing\n", (unsigned long long)sum.approaching);
   printf("  dwell exceeded       %6llu\n", (unsigned long long)sum.dwell);
   printf("  cohesion    [GAP 4]  %6llu   group splits / stragglers\n", (unsigned long long)sum.cohesion_events);
+  printf("  anomalies            %6llu   stationary / signal-lost / off-route\n", (unsigned long long)sum.anomalies);
 
   printf("\n\033[1mengine counters\033[0m\n");
   printf("  ticks                     %10llu\n", (unsigned long long)c.ticks);

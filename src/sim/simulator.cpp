@@ -105,6 +105,18 @@ void Simulator::spawn_tourists() {
     mobility_.push_back(std::move(m));
   }
 
+  anomaly_state_.assign(cfg_.tourists, track::AnomalyKind::None);
+  anomaly_raw_.assign(cfg_.tourists, track::AnomalyKind::None);
+  anomaly_run_.assign(cfg_.tourists, 0);
+
+  // A few tourists "collapse" (stop moving) partway through -- simulated injury,
+  // the case the stationary anomaly detector exists to catch.
+  collapse_at_.assign(cfg_.tourists, kForever);
+  for (size_t i = 0; i < cfg_.tourists; ++i)
+    if (rng_.uniform() < cfg_.collapse_fraction)
+      collapse_at_[i] = int64_t(rng_.range(double(cfg_.duration_ms) * 0.2,
+                                           double(cfg_.duration_ms) * 0.7));
+
   for (size_t g = 0; g < cfg_.groups; ++g) {
     group::DeclaredGroup dg;
     dg.id = GroupId(g);
@@ -119,7 +131,10 @@ void Simulator::step() {
   now_ms_ += cfg_.tick_ms;
 
   for (size_t i = 0; i < tourists_.size(); ++i) {
-    const geo::LatLon truth = step_mobility(mobility_[i], dt, now_ms_, cfg_.roam, rng_);
+    // A collapsed tourist stays put; everyone else advances along their mobility.
+    const geo::LatLon truth = (now_ms_ >= collapse_at_[i])
+                                  ? mobility_[i].truth
+                                  : step_mobility(mobility_[i], dt, now_ms_, cfg_.roam, rng_);
     tourists_[i].last_fix = apply_gps_error(truth, now_ms_, cfg_.gps, mobility_[i].drift, rng_);
     track::Ping p{};
     p.fix = tourists_[i].last_fix;
@@ -158,6 +173,42 @@ void Simulator::step() {
     a.eta_s = e.eta_s;
     fresh.push_back(a);
   }
+  // Anomaly detection over each tourist's ping history. Edge-triggered: raise an
+  // alert only when the anomaly first appears, not every tick it persists.
+  // Window tuned to the ping buffer (64 s at 1 s ticks); radius above GPS jitter.
+  track::AnomalyConfig acfg;
+  acfg.stationary_window_ms = 50'000;
+  acfg.stationary_radius_m = 40.0;
+  constexpr int kConfirmTicks = 30;   // an anomaly must persist this long to confirm
+
+  for (size_t i = 0; i < tourists_.size(); ++i) {
+    const track::AnomalyResult ar = track::detect(tourists_[i], now_ms_, acfg);
+
+    // Confirmation: only a reading held for kConfirmTicks flips the confirmed
+    // state, which suppresses jitter flapping. An alert fires once, on the
+    // transition into a (non-None) confirmed anomaly.
+    if (ar.kind == anomaly_raw_[i]) { if (anomaly_run_[i] < kConfirmTicks) ++anomaly_run_[i]; }
+    else { anomaly_raw_[i] = ar.kind; anomaly_run_[i] = 1; }
+
+    if (anomaly_run_[i] >= kConfirmTicks && ar.kind != anomaly_state_[i]) {
+      anomaly_state_[i] = ar.kind;
+      if (ar.kind != track::AnomalyKind::None) {
+        alert::Alert a{};
+        a.id = AlertId(sum_.alerts++);
+        a.kind = ar.kind == track::AnomalyKind::SignalLost ? alert::AlertKind::SignalLost
+               : ar.kind == track::AnomalyKind::Stationary ? alert::AlertKind::Stationary
+                                                            : alert::AlertKind::RouteDeviation;
+        a.severity = 3;
+        a.tourist = tourists_[i].id;
+        a.position = tourists_[i].last_fix.pos;
+        a.accuracy_m = tourists_[i].last_fix.accuracy_m;
+        a.raised_ms = now_ms_;
+        fresh.push_back(a);
+        ++sum_.anomalies;
+      }
+    }
+  }
+
   if (!fresh.empty()) corr_->ingest(fresh);
 
   // Cohesion is expensive (O(n^2)); once a minute is plenty for walking pace.

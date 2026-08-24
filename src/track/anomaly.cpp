@@ -1,5 +1,6 @@
 #include "safetrail/track/anomaly.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include "safetrail/geo/point.hpp"
 
@@ -41,19 +42,28 @@ AnomalyResult detect(const Tourist& t, int64_t now_ms, const AnomalyConfig& cfg)
   const int64_t gap = now_ms - t.pings[0].fix.t_ms;
   if (gap > cfg.signal_gap_ms) return {AnomalyKind::SignalLost, double(gap)};
 
-  // 2. Stationary -- barely moved across a long-enough window.
+  // 2. Stationary -- net movement across a long-enough window is tiny. We compare
+  // the AVERAGE of the newest few fixes against the average of the oldest few in
+  // the window, not raw endpoints, so GPS jitter (which can spike 30+ m on a
+  // single fix) averages out and does not masquerade as movement.
   {
-    const geo::LatLon& latest = t.pings[0].fix.pos;
-    double max_disp = 0.0;
+    size_t last = 0;
     int64_t covered = 0;
     for (size_t i = 1; i < n; ++i) {
       covered = t.pings[0].fix.t_ms - t.pings[i].fix.t_ms;
-      const double d = geo::distance_m(latest, t.pings[i].fix.pos);
-      if (d > max_disp) max_disp = d;
+      last = i;
       if (covered >= cfg.stationary_window_ms) break;
     }
-    if (covered >= cfg.stationary_window_ms && max_disp < cfg.stationary_radius_m)
-      return {AnomalyKind::Stationary, max_disp};
+    if (covered >= cfg.stationary_window_ms) {
+      auto avg = [&](size_t a, size_t b) {
+        double la = 0, lo = 0; size_t c = 0;
+        for (size_t i = a; i <= b && i < n; ++i) { la += t.pings[i].fix.pos.lat; lo += t.pings[i].fix.pos.lon; ++c; }
+        return geo::LatLon{la / double(c ? c : 1), lo / double(c ? c : 1)};
+      };
+      const size_t k = std::min<size_t>(5, last / 2 ? last / 2 : 1);
+      const double net = geo::distance_m(avg(0, k), avg(last > k ? last - k : 0, last));
+      if (net < cfg.stationary_radius_m) return {AnomalyKind::Stationary, net};
+    }
   }
 
   // 3. Route deviation -- too far from the nearest leg of the planned route.
