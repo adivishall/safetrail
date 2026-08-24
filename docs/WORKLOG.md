@@ -1,10 +1,20 @@
+# Work Log
+
+A plain-language, running record of every change made to the project, newest
+first. Each entry says **what** changed, **why**, and the **impact** — so you can
+follow the project's history without reading diffs.
+
+Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
+
+---
+
 ### 2026-08-24 — Dashboard surfaces dispatch + anomalies
 
 **What:** Added a "dispatch" overlay (responder markers + optimal responder→incident lines on the map) and new counters (anomalies, responders dispatched, greedy vs optimal travel). Fixed the export path to run dispatch (finalize()).
 
 **Impact:** The new graph/dispatch and anomaly work is now visible in dashboard.html. Verified in-browser, no console errors.
 
-# Work Log
+---
 
 ### 2026-08-24 — Anomaly detection wired into the live pipeline
 
@@ -14,15 +24,6 @@ fraction of tourists "collapse" (stop moving) mid-run to exercise it.
 
 **Impact:** Anomalies now appear in a run (≈115 in the default demo) and flow into
 incidents/dispatch. All tests still pass.
-
----
-
-
-A plain-language, running record of every change made to the project, newest
-first. Each entry says **what** changed, **why**, and the **impact** — so you can
-follow the project's history without reading diffs.
-
-Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
 ---
 
