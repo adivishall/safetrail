@@ -4,8 +4,11 @@
 #include <string>
 #include <vector>
 #include "safetrail/alert/correlator.hpp"
+#include "safetrail/dispatch/assigner.hpp"
+#include "safetrail/dispatch/responder.hpp"
 #include "safetrail/fence/evaluator.hpp"
 #include "safetrail/fence/zone.hpp"
+#include "safetrail/graph/road_graph.hpp"
 #include "safetrail/group/cohesion.hpp"
 #include "safetrail/index/spatial_index.hpp"
 #include "safetrail/index/versioned_index.hpp"
@@ -24,6 +27,9 @@ struct SimConfig {
   GpsErrorModel gps{};
   fence::EvaluatorConfig eval{};
   index::IndexKind index = index::IndexKind::Quadtree;
+  size_t   responders    = 8;        // dispatch: available responders on the road net
+  bool     dispatch      = true;     // assign responders to incidents at end of run
+  std::string roads_path;            // real OSM road file; empty -> synthetic grid
   bool     verbose = false;
 };
 
@@ -55,6 +61,9 @@ class Simulator {
     uint64_t ticks = 0, enters = 0, exits = 0, uncertain = 0, approaching = 0,
              dwell = 0, cohesion_events = 0;
     uint64_t alerts = 0, incidents = 0;
+    // Dispatch: greedy vs optimal responder assignment over the road network.
+    uint64_t dispatched = 0, unassigned = 0;
+    double   greedy_response_m = 0.0, optimal_response_m = 0.0;
   };
   Summary summary() const { return sum_; }
 
@@ -70,9 +79,12 @@ class Simulator {
   std::vector<track::Tourist> tourists_;
   std::vector<MobilityState> mobility_;
   std::vector<fence::Event> tick_events_, all_events_;
+  graph::RoadGraph roads_;
+  dispatch::ResponderPool responders_;
   int64_t now_ms_ = 0;
   Summary sum_{};
   void reindex();
+  void dispatch_responders();   // greedy vs optimal, at end of run
 };
 
 }  // namespace safetrail::sim

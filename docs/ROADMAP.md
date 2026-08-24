@@ -95,14 +95,18 @@ A number, not a feature.
 
 **Exit:** the landslide scenario produces one incident card, not forty.
 
-## Phase 8 — Dispatch (week 10–11)
+## Phase 8 — Dispatch (week 10–11)  ✅ DONE (routing/matching/assignment)
 
-- [ ] `graph/road_graph.hpp` from OSM, `dijkstra.hpp`, `astar.hpp`
-- [ ] `graph/bipartite_match.hpp` — Kuhn's, then Hungarian
-- [ ] `dispatch/assigner.hpp` — greedy vs optimal, both kept
-- [ ] `jurisdiction/hierarchy.hpp` `[GAP 11]`
+- [x] `graph/road_graph.hpp` — weighted adjacency list + deterministic synthetic
+      grid generator (no OSM extract shipped; real OSM drops in behind the same interface)
+- [x] `graph/dijkstra.hpp` — hand-written binary-heap frontier, checked vs Floyd–Warshall
+- [x] `graph/astar.hpp` — admissible haversine heuristic; expands ≤ Dijkstra, same distances
+- [x] `graph/bipartite_match.hpp` — Kuhn's (max cardinality) and Hungarian (min-cost), both vs brute force
+- [x] `dispatch/assigner.hpp` — greedy vs optimal, both kept; optimal ties brute-force min, never worse than greedy
+- [ ] `jurisdiction/hierarchy.hpp` `[GAP 11]`  *(still open)*
 
-**Exit:** greedy vs optimal total response time, side by side.
+**Exit:** greedy vs optimal total response time, side by side — the assigner
+returns both `Plan.total_m` values; the A/B is `assigner_test`'s headline invariant.
 
 ## Phase 9 — Time travel `[GAP 3]`  ✅ DONE
 
@@ -117,22 +121,23 @@ A number, not a feature.
 **Measured:** 13.0x sharing at 5,001 versions; querying the past costs the same as
 the present; a validity-only change allocates zero nodes.
 
-## Phase 10 — Offline and power (week 12–13) `[GAP 6, 7]`
+## Phase 10 — Offline and power (week 12–13) `[GAP 6, 7]`  ✅ DONE (structures)
 
-- [ ] Index serialise/deserialise
-- [ ] `sync/lamport.hpp`, `OfflineQueue`, `Reconciler`
-- [ ] `power/adaptive_sampler.hpp`
-- [ ] `tests/sync/lamport_test.cpp` — idempotent merge, skewed clocks
-- [ ] Scenario: device offline 2 h, reconnects, timeline stays correct
+- [x] Index serialise/deserialise — geohash blob, round-trips to identical queries
+- [x] `sync/lamport.hpp`, `OfflineQueue`, `Reconciler` — idempotent, deterministic
+- [x] `power/adaptive_sampler.hpp`
+- [x] `tests/sync/lamport_test.cpp` — idempotent merge, skewed clocks, disk round trip
+- [ ] Scenario: device offline 2 h, reconnects, timeline stays correct  *(sim wiring, still open)*
 
 **Exit:** battery projection vs fixed polling at matched recall.
 
-## Phase 11 — Evidence and authoring (week 13) `[GAP 9, 10]`
+## Phase 11 — Evidence and authoring (week 13) `[GAP 9, 10]`  ✅ DONE (structures)
 
-- [ ] `evidence/merkle_log.hpp` + `sha256.cpp` — inclusion and consistency proofs
-- [ ] QR digital ID, offline verification
-- [ ] `geo/sweep_line.hpp` — Bentley–Ottmann self-intersection
-- [ ] Zone editor validation, overlap warnings
+- [x] `evidence/merkle_log.hpp` + `sha256.cpp` — inclusion and consistency proofs
+- [ ] QR digital ID, offline verification  *(app-layer, still open)*
+- [x] `geo/sweep_line.hpp` — Shamos–Hoey sweep self-intersection (verdict == validate())
+- [x] `jurisdiction/hierarchy.hpp` — polygon nesting, deepest-owner resolve `[GAP 11]`
+- [ ] Zone editor validation, overlap warnings  *(app-layer, still open)*
 
 ## Phase 12 — Measure everything (week 14+)
 
