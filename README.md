@@ -59,18 +59,34 @@ commands to verify all of it.
 
 ### Measured, on this machine
 
-```
-index scaling, 100,000 zones, 450 m query:
-  brute force  242.23 us/query
-  quadtree       7.41 us/query   32.7x
-  R-tree         7.45 us/query   32.5x
+Timing is the **median of 7 passes after a warmup**, on one machine, one `-O2`
+build. The speedup is a ratio to **our own brute force** — the correctness
+oracle, not an external library — so it measures the structure, not a vendor.
+`make bench` prints the run-to-run spread and writes it to the CSVs (about ±5% at
+100k zones, larger at small n where the times are sub-microsecond).
 
-hysteresis A/B [GAP 8]:  91.2% removed under realistic drift, 92.3% under white noise
+```
+index scaling, 100,000 zones, 450 m query (median of 7, ±~5%):
+  brute force  ~230 us/query
+  quadtree      ~7.0 us/query   ~33x
+  R-tree        ~6.5 us/query   ~33x    (QT and RT converge; which leads is within noise)
+
+hysteresis A/B [GAP 8]:  91% removed under realistic drift, 92% under white noise (simulated GPS)
 equivalence:             18,000 queries, 0 mismatches vs brute force
 ray cast vs winding:     100,000 points, 0 disagreements
 persistent index [GAP 3]: 13.0x structural sharing at 5,001 versions
+alert correlation [GAP 5]: scenario-dependent — a clustered incident compresses
+                           ~450:1, a scattered run ~9:1 (see the caveat below)
 unit tests:              285 assertions across 28 files, each fast structure vs a brute-force oracle
 ```
+
+**Read the numbers honestly.** Everything is measured on **simulated** tourists
+under our own GPS-noise model — real geography (OpenStreetMap), simulated people,
+by design (see below). The alert-correlation and responder-dispatch figures are
+**scenario-dependent**: they reflect a scripted incident where a cohort converges
+on one hazard. That is the case the feature exists for, but the ratio is a
+property of how clustered the incident is, not a fixed law — a scattered
+population compresses far less, and we report both.
 
 See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the ceiling is
 ~33x and not the ~29,000x originally estimated — the answer is the most

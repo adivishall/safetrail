@@ -6,6 +6,22 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-25 — Substance pass (tier 2): benchmark rigor + honest caveats
+
+**What:** Made the headline numbers defensible under interrogation.
+
+1. **Benchmark rigor.** `time_queries` in `safetrail_bench.cpp` did a single timed pass with no warmup. It now runs a **warmup pass, then 7 timed passes, and reports the median** plus the **best run and the run-to-run spread** (printed, and added to `index_scaling.csv` as `*_min_us` / `*_spread_pct` columns). At 100k zones the spread is ±3–10%, so "~33×" is now a figure with an error bar. Small-n rows (10–1,000) are flagged: their times are sub-microsecond and the spread is ±30–230%, so those speedups are noise, not results.
+
+2. **Scenario-dependence stated.** The alert-correlation and dispatch figures depend on a scripted cohort converging on one hazard. Every results table now says so and reports **both** numbers — ~450:1 on a clustered incident, **~9:1 on a scattered run** — and points at `golden/incident_formation_test` as the guard.
+
+3. **Baseline and data honesty.** Docs now state plainly that the speedup is a ratio to **our own brute force**, not an external library (there is no third-party baseline, by design), and that every figure is measured on **simulated** tourists under our own GPS-noise model.
+
+4. **Worst case.** Verified the resume-facing summaries already qualify the spatial index as **O(log n + k) average** and disclose the O(n) worst case (DATA_STRUCTURES worst-case table, PRESENTATION §10). No unqualified "O(log n)" remained.
+
+**Why:** "33× faster" with no error bars, no external baseline, and results you can dial by moving tourists around is a claim that collapses under a single sharp question. Reporting the method, the spread, the baseline, and the scenario-dependence turns each number into something that survives scrutiny.
+
+**Impact:** `make bench` green, correctness gates pass. Headline holds under the stricter method — 100k: quadtree ~32×, R-tree ~35×, spread ±3–10%. Regenerated the committed CSVs. Files touched: `apps/safetrail_bench.cpp`, `README.md`, `TEAM_BRIEF.md`, `docs/DATA_STRUCTURES.md`, `docs/PRESENTATION.md`, `bench/results/*.csv`.
+
 ### 2026-08-25 — Credibility pass (tier 1): honest claims, real integration test
 
 **What:** Closed the four claim-vs-reality gaps a reviewer would catch first.

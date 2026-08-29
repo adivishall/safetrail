@@ -195,15 +195,22 @@ Full phase plan with ordering: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## 7. Results we can actually claim
 
-All reproducible with `make bench`. Numbers from an Apple clang -O2 build.
+All reproducible with `make bench`. Each timing is the **median of 7 passes after
+a warmup**, one machine, one Apple clang `-O2` build; `make bench` prints the
+run-to-run spread (about ±5% at 100k). The speedup is a ratio to **our own brute
+force** — the correctness oracle — not to an external library, and it is measured
+on **simulated** data. State those three caveats before quoting the number.
 
 ### Spatial index scaling — 100,000 zones, 450 m query
 
-| | time per query | speedup |
+| | time per query (median of 7) | speedup |
 |---|---|---|
-| Brute force | 242.23 µs | baseline |
-| Quadtree | 7.41 µs | **32.7×** |
-| R-tree | 7.45 µs | **32.5×** |
+| Brute force | ~230 µs | baseline |
+| Quadtree | ~7.0 µs | **~33×** |
+| R-tree | ~6.5 µs | **~33×** |
+
+Quadtree and R-tree converge at 100k; which one leads is within the ±5% spread,
+so we report both as "~33×" rather than pinning a digit that noise flips.
 
 ### The most interesting thing in the project
 
@@ -226,7 +233,7 @@ actually has. The ceiling is output size, not the tree. That's exactly what
 | Persistent index (GAP 3) | **13.0×** node sharing at 5,001 versions; querying the past costs the same as the present |
 | Index equivalence | 18,000 queries — quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
-| Alert correlation (GAP 5) | 833 operator cards suppressed |
+| Alert correlation (GAP 5) | **Scenario-dependent.** A scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1 compression); a scattered run still compresses ~9:1. The ratio reflects how clustered the incident is, not a fixed number — we report both |
 | Unit tests | **285 assertions across 28 files**, every fast structure vs a brute-force oracle, all pass |
 
 ### Three bugs the measurements caught

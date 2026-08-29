@@ -30,14 +30,18 @@ those numbers real landed just before this tier (see
 
 ---
 
-## Tier 2 — Substance / rigor  ·  status: ⬜ pending
+## Tier 2 — Substance / rigor  ·  status: ✅ done
 
 | # | Flaw | Before | After |
 |---|---|---|---|
-| 5 | **Headline results are scenario-engineered** | The 453:1 compression and the Hungarian-vs-greedy gap depend on a hand-placed cohort; a neutral run was degenerate. Not stated. | _pending_ |
-| 6 | **No benchmark rigor** | Scaling/persistent numbers are single runs, one machine, no warmup/repeats/variance; "33×" has no error bars and only an internal brute-force baseline. | _pending_ |
-| 7 | **All data simulated** | Every "impact" number is on synthetic tourists under our own noise model. Disclosed in places, but impact-style phrasing survives. | _pending_ |
-| 8 | **Worst case cuts against the headline** | The benchmarked structure (quadtree/R-tree) is O(n) worst case; only the interval tree and heap are guaranteed. Disclosed in DATA_STRUCTURES, but summaries say "O(log n)" unqualified. | _pending_ |
+| 5 | **Headline results are scenario-engineered** | 453:1 compression and the Hungarian-vs-greedy gap depend on a hand-placed cohort; a neutral run was degenerate. Not stated. | Every results table now labels correlation/dispatch **scenario-dependent** and reports **both** numbers: ~450:1 on a clustered incident, **~9:1 scattered**. The distinction is guarded by `golden/incident_formation_test`. |
+| 6 | **No benchmark rigor** | Scaling numbers were a single timed pass, no warmup, no repeats, no variance; "33×" had no error bars. | `time_queries` now does a **warmup pass + median of 7 timed passes**, and reports **best run + spread** (printed and in the CSV). At 100k the spread is ±~5%; small-n rows show ±30–230% and are flagged as noise. Docs state "single machine, ratio to our own brute force — no external baseline." |
+| 7 | **All data simulated** | Every "impact" number is synthetic under our own noise model; disclosed in places, but impact phrasing survived. | README results block and PRESENTATION now say "simulated GPS / simulated tourists" inline next to each figure; the ratio-to-own-brute-force caveat makes the internal baseline explicit. |
+| 8 | **Worst case cuts against the headline** | Benchmarked structure is O(n) worst case; only interval tree/heap guaranteed. Disclosed in DATA_STRUCTURES but summaries risked unqualified "O(log n)." | Verified: the structure tables already say **"O(log n + k) avg"**, DATA_STRUCTURES keeps a dedicated worst-case table, and PRESENTATION §10 ("Honest engineering") states the O(n) worst case outright. No unqualified claim remained; no change needed beyond confirming it. |
+
+**Measured after Tier 2:** `make bench` green, correctness gates pass. Headline
+holds under the stricter method — **100k: quadtree ~32×, R-tree ~35×, spread
+±3–10%** — so "~33×" is now a figure with an error bar, not a lucky single run.
 
 ## Tier 3 — Positioning for a resume  ·  status: ⬜ pending
 

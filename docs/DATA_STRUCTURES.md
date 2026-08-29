@@ -142,20 +142,27 @@ project.**
 
 ### Three indexes, measured
 
-`make bench` — 2000 probe queries per row, 450 m query box, Apple clang -O2:
+`make bench` — 2000 probe queries per row, 450 m query box, Apple clang -O2. Each
+cell is the **median of 7 timed passes after a warmup pass**; the CSV also carries
+the best run and the run-to-run spread. A representative run:
 
-| zones | brute force | quadtree | R-tree | QT gain | RT gain | candidates |
-|---|---|---|---|---|---|---|
-| 10 | 0.03 us | 0.04 us | 0.04 us | 0.8x | 0.9x | 0.01 |
-| 100 | 0.12 us | 0.07 us | 0.07 us | 1.7x | 1.6x | 0.10 |
-| 1,000 | 1.84 us | 0.16 us | 0.25 us | 11.4x | 7.3x | 0.97 |
-| 5,000 | 11.23 us | 0.45 us | 0.89 us | 24.9x | 12.6x | 4.90 |
-| 20,000 | 47.74 us | 1.51 us | 2.66 us | 31.5x | 17.9x | 19.86 |
-| 50,000 | 118.83 us | 3.62 us | 4.58 us | 32.9x | 25.9x | 49.37 |
-| 100,000 | 242.23 us | 7.41 us | 7.45 us | **32.7x** | **32.5x** | 98.78 |
+| zones | brute force | quadtree | R-tree | QT gain | RT gain | candidates | spread |
+|---|---|---|---|---|---|---|---|
+| 10 | 0.06 us | 0.08 us | 0.06 us | 0.7x | 0.9x | 0.01 | ±230% |
+| 100 | 0.22 us | 0.10 us | 0.10 us | 2.2x | 2.1x | 0.10 | ±50% |
+| 1,000 | 2.56 us | 0.10 us | 0.17 us | 26.8x | 15.4x | 0.97 | ±88% |
+| 5,000 | 10.19 us | 0.26 us | 0.63 us | 39.2x | 16.1x | 4.90 | ±31% |
+| 20,000 | 44.87 us | 1.25 us | 2.20 us | 35.9x | 20.4x | 19.86 | ±12% |
+| 50,000 | 112.65 us | 3.31 us | 3.98 us | 34.0x | 28.3x | 49.37 | ±8% |
+| 100,000 | 229.66 us | 7.01 us | 6.23 us | **32.8x** | **36.8x** | 98.78 | ±5% |
 
 Brute force is visibly linear. Both trees converge on ~33x and then stop
-improving, for the reason in the last column.
+improving, for the reason in the last column. **Read the small-n rows with the
+spread in mind** — at 10–1,000 zones the times are sub-microsecond and dominated
+by noise (±30–230%), so those speedups are not meaningful; the headline is the
+100k row, where the spread is ±5% and quadtree and R-tree tie within it (which one
+"wins" flips between runs). The speedup is a ratio to **our own brute force**, not
+an external library — there is no third-party baseline here by design.
 
 ### Why the ceiling is ~33x, not 29,000x
 
@@ -257,7 +264,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Hysteresis A/B (GAP 8) | **91.2% removed under realistic correlated drift** (rho=0.9), 92.3% under white noise — measured under BOTH models, same seed |
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
-| Alert correlation (GAP 5) | 833 operator cards suppressed |
+| Alert correlation (GAP 5) | **Scenario-dependent** — a scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1); a scattered run compresses ~9:1. Both reported; the ratio is a property of incident clustering, not a fixed law. Guarded end-to-end by `golden/incident_formation_test` |
 | Unit tests | **285 assertions across 28 files**, every fast structure vs a brute-force oracle, all pass |
 
 ## Measurements to produce

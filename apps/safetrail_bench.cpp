@@ -55,20 +55,40 @@ static Corpus make_corpus(size_t n, size_t probes, uint64_t seed) {
   return c;
 }
 
-static double time_queries(index::SpatialIndex& ix, const Corpus& c, double radius) {
+// A timing is never one number. We report the MEDIAN of several full passes
+// (robust to a single scheduler hiccup), the best pass seen (the cleanest run
+// the machine managed), and the spread as a percent of the median (how much to
+// trust the figure). A warmup pass first faults in the caches and settles the
+// branch predictor so the first timed pass is not an outlier.
+struct Timing { double median_us, min_us, spread_pct; };
+
+static Timing time_queries(index::SpatialIndex& ix, const Corpus& c, double radius) {
   std::vector<index::ZoneId> out; out.reserve(8192);
-  auto t0 = Clock::now();
-  for (const auto& p : c.probes) { out.clear(); ix.query(geo::Bbox::around(p, radius), out); }
-  return ms_since(t0) * 1000.0 / double(c.probes.size());     // us per query
+  for (const auto& p : c.probes) {          // warmup, untimed
+    out.clear(); ix.query(geo::Bbox::around(p, radius), out);
+  }
+  constexpr int kRuns = 7;
+  double s[kRuns];
+  for (int r = 0; r < kRuns; ++r) {
+    auto t0 = Clock::now();
+    for (const auto& p : c.probes) { out.clear(); ix.query(geo::Bbox::around(p, radius), out); }
+    s[r] = ms_since(t0) * 1000.0 / double(c.probes.size());   // us per query
+  }
+  std::sort(s, s + kRuns);
+  const double median = s[kRuns / 2];
+  return {median, s[0], median > 0 ? 100.0 * (s[kRuns - 1] - s[0]) / median : 0.0};
 }
 
 static void bench_scaling(FILE* csv) {
-  printf("\n\033[1m1. INDEX SCALING\033[0m   450 m query box, 2000 probes per row, us/query\n");
-  printf("  %8s  %11s  %11s  %11s  %9s  %9s  %8s\n",
-         "zones", "brute", "quadtree", "r-tree", "QT gain", "RT gain", "cands");
-  printf("  ─────────────────────────────────────────────────────────────────────────────────\n");
+  printf("\n\033[1m1. INDEX SCALING\033[0m   450 m query box, 2000 probes/row, median of 7 timed"
+         " passes after a warmup, us/query\n");
+  printf("  %8s  %11s  %11s  %11s  %9s  %9s  %8s  %7s\n",
+         "zones", "brute", "quadtree", "r-tree", "QT gain", "RT gain", "cands", "±spread");
+  printf("  ─────────────────────────────────────────────────────────────────────────────────────────\n");
   if (csv) fprintf(csv, "zones,brute_us,quad_us,rtree_us,quad_speedup,rtree_speedup,"
-                        "candidates,quad_nodes,quad_depth,rtree_nodes,rtree_depth\n");
+                        "candidates,quad_nodes,quad_depth,rtree_nodes,rtree_depth,"
+                        "brute_min_us,quad_min_us,rtree_min_us,brute_spread_pct,"
+                        "quad_spread_pct,rtree_spread_pct\n");
 
   for (size_t n : {10u, 100u, 1000u, 5000u, 20000u, 50000u, 100000u}) {
     Corpus c = make_corpus(n, 2000, 99);
@@ -76,21 +96,31 @@ static void bench_scaling(FILE* csv) {
     index::Quadtree qt;        qt.build(c.boxes);
     index::RTree rt;           rt.build(c.boxes);
 
-    const double bf_us = time_queries(bf, c, 450);
-    const double qt_us = time_queries(qt, c, 450);
-    const double rt_us = time_queries(rt, c, 450);
+    const Timing bf_t = time_queries(bf, c, 450);
+    const Timing qt_t = time_queries(qt, c, 450);
+    const Timing rt_t = time_queries(rt, c, 450);
     const auto bs = bf.stats(), qs = qt.stats(), rs = rt.stats();
 
-    printf("  %8zu  %11.2f  %11.2f  %11.2f  %8.1fx  %8.1fx  %8.2f\n", n, bf_us, qt_us, rt_us,
-           qt_us > 0 ? bf_us / qt_us : 0.0, rt_us > 0 ? bf_us / rt_us : 0.0,
-           bs.avg_candidates());
-    if (csv) fprintf(csv, "%zu,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%zu,%zu,%zu,%zu\n",
-                     n, bf_us, qt_us, rt_us, qt_us > 0 ? bf_us / qt_us : 0.0,
-                     rt_us > 0 ? bf_us / rt_us : 0.0, bs.avg_candidates(),
-                     qs.node_count, qs.max_depth, rs.node_count, rs.max_depth);
+    // The worst spread across the three medians -- the honest error bar on the row.
+    const double worst_spread = std::max({bf_t.spread_pct, qt_t.spread_pct, rt_t.spread_pct});
+    printf("  %8zu  %11.2f  %11.2f  %11.2f  %8.1fx  %8.1fx  %8.2f  %6.1f%%\n",
+           n, bf_t.median_us, qt_t.median_us, rt_t.median_us,
+           qt_t.median_us > 0 ? bf_t.median_us / qt_t.median_us : 0.0,
+           rt_t.median_us > 0 ? bf_t.median_us / rt_t.median_us : 0.0,
+           bs.avg_candidates(), worst_spread);
+    if (csv) fprintf(csv, "%zu,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%zu,%zu,%zu,%zu,"
+                          "%.4f,%.4f,%.4f,%.1f,%.1f,%.1f\n",
+                     n, bf_t.median_us, qt_t.median_us, rt_t.median_us,
+                     qt_t.median_us > 0 ? bf_t.median_us / qt_t.median_us : 0.0,
+                     rt_t.median_us > 0 ? bf_t.median_us / rt_t.median_us : 0.0,
+                     bs.avg_candidates(), qs.node_count, qs.max_depth, rs.node_count, rs.max_depth,
+                     bf_t.min_us, qt_t.min_us, rt_t.min_us,
+                     bf_t.spread_pct, qt_t.spread_pct, rt_t.spread_pct);
   }
-  printf("\n  Note: candidates returned is IDENTICAL across all three -- they are true\n");
-  printf("  positives. The speedup ceiling is output size k, exactly as O(log n + k) says.\n");
+  printf("\n  Median of 7 passes, best-run and spread in the CSV. Single machine, one build;\n");
+  printf("  the speedup is a ratio to our own brute force, not to an external library.\n");
+  printf("  Candidates returned is IDENTICAL across all three -- they are true positives, so\n");
+  printf("  the speedup ceiling is output size k, exactly as O(log n + k) says.\n");
 }
 
 static bool bench_equivalence() {

@@ -169,14 +169,17 @@ to, never rewritten. *This is the property Ethereum was being used for, delivere
 
 ## 9. Results — measured, not claimed (1–2 slides)
 
-All from `make bench` / `make test`:
+All from `make bench` / `make test`. Timings are the **median of 7 passes** on one
+machine; the speedup is a ratio to **our own brute force** (not an external
+library); the data is **simulated**. State those three before quoting a figure.
 
 | Result | Number |
 |---|---|
-| Spatial index speedup (100k zones) | **32.7× quadtree, 32.5× R-tree** vs brute force |
-| Candidate pruning (real run) | 438 zones → 2.42 per query, **181×** |
-| Hysteresis false-alert removal | **91.2% under realistic drift**, 92.3% white noise |
+| Spatial index speedup (100k zones) | **~33×** quadtree and R-tree vs brute force (median of 7, ±~5%) |
+| Candidate pruning (real run) | 438 zones → ~2.4 per query, **~180×** |
+| Hysteresis false-alert removal | **~91% under realistic drift**, ~92% white noise (simulated GPS) |
 | Persistent index sharing (5,000 versions) | **13×** vs full copies |
+| Alert correlation (GAP 5) | **scenario-dependent**: ~450:1 on a clustered incident, ~9:1 scattered |
 | Index equivalence (correctness) | 18,000 queries, **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, **0 disagreements** |
 | Merkle tamper detection | forged entries + rewritten history **rejected** |
