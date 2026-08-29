@@ -51,6 +51,7 @@ void Simulator::add_synthetic_zones(size_t n) {
     z.name = "synthetic-" + std::to_string(i);
     z.kind = fence::ZoneKind::Caution;
     z.severity = uint8_t(1 + rng_.below(5));
+    z.synthetic = true;               // index-scaling padding, never alerts
     z.shape = geo::Polygon(std::move(ring));
     zones_.add(std::move(z));
   }
@@ -124,6 +125,64 @@ void Simulator::spawn_tourists() {
     for (const auto& t : tourists_) if (t.group == g) dg.members.push_back(t.id);
     if (dg.members.size() >= 2) coh_->declare_group(std::move(dg));
   }
+
+  apply_scenario();
+}
+
+// Lay the scripted incident day over the freshly spawned population. Pick one
+// real hazard, then lead a cohort of tourists onto it so their breaches land in
+// one place within one short window -- exactly the input the correlator collapses
+// into a single incident, and the persistent index records as a real event.
+void Simulator::apply_scenario() {
+  if (!cfg_.scenario.enabled || tourists_.empty()) return;
+
+  // Choose the convergence hazard: the named zone if given, else the
+  // highest-severity restricted zone (Sonapani Waterfall Cliff in the OSM set).
+  const fence::Zone* hazard = nullptr;
+  for (index::ZoneId id : zones_.all_ids()) {
+    const fence::Zone* z = zones_.get(id);
+    if (!z || z->synthetic) continue;
+    if (!cfg_.scenario.hazard_name.empty()) {
+      if (z->name == cfg_.scenario.hazard_name) { hazard = z; break; }
+      continue;
+    }
+    if (z->kind == fence::ZoneKind::Restricted &&
+        (!hazard || z->severity > hazard->severity))
+      hazard = z;
+  }
+  if (!hazard) return;   // nothing to converge on; leave the random population as is
+
+  const geo::LatLon dest = hazard->shape.centroid();
+  const size_t cohort = std::min(
+      tourists_.size(),
+      size_t(double(tourists_.size()) * cfg_.scenario.cohort_fraction + 0.5));
+
+  // The roam area is tens of km across but a walker covers only a few km per hour,
+  // so a cohort scattered across the map could never reach the hazard in time.
+  // Start them as a tight party a short walk out along one approach bearing, then
+  // lead them in: they cross the boundary within one correlator window and become
+  // a single mass incident. The rest keep wandering, producing the scattered
+  // independent incidents that make greedy and optimal dispatch diverge.
+  const double approach_bearing = rng_.range(0.0, 360.0);
+  const geo::LatLon staging = geo::offset(dest, approach_bearing, 420.0);
+  for (size_t i = 0; i < cohort; ++i) {
+    const double jb = rng_.range(0.0, 360.0);
+    const double jr = rng_.range(0.0, 55.0);          // tight staging cluster
+    mobility_[i].truth = geo::offset(staging, jb, jr);
+    mobility_[i].drift = {};
+    tourists_[i].last_fix =
+        apply_gps_error(mobility_[i].truth, 0, cfg_.gps, mobility_[i].drift, rng_);
+
+    mobility_[i].kind = MobilityKind::GuidedGroup;
+    mobility_[i].destination = dest;
+    mobility_[i].mill_radius_m = cfg_.scenario.mill_radius_m;
+    mobility_[i].arrived = false;
+    mobility_[i].target = {};                          // fresh guided target next step
+    mobility_[i].paused = false;
+    // A slight speed spread staggers arrival across a minute or so rather than one
+    // instant -- still inside the correlator's window, but more lifelike.
+    mobility_[i].speed_mps = rng_.range(1.25, 1.55);
+  }
 }
 
 void Simulator::step() {
@@ -158,6 +217,7 @@ void Simulator::step() {
     const fence::Zone* z = zones_.get(e.zone);
     if (!z) continue;
     if (z->kind == fence::ZoneKind::Safe) continue;
+    if (z->synthetic) continue;   // scale-test padding raises no operator alert
 
     alert::Alert a{};
     a.id = AlertId(sum_.alerts++);

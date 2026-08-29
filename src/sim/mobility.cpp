@@ -59,6 +59,18 @@ geo::LatLon step_mobility(MobilityState& st, double dt_s, int64_t now_ms,
     if (st.kind == MobilityKind::RouteFollowing && !st.route.empty()) {
       st.target = st.route[st.leg % st.route.size()];
       ++st.leg;
+    } else if (st.kind == MobilityKind::GuidedGroup) {
+      // Head straight for the shared destination; once there, mill around it in
+      // a tight radius so the cohort stays clustered (correlator input) rather
+      // than dispersing back across the map.
+      if (!st.arrived && geo::distance_m(st.truth, st.destination) > st.mill_radius_m) {
+        st.target = st.destination;
+      } else {
+        st.arrived = true;
+        const double br = rng.range(0.0, 360.0);
+        const double rad = rng.range(0.0, st.mill_radius_m);
+        st.target = geo::offset(st.destination, br, rad);
+      }
     } else {
       st.target = {rng.range(roam.min_lat, roam.max_lat),
                    rng.range(roam.min_lon, roam.max_lon)};

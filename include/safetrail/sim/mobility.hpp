@@ -67,6 +67,13 @@ struct MobilityState {
   size_t       leg = 0;
   bool         paused = false;
   int64_t      pause_until_ms = 0;
+
+  // GuidedGroup: a scripted destination the tourist heads to and then mills
+  // around, so a cohort converges on one place at roughly one time. This is what
+  // turns "forty scattered alerts" into a single correlated incident.
+  geo::LatLon  destination{};        // where the cohort is being led
+  double       mill_radius_m = 60.0; // once arrived, wander within this radius
+  bool         arrived = false;
 };
 
 // Advance one tourist's true position by dt. Returns the new ground truth.

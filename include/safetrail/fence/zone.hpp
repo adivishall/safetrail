@@ -19,6 +19,11 @@ struct Zone {
   std::string  name;
   geo::Polygon shape;
 
+  // Index-scaling padding, not a real hazard. Synthetic zones exist only to grow
+  // the spatial index for the scaling benchmark; they must never raise operator
+  // alerts or clutter the operator console. Real OSM/authored zones stay false.
+  bool         synthetic = false;
+
   // Jurisdiction that owns alerts raised here. Resolved from the administrative
   // boundary hierarchy.  [GAP 11]
   uint32_t jurisdiction = kNoId;

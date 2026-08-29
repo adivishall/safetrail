@@ -19,6 +19,21 @@
 
 namespace safetrail::sim {
 
+// A scripted "incident day" laid over the population. Without it the tourists
+// wander at random and never converge, so alert correlation has nothing to
+// collapse and responder dispatch has no interesting choice to make. The
+// scenario steers a cohort onto one real hazard so a genuine mass incident
+// forms, while the rest of the population produces the scattered independent
+// incidents that make greedy-vs-optimal dispatch diverge.
+struct Scenario {
+  bool   enabled = true;
+  double cohort_fraction = 0.55;   // share of tourists led toward the hazard
+  double mill_radius_m   = 70.0;   // how tightly the cohort clusters on arrival
+  // Which loaded hazard the cohort converges on. Empty -> the highest-severity
+  // restricted zone found at load (Sonapani Waterfall Cliff in the OSM set).
+  std::string hazard_name;
+};
+
 struct SimConfig {
   size_t   tourists      = 50;
   size_t   groups        = 8;
@@ -33,6 +48,7 @@ struct SimConfig {
   bool     dispatch      = true;     // assign responders to incidents at end of run
   std::string roads_path;            // real OSM road file; empty -> synthetic grid
   double   collapse_fraction = 0.05; // fraction of tourists who stop moving mid-run (injury)
+  Scenario scenario{};               // scripted incident day; disable for a pure random run
   bool     verbose = false;
 };
 
@@ -98,6 +114,7 @@ class Simulator {
   int64_t now_ms_ = 0;
   Summary sum_{};
   void reindex();
+  void apply_scenario();        // lay the scripted incident day over the population
   void dispatch_responders();   // greedy vs optimal, at end of run
 };
 

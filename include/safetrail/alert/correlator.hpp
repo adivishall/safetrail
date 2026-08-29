@@ -73,6 +73,10 @@ class Correlator {
  private:
   CorrelationConfig cfg_;
   std::vector<Incident> incidents_;
+  // Indices of incidents still inside their merge window, newest activity first.
+  // A fresh alert near one of these joins it instead of opening a new card, so a
+  // milling cohort collapses into ONE growing incident rather than one per tick.
+  std::vector<size_t> open_idx_;
   Stats stats_{};
 };
 
