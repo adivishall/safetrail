@@ -61,7 +61,7 @@ manager, no internet.
 ```bash
 git clone https://github.com/adivishall/safetrail
 cd safetrail
-make test        # 233 checks across 12 real test files, all pass
+make test        # 285 assertions across 28 files, all pass
 make demo        # run the simulation, watch the event stream
 make bench       # the measurements — this is the money shot
 make dashboard   # writes dashboard.html, open it in any browser
@@ -181,7 +181,7 @@ fill-in-the-blanks rather than a blank page.
 | **Responder assignment** | `graph/bipartite_match`, `dispatch/` | Hard | Hungarian algorithm, matching |
 | **Offline sync** (GAP 6) | `sync/lamport, delta_sync` | Hard | Logical clocks, distributed ordering |
 | **Alert triage** | `alert/triage, escalation` | Easy | Binary heap, interval tree usage |
-| **Hash table** | `ds/hash_table` | Easy | Open addressing, Robin Hood probing |
+| **Hash table** | `ds/hash_table` | Easy | Open addressing, linear probing, tombstone deletes |
 | **Anomaly detection** | `track/anomaly, trajectory` | Easy | Sliding windows, Douglas–Peucker |
 | **Jurisdiction** (GAP 11) | `jurisdiction/hierarchy` | Medium | Nested polygon containment |
 
@@ -227,7 +227,7 @@ actually has. The ceiling is output size, not the tree. That's exactly what
 | Index equivalence | 18,000 queries — quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **222 checks across 11 real test files**, all pass |
+| Unit tests | **285 assertions across 28 files**, every fast structure vs a brute-force oracle, all pass |
 
 ### Three bugs the measurements caught
 
@@ -360,5 +360,5 @@ That's how we caught all three bugs above.
 We built the geofencing engine everyone else imports, and fixed eleven things that
 importing it makes impossible. Hand-written quadtree, R-tree, persistent quadtree,
 rollback union-find, interval tree, plus real computational geometry. It runs,
-there's a dashboard, 117 tests pass, and the index is 33× faster than brute force
+there's a dashboard, 285 assertions across 28 files pass, and the index is 33× faster than brute force
 with provably identical output.

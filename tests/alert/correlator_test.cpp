@@ -1,5 +1,7 @@
 // GAP 5: many alerts clustered in space+time collapse into ONE incident.
 #include "../test_harness.hpp"
+#include <algorithm>
+#include <cstddef>
 #include <vector>
 #include "safetrail/alert/correlator.hpp"
 using namespace safetrail;
@@ -39,6 +41,36 @@ int main() {
       mk(1,1,25.5700,91.8800, 1000 + 10*60*1000)};   // 10 min later
     c.ingest(fresh);
     t::ok(c.stats().incidents_opened == 2, "same place, 10min apart -> not merged");
+  }
+
+  // ── Cross-tick behaviour. These are the cases the batch-only correlator failed:
+  //    it clustered only within one ingest() call, so a cohort breaching one
+  //    person per tick opened a fresh incident every tick and never accumulated.
+  { // alerts arriving over successive ticks fold into ONE growing incident
+    Correlator c;
+    for (int k = 0; k < 6; ++k)
+      c.ingest({ mk(AlertId(k), TouristId(k),
+                    25.5700 + 0.00008 * (k % 3), 91.8800, 1000 + k * 10000) });
+    t::ok(c.stats().incidents_opened == 1,
+          "six alerts over six ticks (<=60s apart, co-located) -> one incident");
+    size_t max_people = 0;
+    for (const auto* inc : c.open_incidents())
+      max_people = std::max(max_people, inc->people());
+    t::ok(max_people == 6, "the incident accumulates all six people across ticks");
+  }
+  { // a gap longer than the window opens a fresh incident, same place
+    Correlator c;
+    c.ingest({ mk(0, 0, 25.5700, 91.8800, 0) });
+    c.ingest({ mk(1, 1, 25.5700, 91.8800, 120000) });   // 2 min later
+    t::ok(c.stats().incidents_opened == 2,
+          "same place, a gap beyond the window -> a second incident");
+  }
+  { // an alert far from the live incident does not fold into it
+    Correlator c;
+    c.ingest({ mk(0, 0, 25.5700, 91.8800, 1000) });
+    c.ingest({ mk(1, 1, 25.6500, 91.9500, 6000) });     // ~13 km away, 5 s later
+    t::ok(c.stats().incidents_opened == 2,
+          "far from the live incident -> a separate incident");
   }
   return t::report("alert/correlator");
 }

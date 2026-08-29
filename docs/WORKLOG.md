@@ -6,6 +6,41 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-25 — Credibility pass (tier 1): honest claims, real integration test
+
+**What:** Closed the four claim-vs-reality gaps a reviewer would catch first.
+
+1. **Fixed a false claim.** `TEAM_BRIEF.md` called the hash table "Robin Hood probing"; the code is (and always was) **linear probing with tombstone deletes**. Corrected to match the implementation. No Robin Hood references remain anywhere.
+
+2. **Retired the vanity metric.** "10,941 checks across 27 files" counted `t::ok` executions *inside fuzz loops*; the actual figure is **285 assertion sites across 28 files**, dominated by two randomized tests. Every current-state doc (README, TEAM_BRIEF, DATA_STRUCTURES, PRESENTATION, DEPLOYMENT, the CI comment) now says "285 assertions across 28 files, each fast structure vs a brute-force oracle." Stale inconsistent counts (222/11, 233/12, 117) reconciled. WORKLOG history entries left as-is — they're a dated record.
+
+3. **Added the integration test the suite was missing.** The correlator's unit tests passed on a single hand-fed batch while the running product compressed ~1.19:1, because nothing tested multi-tick accumulation. Added (a) three **cross-tick** cases to `alert/correlator_test` — alerts arriving one-per-tick fold into one growing incident; a gap beyond the window opens a fresh one; distance still separates — and (b) a new **`golden/incident_formation_test`** that drives the whole simulator and asserts the marquee behaviour end to end: the scripted cohort collapses into one incident of ≥15 people with ≥20:1 compression, and a scenario-off run forms no such mass incident. Both would have failed against the old batch-only correlator.
+
+4. **CI portability.** `tests/ds/priority_queue_test.cpp` was missing `<string>`/`<cstdint>` (fine under Apple clang's transitive includes, broken under GNU libstdc++ on the runner) — the break that had been failing every Pages deploy. Fixed; swept the other 27 tests and confirmed they pull those headers transitively (CI had already proved they compile).
+
+**Why:** The project is going on a resume, where every number is an invitation to be interrogated. A false "Robin Hood" claim, a test count inflated ~40×, and a green-looking suite that never exercised the flagship feature are exactly the things that turn an impressive project into a liability under questioning.
+
+**Impact:** Suite green — **285 assertions across 28 files, 0 failures** (10,950 executions). The new integration test measures max incident = 33 people / 453:1 compression with the scenario on, versus 2 people / 9.2:1 off — so GAP 5 is now guarded by a test that proves it works on the real pipeline, not just on a fixture.
+
+### 2026-08-25 — Scripted incident day + persistent alert correlation
+
+**What:** Reworked the running scenario so the outcome tells a story instead of showing random wandering, and fixed the data-structures defect that made two headline results degenerate.
+
+1. **Scenario keystone.** Added `sim::Scenario` (on by default): a cohort (~55% of tourists) is staged as a tight party ~420 m from the highest-severity restricted zone (Sonapani Waterfall Cliff) and led into it with a new `GuidedGroup` mobility model — walk to a shared destination, then mill within a tight radius. The rest keep wandering. The roam area is ~25 km across but a walker covers only a few km/hour, so a *scattered* cohort could never reach the hazard in the sim window — which is exactly why the mass incident never used to form.
+
+2. **Correlator now keeps incidents open across ticks.** The real bug behind GAP 5 being weak: `Correlator::ingest` only clustered alerts *within a single tick's batch* and never merged a fresh alert into an already-open incident, so 33 people breaching over ~40 s produced ~33 tiny incidents, not one. It now retires incidents past their time window and folds each fresh cluster into the nearest live incident (centroid updated by a running average). The three existing correlator unit cases still pass unchanged.
+
+3. **Synthetic filler no longer alerts.** `Zone.synthetic` flag set on the index-scaling padding; the simulator skips alert generation for those zones. They exist to grow the spatial index for the scaling benchmark, not to flood the operator — this alone removed ~10,000 spurious UNCERTAIN alerts per run.
+
+4. **CI unblock.** `tests/ds/priority_queue_test.cpp` was missing `<string>`/`<cstdint>`; it compiled under Apple clang (libc++ transitive includes) but failed under GNU g++ on the CI runner, which was blocking the Pages deploy.
+
+**Why:** The engine was strong but the *end result* hid it — alert correlation compressed 1.19:1 (its whole pitch is 40→1), and the Hungarian-vs-greedy dispatch gap was exactly zero on the shipped dashboard. Both were artefacts of a random-waypoint population that never converges, plus a correlator that couldn't accumulate an incident over time.
+
+**Impact (measured):**
+- Alert correlation: **1.44 → 376:1** on the demo (25,551 of 25,619 alerts absorbed into 68 incidents); on the dashboard run **77,622 alerts → 188 incidents**. The Sonapani mass incident is now a single card with **33 people** on it.
+- Dispatch: Hungarian gap restored — **4,273 m saved over greedy** on the 2 h road run (was 0).
+- Full suite still green (all 27 files, exit 0); the correlator test passes with the new cross-tick behaviour.
+
 ### 2026-08-24 — Zone editor: draw zones with live validation
 
 **What:** New `web/zone_editor.html` — click to draw a hazard zone, get a live self-intersection and overlap warning (JS port of the exact C++ orient/segs_cross logic), and export GeoJSON that ZoneStore loads directly. Found and fixed two real bugs while testing: a syntax error in the finish-button handler (extra closing paren), and a view-bounds bug where the map re-fit to the in-progress draft after every click, which silently distorted shapes mid-draw (a bowtie could stop looking like one).

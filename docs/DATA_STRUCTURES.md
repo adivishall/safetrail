@@ -82,7 +82,7 @@ predictive crossing, spatio-temporal clustering, hysteresis, adaptive sampling,
 Dijkstra, A*, Kuhn's matching, Hungarian assignment, Lamport reconciliation,
 polygon-nesting resolution, QR digital ID verification) **+ SHA-256** implemented
 from scratch and checked against NIST vectors. Every one is exercised by the test
-suite (10,941 checks across 27 files).
+suite (285 assertions across 28 files, each checked against a brute-force oracle).
 
 **Designed but not yet built (◻): none.** Every structure and algorithm in this
 inventory is implemented, exercised, and checked against a brute-force oracle. The
@@ -258,7 +258,7 @@ live at each of 120 historical versions and asserts the persistent index agrees 
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | 833 operator cards suppressed |
-| Unit tests | **10,941 checks across 27 real test files**, all pass |
+| Unit tests | **285 assertions across 28 files**, every fast structure vs a brute-force oracle, all pass |
 
 ## Measurements to produce
 

@@ -27,7 +27,7 @@ TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.c
          tests/ds/hash_table_test.cpp tests/ds/timer_wheel_test.cpp \
          tests/alert/correlator_test.cpp \
          tests/group/cohesion_test.cpp tests/golden/scenario_replay_test.cpp \
-         tests/golden/hysteresis_ab_test.cpp \
+         tests/golden/hysteresis_ab_test.cpp tests/golden/incident_formation_test.cpp \
          tests/evidence/merkle_log_test.cpp tests/evidence/digital_id_test.cpp \
          tests/graph/shortest_path_test.cpp tests/graph/matching_test.cpp \
          tests/dispatch/assigner_test.cpp \

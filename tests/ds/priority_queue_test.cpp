@@ -1,6 +1,8 @@
 // Binary heap: the heap property and sorted extraction, against std::sort truth.
 #include <algorithm>
+#include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 #include "safetrail/ds/priority_queue.hpp"
 #include "../test_harness.hpp"
