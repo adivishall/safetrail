@@ -43,11 +43,46 @@ those numbers real landed just before this tier (see
 holds under the stricter method — **100k: quadtree ~32×, R-tree ~35×, spread
 ±3–10%** — so "~33×" is now a figure with an error bar, not a lucky single run.
 
-## Tier 3 — Positioning for a resume  ·  status: ⬜ pending
+## Tier 3 — Positioning for a resume  ·  status: ✅ done
 
 | # | Flaw | Before | After |
 |---|---|---|---|
-| 9 | **Breadth reads as shallow** | 14 structures + 17 algorithms + simulator + dashboard + CI; an interviewer drills one. | _pending_ |
-| 10 | **"No `std::`" reads as NIH** | Framed as rigor; a senior engineer reads it as poor production judgment. | _pending_ |
-| 11 | **Category inflation** | Most of the repo mass is systems/sim/viz, not data structures. | _pending_ |
-| 12 | **Product framing oversells** | "The engine every team imports," "eleven gaps" — it is a simulation harness, not a deployable product. | _pending_ |
+| 9 | **Breadth reads as shallow** | 14 structures + 17 algorithms + simulator + dashboard + CI; an interviewer drills one. | Added the **Resume framing** section below: lead with depth (the persistent quadtree + the honest ceiling analysis), one disciplined bullet, and what *not* to quote. The README callout points evaluators at the graded core first. |
+| 10 | **"No `std::`" reads as NIH** | Framed as pure rigor; a senior engineer reads it as poor production judgment. | README ground rule now states it is a **deliberate learning constraint for the course, not a production recommendation** — in real software you'd use `std::unordered_map` and a mature spatial library. |
+| 11 | **Category inflation** | Most of the repo mass is systems/sim/viz, not data structures. | README "What this is" callout names the graded core (`geo/ index/ ds/ graph/`, ≈8k lines) and calls the simulator/dashboard/CI **scaffolding, not the deliverable**. |
+| 12 | **Product framing oversells** | "The engine every team imports," "runs offline on a device" — reads as a deployable product. | README callout states plainly: **course project, not a shipped product; no mobile app, no live server; real geography, simulated people.** "on a device" softened to "locally, no server, in simulation." GitHub About/description rewritten to lead with the data-structures framing. |
+
+---
+
+## Resume framing — how to present this without getting exposed
+
+The project's breadth is a liability in an interview: an interviewer picks **one**
+thing and drills to bedrock. Lead with depth, not the catalogue.
+
+**Do:**
+
+- **Lead with one advanced structure you can defend to the floor** — the
+  persistent path-copying quadtree. It is genuinely uncommon, it is real
+  (`shared_ptr<const Node>`, immutable nodes, measured 13× structural sharing),
+  and the "why the speedup ceilings at ~33×, not 29,000×" analysis shows judgment,
+  not just coding.
+- **Quote numbers with their caveats built in:** "≈33× over a brute-force oracle
+  (median of 7 runs, single machine), bounded by output size — analysed, not just
+  measured."
+- **Call it what it is:** a data-structures course project / simulation study.
+
+**Suggested one-liner** (defensible end to end):
+
+> Built a persistent (path-copying) quadtree in C++17 with reference-counted
+> immutable nodes for O(log n)-per-update historical queries; measured 13×
+> structural sharing over 5,000 versions and validated every index against a
+> brute-force oracle. Analysed why the spatial-index speedup is output-bound
+> (~33×), not the ~29,000× first predicted.
+
+**Don't:**
+
+- Don't quote a big test-count or "eleven gaps" as if breadth proves depth.
+- Don't imply a deployed product or real-world safety impact — the data is simulated.
+- Don't claim "O(log n) spatial index" unqualified — say "average-case; O(n) worst
+  case, which is why the AVL interval tree is the one with a real guarantee."
+- Don't list all 14 structures; name two or three you can whiteboard on demand.

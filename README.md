@@ -8,6 +8,18 @@ statement `SIH25002` (Ministry of Development of North Eastern Region), but
 deliberately not an implementation of it as written — see
 [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md).
 
+> **What this is — and what it isn't.** A **data-structures course project**, not a
+> shipped product. It reimplements by hand — no libraries — the spatial engine a
+> real tourist-safety system would normally delegate to PostGIS, so that the
+> *structures themselves* are the graded work. The geography is real
+> (OpenStreetMap); the tourists, their GPS noise, and the incidents are
+> **simulated on purpose** — simulation is what gives the ground truth to measure
+> against. The simulator, dashboard, and CI are scaffolding to exercise and see
+> the structures work, not the deliverable. There is **no mobile app and no live
+> server**: the engine is a C++ program that emits one self-contained HTML replay.
+> If you're evaluating the data-structures work, the graded core is `geo/`,
+> `index/`, `ds/`, and `graph/` (≈8k lines); read those first.
+
 ---
 
 ## The one-sentence difference
@@ -25,8 +37,9 @@ crossings before they happen. Detects group fragmentation and stragglers.
 Correlates floods of related alerts into single incidents. Assigns responders to
 incidents over a road network — shortest paths by Dijkstra/A*, and a provably
 optimal global assignment by the Hungarian algorithm, not just greedy nearest-first.
-Runs fully offline on a device and reconciles event logs on reconnect. Keeps a
-tamper-evident record of everything.
+Runs the whole evaluation locally against a serialised index — no server in the
+loop — and reconciles event logs on reconnect. Keeps a tamper-evident record of
+everything. (All of this exercised in simulation; there is no device or app.)
 
 ## Quickstart
 
@@ -148,7 +161,11 @@ counterpart in any existing implementation.
 **Every data structure is hand-written.** No `std::unordered_map`, no `std::set`,
 no `std::priority_queue`, no Boost.Geometry, no PostGIS. `std::vector` and
 `std::string` are permitted as raw storage. If a container does something
-interesting, we wrote it.
+interesting, we wrote it. This is a **deliberate learning constraint for the
+course** — the point is to implement and analyse the structures the course is
+about — **not** a production recommendation. In real software you would reach for
+`std::unordered_map` and a mature spatial library; here, reimplementing them is
+the assignment.
 
 **The naive baseline is a deliverable.** `BruteForceIndex` stays in the codebase
 forever behind the same interface as the fast implementations. It is the
