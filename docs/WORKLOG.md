@@ -6,6 +6,20 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-30 — Consistency + housekeeping (remaining work, batch A)
+
+**What:** Cleared the doc/deck staleness the hardening pass left behind, plus small housekeeping.
+
+1. **TEAM_BRIEF §6 rewritten.** It still said *"23 modules implemented, 28 still stubs"* and listed ~11 built modules as pick-up tasks. Replaced with an honest "everything in the inventory is built and oracle-tested; the only stubs left are the serverless `server/` scaffolding" and a complete "What's built" table.
+2. **Stale gap statuses fixed.** GAP 6 (offline sync), 10 (sweep-line validation) and 11 (jurisdiction) were marked ⬜/⚠️ in TEAM_BRIEF and "not yet built" in PRESENTATION — all three are built. Marked ✅; PRESENTATION's gap table now lists all eleven; its "Honest engineering" slide drops the "23 modules / 13 stubbed" line and adds the scenario/simulated caveats.
+3. **Deck refreshed.** `safetrail-overview.pptx` said *"27 files, ~10,900 assertions"* (now 285/28) and listed *"get CI green — one test doesn't compile"* as a Next item (done). Patched in place; the Next item now points at the console-polish work.
+4. **Removed a dead stub.** `src/sim/scenario.cpp` / `sim/scenario.hpp` were an empty `// TODO(impl)` — the scenario system lives in the simulator (`SimConfig::Scenario` + `apply_scenario`). Deleted; nothing referenced them and they weren't in the build.
+5. **CI:** bumped `actions/checkout@v4 → @v5` to clear the Node-20 deprecation warning.
+
+**Why:** The tiers made the numbers and claims honest, but left three docs and the deck asserting the old story — the same credibility gap, half-closed. A reviewer opening TEAM_BRIEF or the deck would see TODOs and counts that contradict the code.
+
+**Impact:** Suite green (exit 0) after removing the stub. No functional code changed.
+
 ### 2026-08-25 — Positioning pass (tier 3): honest framing for a resume
 
 **What:** Fixed how the project *presents itself*, so its breadth reads as depth and its claims survive an interview.

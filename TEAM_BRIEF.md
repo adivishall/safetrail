@@ -137,59 +137,48 @@ Each traces to a documented gap. Details in
 | 3 | Zones are static; risk isn't | A road closes after rain. We can also rewind: *"what were the rules at 14:32?"* — what an investigation actually needs | ✅ done |
 | 4 | Tourists tracked individually | They travel in groups. Someone 800 m behind and falling further behind is the incident | ✅ done |
 | 5 | One landslide, forty alert cards | Correlate them into **one incident** with forty people on it | ✅ done |
-| 6 | "Offline-first" that isn't | Theirs queues requests. Can't reach PostGIS = can't check a single zone. We ship the index to the device | ⬜ todo |
+| 6 | "Offline-first" that isn't | Theirs queues requests. Can't reach PostGIS = can't check a single zone. We serialise the index for local evaluation and reconcile event logs with Lamport clocks on reconnect | ✅ done |
 | 7 | Continuous GPS = 8–12% battery/hour | Sample based on how close the danger is | ✅ done |
 | 8 | Drift makes fences fire constantly | Hysteresis filter. **Removes 91% of false alerts** (measured under realistic correlated drift) | ✅ done |
 | 9 | Ethereum for a tamper-proof log | A Merkle log (RFC 6962, SHA-256 from scratch) gives the same property offline, no chain | ✅ done |
-| 10 | No validation on hand-drawn zones | Self-intersecting polygons make the geometry return garbage. We reject them | ⚠️ basic version done |
-| 11 | Nobody owns the alert across district lines | Resolve jurisdiction from nested boundaries | ⬜ todo |
+| 10 | No validation on hand-drawn zones | Self-intersecting polygons make the geometry return garbage. We reject them — pairwise check plus an O((n+k) log n) Shamos–Hoey sweep-line, and the zone editor warns live | ✅ done |
+| 11 | Nobody owns the alert across district lines | Resolve jurisdiction from nested administrative boundaries | ✅ done |
 
 ---
 
 ## 6. Where the project actually stands
 
-Honest status. **23 modules implemented, 28 still stubs.**
+Honest status. **Every structure and algorithm in the inventory is built,
+exercised, and cross-checked against a brute-force oracle.** Nothing in the
+data-structures inventory is designed-but-unbuilt any more. The only remaining
+`TODO(impl)` stubs are the `server/` scaffolding (the project is serverless by
+design — the engine emits one HTML file) and a couple of helpers whose logic
+lives in another file. Full inventory with complexity and status:
+[docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md).
 
-### Working
+### What's built
 
 | Area | Files | What's in it |
 |---|---|---|
-| Geometry | `geo/point, bbox, polygon, containment` | Haversine distance, polygons with holes, ray casting, winding number, signed distance, three-valued containment |
-| Spatial indexes | `index/brute_force, quadtree, rtree` | All three behind one interface |
+| Geometry | `geo/point, bbox, polygon, containment, sweep_line` | Haversine, polygons with holes, ray casting, winding number, signed distance, three-valued containment, Shamos–Hoey sweep-line (AVL status) |
+| Spatial indexes | `index/brute_force, quadtree, rtree, geohash, kd_tree` | Five indexes behind one interface; geohash serialises for offline |
 | Persistent index | `index/versioned_index` | Path-copying quadtree — query any past moment |
-| Data structures | `ds/dynamic_connectivity, circular_buffer, interval_tree` | Rollback union-find, ring buffer, AVL interval tree |
-| Zone evaluation | `fence/zone, hysteresis, evaluator` | GeoJSON loading, drift filter, the hot loop |
-| Tracking | `track/tourist` | Noise-tolerant speed/heading, trajectory projection |
-| Alerts | `alert/alert, correlator` | Spatio-temporal clustering into incidents |
+| General structures | `ds/dynamic_connectivity, circular_buffer, interval_tree, priority_queue, hash_table, timer_wheel` | Rollback union-find, ring buffer, AVL interval tree, binary heap, open-addressed hash table, hashed timing wheel |
+| Zone evaluation | `fence/zone, hysteresis, evaluator` | GeoJSON loading + validation, drift filter, the hot loop |
+| Tracking | `track/tourist, anomaly, trajectory` | Noise-tolerant speed/heading, stationary/signal-lost/off-route detection |
+| Alerts | `alert/alert, correlator, triage, escalation` | Cross-tick spatio-temporal clustering into incidents, heap triage, timer-wheel escalation |
 | Groups | `group/cohesion` | Fragmentation and straggler detection |
+| Graph + dispatch | `graph/road_graph, dijkstra, astar, bipartite_match; dispatch/` | Real OSM road graph, Dijkstra/A*, Kuhn's + Hungarian, greedy-vs-optimal assignment |
+| Offline + evidence | `sync/lamport, delta_sync; evidence/merkle_log, digital_id` | Lamport clocks + reconciler, RFC 6962 Merkle log + SHA-256, offline-verifiable QR ID |
+| Jurisdiction | `jurisdiction/hierarchy` | Nested-polygon ownership resolution |
 | Power | `power/adaptive_sampler` | Risk-proximity sampling |
-| Simulation | `sim/mobility, simulator` | Deterministic RNG, GPS error model, mobility models |
+| Simulation | `sim/mobility, simulator, recorder` | Deterministic RNG, GPS error model, mobility models, scripted incident scenario |
 | Support | `util/json`, `viz/html_export` | Hand-written JSON parser, dashboard generator |
 
-### Still stubs — pick one
-
-Headers exist with full interfaces and comments explaining what to build, so it's
-fill-in-the-blanks rather than a blank page.
-
-| Task | Files | Difficulty | What you'd learn |
-|---|---|---|---|
-| **Merkle evidence log** (GAP 9) | `evidence/merkle_log` + SHA-256 | Medium | Hash trees, inclusion proofs. Self-contained, good first task |
-| **Geohash index** | `index/geohash` | Medium | Z-order curves, bit interleaving. Slots straight into the benchmark |
-| **k-d tree** | `index/kd_tree` | Medium | Nearest-neighbour queries |
-| **Sweep line** (GAP 10) | `geo/sweep_line` | Hard | Bentley–Ottmann segment intersection |
-| **Road routing** | `graph/road_graph, dijkstra, astar` | Medium | Graphs, A* heuristics |
-| **Responder assignment** | `graph/bipartite_match`, `dispatch/` | Hard | Hungarian algorithm, matching |
-| **Offline sync** (GAP 6) | `sync/lamport, delta_sync` | Hard | Logical clocks, distributed ordering |
-| **Alert triage** | `alert/triage, escalation` | Easy | Binary heap, interval tree usage |
-| **Hash table** | `ds/hash_table` | Easy | Open addressing, linear probing, tombstone deletes |
-| **Anomaly detection** | `track/anomaly, trajectory` | Easy | Sliding windows, Douglas–Peucker |
-| **Jurisdiction** (GAP 11) | `jurisdiction/hierarchy` | Medium | Nested polygon containment |
-
-Suggested split: whoever wants graph algorithms takes routing + matching; whoever
-wants strings/hashing takes the Merkle log + hash table; whoever wants geometry
-takes sweep line + anomaly detection.
-
-Full phase plan with ordering: [docs/ROADMAP.md](docs/ROADMAP.md).
+Every fast structure has a unit test that checks it against a slow, obviously
+correct oracle, and the whole pipeline has an end-to-end test
+(`tests/golden/incident_formation_test.cpp`). Build order and history:
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 

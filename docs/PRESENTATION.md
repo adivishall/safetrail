@@ -47,7 +47,7 @@ a server-side database makes impossible.*
 
 Delegating containment to a cloud database fails in exactly the terrain this
 problem targets. Building the engine ourselves let us close eleven documented
-gaps. The eight we built:
+gaps — all eleven are now built:
 
 | # | The gap | What we do |
 |---|---|---|
@@ -56,13 +56,14 @@ gaps. The eight we built:
 | 3 | Zones are static; risk isn't | Zones turn on/off; we can **rewind** to "the rules at 14:32" |
 | 4 | Tourists tracked individually | They travel in **groups**; a straggler 400 m behind is the incident |
 | 5 | One landslide → forty alert cards | **Correlate** them into one incident |
+| 6 | "Offline-first" that only queues | **Serialise the index** for local eval; reconcile with **Lamport clocks** |
 | 7 | Continuous GPS = 8–12% battery/hr | **Sample by proximity** to danger |
-| 8 | GPS drift makes fences fire constantly | **Hysteresis filter** — removes 91% of false alerts |
+| 8 | GPS drift makes fences fire constantly | **Hysteresis filter** — removes ~91% of false alerts |
 | 9 | Ethereum for a tamper-proof log | **Merkle log**, offline-verifiable, no chain |
+| 10 | No validation on hand-drawn zones | Reject self-intersections — pairwise + **Shamos–Hoey sweep-line** |
+| 11 | No owner across district lines | Resolve **jurisdiction** from nested boundaries |
 
-*Full research with citations is in docs/GAP_ANALYSIS.md. Three more (offline sync,
-jurisdiction, faster self-intersection) are designed but not yet built — and we
-mark that honestly.*
+*Full research with citations is in docs/GAP_ANALYSIS.md.*
 
 ---
 
@@ -201,8 +202,11 @@ the measurements caught — including one found by looking at the visualisation.
 - **Worst case:** the quadtree/R-tree are O(n) worst case (they partition space,
   not data; clustered hazards are the bad case). The **AVL interval tree** is the
   one with a guaranteed O(log n).
-- **Scope:** 23 modules built, ~13 designed-but-stubbed (routing, dispatch, offline
-  sync). Marked ◻ / ✅ throughout — never a stub claimed as done.
+- **Scope:** the whole data-structures inventory is built and tested; the only
+  stubs left are the serverless `server/` scaffolding (serverless by design). The
+  benchmark numbers are on **simulated** data, ratio to our own brute force.
+- **Results are scenario-dependent:** correlation and dispatch reflect a scripted
+  incident (~450:1 clustered vs ~9:1 scattered) — we report both.
 - **The tourists are simulated.** Real geography, simulated people, on purpose.
 - **The dashboard is a deterministic replay**, not a live server.
 
