@@ -6,6 +6,24 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-08-30 — Dashboard: operator console + structure visibility (remaining work, batch B/C)
+
+**What:** Turned the dashboard from debug output into something that reads like an operator console and, crucially, makes the graded data structures visible on screen.
+
+1. **Incident feed [GAP 5].** New top panel showing the largest correlated incidents as cards — "33 people · 1 card · Sonapani Waterfall Cliff · 75,763 alerts correlated into this incident." The correlation headline is now the first thing you see, not a buried counter. Exports the top incidents (people, severity, alert count, nearest authored hazard) from the correlator.
+
+2. **Merkle proof, verified in the browser [GAP 9].** New evidence panel commits the event stream to a Merkle root and exports one inclusion proof; a "verify offline" button recomputes the root from the leaf + proof using a hand-written **SHA-256 + RFC 6962** in JS. The recomputed root is compared to the exported root, so the ✓ is genuine — confirmed byte-exact against the C++ root (`6510c12b…`). The property Ethereum was used for, checked with no network and no chain.
+
+3. **The spatial prune, made visible.** Selecting a tourist now draws the query neighbourhood (white dashed) and highlights the index cells it actually touches ("N index cells touched") — the O(log n + k) story on the map, not just in a counter.
+
+4. **Panels cleaned up.** Rules-in-force is grouped and colour-coded, collapsing repetitive families (`Deep Water ×18`, `Dense Forest ×14`) and sorting in-force restricted/caution first. The change log collapses the 00:00 bulk load into one line and shows the real mid-run validity windows (Wards Lake 00:30–01:30, Love Jungle from 00:45) — the GAP 3 "rewind" made legible. The event stream drops synthetic-zone events (scale-test geometry, not hazards). Added a "saved by Hungarian" counter so the greedy-vs-optimal gap is explicit.
+
+5. **Export correctness.** The exporter now uses the real `Zone.synthetic` flag instead of sniffing the zone name.
+
+**Why:** The engine work made the results real, but the deliverable still hid them — the 33-person incident, the working index prune, the offline-verifiable evidence were all invisible. A resume/portfolio artefact is judged on what a viewer can see and try.
+
+**Impact:** Dashboard regenerated and verified in-browser: incident feed populated, Merkle proof verifies (JS root == C++ root), prune highlight renders, panels grouped, event rail free of synthetic noise. Suite green. Honesty held: the dispatch gap (615 m on this config) and the GAP-3 timeline show the real numbers — no dialling to flatter.
+
 ### 2026-08-30 — Consistency + housekeeping (remaining work, batch A)
 
 **What:** Cleared the doc/deck staleness the hardening pass left behind, plus small housekeeping.
