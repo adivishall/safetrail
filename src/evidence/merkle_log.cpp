@@ -1,6 +1,10 @@
 #include "safetrail/evidence/merkle_log.hpp"
+
 #include <cstring>
 #include <fstream>
+#include <sstream>
+
+#include "safetrail/util/bytes.hpp"
 
 // RFC 6962 Merkle tree (the Certificate Transparency construction). The reason to
 // follow it exactly rather than invent a hash chain: it gives CONSISTENCY proofs
@@ -147,33 +151,65 @@ bool MerkleLog::verify_consistency(uint64_t old_size, const Hash& old_root,
   return h1 == old_root && h2 == new_root && it == proof.size();
 }
 
+// ── On-disk format ────────────────────────────────────────────────────────────
+//   ["MKL1" magic u32][count u64] then count x { len u64, len bytes }
+//
+// Explicitly little-endian (util/bytes.hpp) and validated on the way in. The old
+// version wrote native integers and then did `std::vector<uint8_t> e(len)` on an
+// unvalidated 64-bit length, so a corrupt or hostile file was an out-of-memory
+// abort rather than a parse error -- in the module whose entire purpose is
+// tamper EVIDENCE, which makes "reads a tampered file safely" part of the job
+// rather than a nicety.
+//
+// Load rebuilds into a temporary log and commits only on success, so a truncated
+// file cannot leave a half-loaded log whose root looks plausible.
+namespace {
+constexpr uint32_t kLogMagic = 0x314C4B4D;         // "MKL1"
+constexpr uint64_t kMaxEntryBytes = 1u << 24;      // 16 MB, far past any event record
+constexpr uint64_t kMaxEntries    = 1u << 26;      // 67M entries
+}  // namespace
+
 bool MerkleLog::save(const std::string& path) const {
-  std::ofstream f(path, std::ios::binary);
-  if (!f) return false;
-  uint64_t n = entries_.size();
-  f.write(reinterpret_cast<const char*>(&n), sizeof n);
+  std::vector<uint8_t> buf;
+  util::put_u32(buf, kLogMagic);
+  util::put_u64(buf, uint64_t(entries_.size()));
   for (const auto& e : entries_) {
-    uint64_t len = e.size();
-    f.write(reinterpret_cast<const char*>(&len), sizeof len);
-    if (len) f.write(reinterpret_cast<const char*>(e.data()), std::streamsize(len));
+    util::put_u64(buf, uint64_t(e.size()));
+    buf.insert(buf.end(), e.begin(), e.end());
   }
+  std::ofstream f(path, std::ios::binary | std::ios::trunc);
+  if (!f) return false;
+  if (!buf.empty())
+    f.write(reinterpret_cast<const char*>(buf.data()), std::streamsize(buf.size()));
   return bool(f);
 }
 
 bool MerkleLog::load(const std::string& path) {
   std::ifstream f(path, std::ios::binary);
   if (!f) return false;
-  leaves_.clear(); entries_.clear();
+  std::stringstream ss;
+  ss << f.rdbuf();
+  const std::string blob = ss.str();
+  util::Reader r(reinterpret_cast<const uint8_t*>(blob.data()), blob.size());
+
+  uint32_t magic = 0;
   uint64_t n = 0;
-  f.read(reinterpret_cast<char*>(&n), sizeof n);
+  if (!r.u32(&magic) || magic != kLogMagic) return false;
+  if (!r.u64(&n) || n > kMaxEntries) return false;
+
+  MerkleLog loaded;
   for (uint64_t i = 0; i < n; ++i) {
     uint64_t len = 0;
-    f.read(reinterpret_cast<char*>(&len), sizeof len);
-    std::vector<uint8_t> e(len);
-    if (len) f.read(reinterpret_cast<char*>(e.data()), std::streamsize(len));
-    if (!f) return false;
-    append(e);
+    if (!r.u64(&len)) return false;
+    if (len > kMaxEntryBytes) return false;        // refuse before allocating
+    std::vector<uint8_t> e;
+    if (len && !r.bytes(size_t(len), &e)) return false;
+    loaded.append(e);
   }
+  if (!r.at_end()) return false;                   // trailing garbage
+
+  leaves_ = std::move(loaded.leaves_);
+  entries_ = std::move(loaded.entries_);
   return true;
 }
 

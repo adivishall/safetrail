@@ -159,7 +159,7 @@ This two-layer split is the most important idea in the simulation:
 
 Because *we* hold the truth and the engine doesn't, every accuracy claim is
 checkable — that is what "ground truth" means, and it is why the project can
-report *"91% of false alerts removed under realistic drift"* rather than just *"it seems to work."*
+report *"93% of false alerts removed under realistic drift"* rather than just *"it seems to work."*
 `apply_gps_error()` deliberately emits an `UncertainPoint` (lat, lon, accuracy,
 time) — the exact shape a real phone GPS reading has, which is what makes the
 real-deployment swap a one-line change.
@@ -190,8 +190,9 @@ their work. Eight steps:
    indexed: 200 × (log n + ~2 candidates × 40 vertices) ≈ 27,000 ops / tick
 ```
 
-On the real 438-zone run, the index prunes each query from 438 zones to **2.42
-candidates on average — a 181× reduction** — before any expensive geometry runs.
+On the real 438-zone run (the `make dashboard` configuration), the index prunes
+each query from 438 zones to **3.75 candidates on average — a 117× reduction** —
+before any expensive geometry runs.
 
 **Step 6 is the subtle one.** The evaluator emits *transitions* ("entered",
 "exited"), never "still inside" repeated every tick. That single decision is the

@@ -17,7 +17,6 @@ class BruteForceIndex final : public SpatialIndex {
   void insert(ZoneId id, const geo::Bbox& box) override;
   bool remove(ZoneId id) override;
   void query(const geo::Bbox& q, std::vector<ZoneId>& out) const override;
-  void nearest(const geo::LatLon& p, size_t k, std::vector<ZoneId>& out) const override;
   size_t size() const override { return items_.size(); }
   IndexStats stats() const override;
   void reset_counters() override;

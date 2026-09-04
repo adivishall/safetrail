@@ -10,16 +10,28 @@ Evaluator::Evaluator(const index::SpatialIndex& idx, const ZoneStore& zones,
 
 void Evaluator::reset_counters() { counters_ = Counters{}; }
 
+const char* to_string(CandidatePolicy p) {
+  switch (p) {
+    case CandidatePolicy::ExactAlways: return "exact-always";
+    case CandidatePolicy::NearestFirstCapped: return "nearest-first-capped";
+  }
+  return "?";
+}
+
 // Query radius, derived rather than guessed. We need two things from the index:
 //   - zones that could CONTAIN the tourist  -> radius = position uncertainty
 //   - zones they could REACH within the prediction horizon (GAP 2)
 //                                           -> radius = speed x horizon
 // A fixed 20 km guess returns every zone in the district and silently defeats
 // the index -- the pruning ratio drops to 1x and the whole design stops paying.
-static double query_radius_m(const track::Tourist& t, const EvaluatorConfig& cfg) {
-  const double reach = t.speed_mps() * cfg.prediction_horizon_s;
+// The bounds are config (see EvaluatorConfig) because they are project
+// constraints, not properties of the problem.
+double Evaluator::query_radius_m(const track::Tourist& t) const {
+  const double reach = t.speed_mps() * cfg_.prediction_horizon_s;
   const double r = t.last_fix.accuracy_m + (reach > 0 ? reach : 0.0);
-  return r < 100.0 ? 100.0 : (r > 10000.0 ? 10000.0 : r);
+  if (r < cfg_.min_query_radius_m) return cfg_.min_query_radius_m;
+  if (r > cfg_.max_query_radius_m) return cfg_.max_query_radius_m;
+  return r;
 }
 
 void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& out) {
@@ -34,11 +46,34 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
   // The entire performance story. 100k zones -> a handful of candidates before
   // any O(V) geometry runs.
   candidate_buf_.clear();
-  index_.query(geo::Bbox::around(t.last_fix.pos, query_radius_m(t, cfg_)), candidate_buf_);
+  const double radius = query_radius_m(t);
+  if (radius >= cfg_.max_query_radius_m) ++counters_.radius_clamped_max;
+  index_.query(geo::Bbox::around(t.last_fix.pos, radius), candidate_buf_);
 
   if (candidate_buf_.size() > cfg_.max_candidates) {
     ++counters_.candidate_cap_hits;
-    candidate_buf_.resize(cfg_.max_candidates);
+    if (cfg_.candidate_policy == CandidatePolicy::NearestFirstCapped) {
+      // Rank before cutting. Key: (bbox distance to the fix, then -severity, then
+      // zone id) -- so what survives the cut is the near and the dangerous, and
+      // the choice is deterministic rather than "whatever order the quadtree
+      // walked". Still an approximation, and still counted as one.
+      ranked_buf_.clear();
+      ranked_buf_.reserve(candidate_buf_.size());
+      for (ZoneId zid : candidate_buf_) {
+        const Zone* z = zones_.get(zid);
+        const double d = z ? z->shape.bbox().min_distance_m(t.last_fix.pos) : 1e12;
+        const double sev = z ? double(z->severity) : 0.0;
+        ranked_buf_.emplace_back(d - sev * 1e-6, zid);   // severity breaks near-ties
+      }
+      std::sort(ranked_buf_.begin(), ranked_buf_.end());
+      counters_.candidates_dropped += candidate_buf_.size() - cfg_.max_candidates;
+      candidate_buf_.clear();
+      for (size_t i = 0; i < cfg_.max_candidates; ++i)
+        candidate_buf_.push_back(ranked_buf_[i].second);
+    }
+    // ExactAlways: the cap is a diagnostic. Nothing is dropped -- a discarded
+    // candidate is a missed breach, and that is not a trade this system makes by
+    // default. See CandidatePolicy.
   }
   counters_.candidates_examined += candidate_buf_.size();
 
@@ -54,20 +89,25 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
     // it does not exist right now, so it must not generate transitions either way.
     if (!z->validity.active_at(now_ms)) continue;
 
-    // Cheap bbox pre-reject before the O(V) polygon distance.
+    // Bbox distance, used only to feed the adaptive sampler's "how far is the
+    // nearest thing I could breach" number cheaply. It is deliberately NOT a
+    // reject: the predictive path (step 8) cares about zones the tourist could
+    // reach within the horizon, which are by definition further away than the
+    // accuracy radius, so rejecting on that would delete exactly the alerts
+    // GAP 2 exists to produce.
     const double box_d = z->shape.bbox().min_distance_m(t.last_fix.pos);
-    if (box_d > t.last_fix.accuracy_m + cfg_.bbox_slack_m && box_d > 0.0)
-      nearest_m = std::min(nearest_m, box_d);
+    if (box_d > 0.0) nearest_m = std::min(nearest_m, box_d);
     ++counters_.exact_tests_run;
 
     // ── 5. exact three-valued geometry  [GAP 1] ──────────────────────────────
-    const double sd = geo::signed_distance_m(z->shape, t.last_fix.pos);
+    // Via geo::evaluate, which owns the Inside/Uncertain/Outside rule. This
+    // module adds POLICY (hysteresis, dwell, prediction) on top of that verdict;
+    // it does not get to define containment itself. It used to re-derive the
+    // classification from signed_distance_m with its own comparisons -- a second
+    // copy of the semantics, free to drift from the one the geometry tests pin.
+    double sd = 0.0;
+    const geo::Containment raw = geo::evaluate(z->shape, t.last_fix, &sd);
     nearest_m = std::min(nearest_m, std::fabs(sd));
-
-    geo::Containment raw;
-    if (sd < -t.last_fix.accuracy_m)      raw = geo::Containment::Inside;
-    else if (sd > t.last_fix.accuracy_m)  raw = geo::Containment::Outside;
-    else                                  raw = geo::Containment::Uncertain;
 
     // ── 6. hysteresis  [GAP 8] ───────────────────────────────────────────────
     track::ZoneState& st = t.state_for(zid);

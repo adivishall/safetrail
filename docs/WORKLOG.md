@@ -6,6 +6,101 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-04 — Correctness and invariant hardening (tier 4)
+
+**What:** A deeper audit than tiers 1–3, which had checked what the project
+*claimed*. This one checked what it *did*: every structure's behaviour under
+deletion and churn, every serialisation format against malformed input, every
+place two layers could disagree about the same question, and every asymptotic
+claim against the code implementing it. Twelve defects fixed; the full
+before/problem/fix/test ledger is [Tier 4 in
+RESUME_HARDENING.md](RESUME_HARDENING.md).
+
+The ones that mattered most:
+
+1. **The persistent index answered historical queries with today's rules.** Zone
+   validity lived in a mutable current-state array, so `query_at(t)` fetched the
+   right historical geometry and then filtered it with whatever the rules had
+   since become. The one question the structure exists to answer returned an
+   answer that had never been true at any point in time. Validity is now a
+   per-zone append-only log of `(version, Validity)` records — O(1) per change,
+   O(log h) lookup — so the structural-sharing argument survives intact rather
+   than being traded for a per-version snapshot.
+
+2. **Serialisation lost information that changed answers.** The road-graph format
+   wrote one line per unordered pair and reloaded through `add_road()`, so one-way
+   streets came back two-way and non-geometric weights came back as distances —
+   shortest paths through a round-tripped graph *differed*. Format v2 writes
+   directed edges with their own weights (v1 still reads). The GeoJSON writer
+   silently dropped kind, dwell, validity, jurisdiction, margins and every hole,
+   and concatenated names unescaped so a zone named `Nohkalikai "Falls"` produced
+   a file its own loader rejected. Both are now byte-identical round trips with
+   field-by-field tests.
+
+3. **The candidate cap could lose a breach.** Overflow was handled by
+   `resize(cap)` — truncation in quadtree traversal order, which has nothing to do
+   with risk. In a safety system a dropped candidate is a false negative. The
+   default policy now treats the cap as a diagnostic and evaluates everything; the
+   capped mode is opt-in, ranks by (distance, severity) before cutting, and
+   reports what it dropped.
+
+4. **Structures decayed under churn.** Quadtree deletion never collapsed a
+   subdivision, R-tree deletion never condensed, geohash query padding only ever
+   grew, and the hash table doubled to make room for tombstones — so a table
+   churning a fixed 100-key live set grew without bound. All four fixed and
+   measured: quadtree 309 → 33 nodes after deleting 900 of 1,000 and 1.00× across
+   four full cycles; geohash keys scanned per query 489 → 110; hash table zero
+   growths across 50,000 churned keys.
+
+5. **Interval tree deletion was O(n) tombstoning** in the structure whose selling
+   point is O(log n) — and it broke the AVL evidence, because `count_` fell while
+   the height did not, so `balanced()` compared a real height to a fictional *n*.
+   Replaced with real AVL deletion plus a `check_invariants()` structural audit.
+
+6. **The two containment implementations disagreed about holes.** Kept
+   specifically to cross-validate each other, they returned opposite answers for
+   the interior of a counter-clockwise hole inside a counter-clockwise shell —
+   which is what most GeoJSON producers emit. Found by the new hole test, which is
+   exactly the job the second implementation is there for.
+
+7. **Determinism was a claim with nothing checking it.** Explicit tie-breaks added
+   to both shortest-path frontiers, the k-d tree build and queries, equal-cost
+   parent selection and the Hungarian scan; `make determinism` and
+   `golden/determinism_test` now gate it.
+
+Also: `geo/segment.hpp` (one definition of the segment predicates, previously
+written three times with three epsilons), `geo/projection.hpp` (planar arithmetic
+in metres instead of degrees, with a measured error budget), `util/bytes.hpp`
+(explicitly little-endian codec — three formats claimed a fixed layout while doing
+host-endian `memcpy`), a hardened JSON parser, jurisdiction containment that works
+on concave regions, and R-tree **STR bulk loading**.
+
+**Why:** Tiers 1–3 made the project's *claims* honest. They did not check its
+*invariants*, and an examiner who stops reading the docs and starts reading the
+code finds invariants. Several of these — the persistent index filtering history
+with current rules, the lossy graph round-trip, the truncating candidate cap —
+would have been fatal in a viva precisely because the code looked correct and the
+tests passed.
+
+**Impact:** 691 assertions across 39 files (was 285/28), 0 failures. Whole suite
+clean under UndefinedBehaviorSanitizer with `-fno-sanitize-recover`; ASan+UBSan
+now gates CI over the whole suite rather than 2 of 28 files. `make test` went from
+~4 min to ~23 s by compiling the core once into an archive instead of per test.
+Make and CMake now glob the same source set, so they cannot drift.
+
+**One new result, not a fix:** switching the R-tree's `build()` from repeated
+insertion to STR bulk packing made queries **6.5× faster** on the same data with
+the same query code, and the tree 33% smaller — taking it from ~33× over brute
+force at 100k zones to ~247×. Same machine, same benchmark: the difference is
+entirely how the tree was assembled.
+
+**Honest note:** AddressSanitizer cannot run on this development machine at all —
+macOS 26 with Apple clang 17 hangs any ASan binary, including an empty
+`int main(){}`, in dyld before `main`. ASan is authoritative in CI (Linux/g++) and
+`make ubsan` exists so the local machine has a sanitizer it can actually run. That
+is a platform limitation being disclosed, not sanitizer coverage being quietly
+dropped.
+
 ### 2026-08-30 — Dashboard: operator console + structure visibility (remaining work, batch B/C)
 
 **What:** Turned the dashboard from debug output into something that reads like an operator console and, crucially, makes the graded data structures visible on screen.

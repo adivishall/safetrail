@@ -8,6 +8,9 @@
 //   6. Routing            A* vs Dijkstra node expansions
 //   7. Dispatch           greedy vs optimal responder assignment
 //   8. Power              adaptive sampling vs continuous polling  [GAP 7]
+//   9. Bulk loading       R-tree: STR packing vs repeated insertion
+//  10. Churn              what insert/delete does to each structure over time
+//  11. Serialisation      blob size, write time, read time
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -25,6 +28,7 @@
 #include "safetrail/dispatch/assigner.hpp"
 #include "safetrail/dispatch/responder.hpp"
 #include "safetrail/power/adaptive_sampler.hpp"
+#include "safetrail/ds/hash_table.hpp"
 #include "safetrail/sim/simulator.hpp"
 
 using namespace safetrail;
@@ -395,6 +399,199 @@ static void bench_power(FILE* csv) {
   printf("  essentially every second the tourist is near a hazard (recall stays high).\n");
 }
 
+
+// ── 9. Bulk loading: STR vs repeated insertion ───────────────────────────────
+//
+// Inserting n items one at a time makes every ChooseSubtree decision blind to the
+// items still to come, so early splits are guesses and node boxes end up
+// overlapping more than they need to. Overlap is what forces a query down several
+// branches, so it is the thing that actually costs query time. STR knows the
+// whole set up front and packs it into near-square tiles.
+//
+// Four numbers, because "better" needs to be specific: build time, tree size,
+// query time, and -- the one that explains the others -- how many nodes a query
+// has to visit.
+static void bench_bulkload(FILE* csv) {
+  printf("\n\033[1m9. BULK LOADING\033[0m   R-tree: STR packing vs repeated insertion\n");
+  printf("  %8s  %11s  %11s  %9s  %9s  %11s  %11s  %8s\n",
+         "zones", "insert ms", "STR ms", "ins nodes", "STR nodes",
+         "ins us/qry", "STR us/qry", "gain");
+  printf("  ────────────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "zones,incremental_build_ms,str_build_ms,incremental_nodes,str_nodes,"
+                        "incremental_depth,str_depth,incremental_us,str_us,query_gain\n");
+
+  for (size_t n : {1000u, 10000u, 50000u, 100000u}) {
+    Corpus c = make_corpus(n, 2000, 31337);
+
+    index::RTree inc;
+    auto t0 = Clock::now();
+    inc.build_incremental(c.boxes);
+    const double inc_ms = ms_since(t0);
+
+    index::RTree str;
+    t0 = Clock::now();
+    str.build(c.boxes);
+    const double str_ms = ms_since(t0);
+
+    const Timing inc_t = time_queries(inc, c, 450);
+    const Timing str_t = time_queries(str, c, 450);
+    const auto is = inc.stats(), ss = str.stats();
+
+    printf("  %8zu  %11.1f  %11.1f  %9zu  %9zu  %11.2f  %11.2f  %7.2fx\n",
+           n, inc_ms, str_ms, is.node_count, ss.node_count,
+           inc_t.median_us, str_t.median_us,
+           str_t.median_us > 0 ? inc_t.median_us / str_t.median_us : 0.0);
+    if (csv) fprintf(csv, "%zu,%.2f,%.2f,%zu,%zu,%zu,%zu,%.4f,%.4f,%.3f\n",
+                     n, inc_ms, str_ms, is.node_count, ss.node_count,
+                     is.max_depth, ss.max_depth, inc_t.median_us, str_t.median_us,
+                     str_t.median_us > 0 ? inc_t.median_us / str_t.median_us : 0.0);
+  }
+  printf("\n  Both are O(n log n) to build. What differs is tree QUALITY: STR's tiles\n");
+  printf("  overlap less, so fewer branches are entered per query. A gain near 1.00x on\n");
+  printf("  this corpus would mean the zones are uniform enough that insertion order\n");
+  printf("  barely matters -- which is itself worth reporting rather than hiding.\n");
+}
+
+// ── 10. Churn ────────────────────────────────────────────────────────────────
+//
+// Every structure here was originally written as if it were built once and
+// queried forever. This measures what a long-running index actually experiences:
+// repeated insert and delete, with the live set held constant. The failure being
+// measured is not wrongness -- correctness is asserted in the tests -- it is
+// DECAY: node counts that never come back down, and query times that drift up.
+static void bench_churn(FILE* csv) {
+  printf("\n\033[1m10. CHURN\033[0m   insert/delete cycles at a constant live-set size\n");
+  if (csv) fprintf(csv, "structure,metric,fresh,after_churn,ratio\n");
+
+  Corpus c = make_corpus(2000, 1500, 5150);
+  sim::Rng rng(24680);
+
+  auto churn_index = [&](index::SpatialIndex& ix, const char* name) {
+    ix.build(c.boxes);
+    const auto fresh_stats = ix.stats();
+    const Timing fresh = time_queries(ix, c, 450);
+
+    // 20 rounds of "add 2000 new zones, then remove them again". The live set
+    // returns to exactly the original 2000 every round.
+    index::ZoneId next = index::ZoneId(c.boxes.size());
+    for (int round = 0; round < 20; ++round) {
+      std::vector<index::ZoneId> added;
+      for (size_t i = 0; i < c.boxes.size(); ++i) {
+        const double clat = rng.range(25.40, 25.75), clon = rng.range(91.70, 92.05);
+        const double r = rng.range(0.0003, 0.0022);
+        ix.insert(next, {clat - r, clon - r, clat + r, clon + r});
+        added.push_back(next);
+        ++next;
+      }
+      for (index::ZoneId id : added) ix.remove(id);
+    }
+
+    ix.reset_counters();
+    const auto churned_stats = ix.stats();
+    const Timing after = time_queries(ix, c, 450);
+
+    printf("  %-10s  live %5zu   nodes %6zu -> %6zu (%.2fx)   %7.2f -> %7.2f us/query (%.2fx)\n",
+           name, ix.size(), fresh_stats.node_count, churned_stats.node_count,
+           fresh_stats.node_count ? double(churned_stats.node_count) / double(fresh_stats.node_count) : 0.0,
+           fresh.median_us, after.median_us,
+           fresh.median_us > 0 ? after.median_us / fresh.median_us : 0.0);
+    if (csv) {
+      fprintf(csv, "%s,nodes,%zu,%zu,%.3f\n", name, fresh_stats.node_count,
+              churned_stats.node_count,
+              fresh_stats.node_count ? double(churned_stats.node_count) / double(fresh_stats.node_count) : 0.0);
+      fprintf(csv, "%s,query_us,%.4f,%.4f,%.3f\n", name, fresh.median_us, after.median_us,
+              fresh.median_us > 0 ? after.median_us / fresh.median_us : 0.0);
+      fprintf(csv, "%s,bytes,%zu,%zu,%.3f\n", name, fresh_stats.bytes, churned_stats.bytes,
+              fresh_stats.bytes ? double(churned_stats.bytes) / double(fresh_stats.bytes) : 0.0);
+    }
+  };
+
+  { index::Quadtree qt; churn_index(qt, "quadtree"); }
+  { index::RTree rt;    churn_index(rt, "r-tree"); }
+  { index::Geohash gh;  churn_index(gh, "geohash"); }
+
+  // The hash table's failure mode is different: tombstones, not nodes. A table
+  // holding a constant live set must not grow without bound while churning.
+  {
+    ds::HashMap<uint32_t, uint32_t> h;
+    for (uint32_t i = 0; i < 2000; ++i) h.put(i, i);
+    const size_t fresh_buckets = h.bucket_count();
+    for (uint32_t round = 0; round < 200; ++round)
+      for (uint32_t i = 0; i < 2000; ++i) {
+        const uint32_t k = 100000 + round * 2000 + i;
+        h.put(k, k);
+        h.erase(k);
+      }
+    printf("  %-10s  live %5zu   buckets %6zu -> %6zu (%.2fx)   %zu same-size rebuilds, "
+           "%zu growths\n",
+           "hash table", h.size(), fresh_buckets, h.bucket_count(),
+           double(h.bucket_count()) / double(fresh_buckets), h.rehashes(), h.growths());
+    if (csv) fprintf(csv, "hash_table,buckets,%zu,%zu,%.3f\n", fresh_buckets,
+                     h.bucket_count(), double(h.bucket_count()) / double(fresh_buckets));
+  }
+
+  printf("\n  A ratio near 1.00x means the structure returns to the shape its live set\n");
+  printf("  deserves. Before compaction these grew without bound -- the quadtree kept the\n");
+  printf("  subdivision of its high-water mark, the r-tree kept underfull nodes, and the\n");
+  printf("  hash table doubled to make room for tombstones.\n");
+  printf("  The r-tree does NOT return all the way to 1.00x, and that is expected rather\n");
+  printf("  than a residual bug: condensing reinserts orphaned entries from the root, so\n");
+  printf("  a churned tree is a validly-shaped but differently-grouped tree, not the one\n");
+  printf("  a fresh build would produce. It is bounded, which is the property that\n");
+  printf("  matters; the unbounded growth is gone. Guttman-style same-level reinsertion\n");
+  printf("  would close the gap and is noted as a deliberate non-goal in the header.\n");
+}
+
+// ── 11. Serialisation  [GAP 6] ───────────────────────────────────────────────
+//
+// The offline claim is that a district's zones ship to a device as a compact blob
+// and are queried locally with no server. That is a size and a latency, so both
+// are measured rather than asserted.
+static void bench_serialization(FILE* csv) {
+  printf("\n\033[1m11. SERIALISATION  [GAP 6]\033[0m   geohash blob: size and round-trip cost\n");
+  printf("  %8s  %11s  %10s  %11s  %11s  %11s\n",
+         "zones", "bytes", "bytes/zone", "write ms", "read ms", "MB/s read");
+  printf("  ──────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "zones,bytes,bytes_per_zone,write_ms,read_ms,read_mb_s\n");
+
+  for (size_t n : {1000u, 10000u, 100000u}) {
+    Corpus c = make_corpus(n, 1, 4242);
+    index::Geohash gh;
+    gh.build(c.boxes);
+
+    std::vector<uint8_t> blob;
+    gh.serialize(blob);                       // warmup
+    constexpr int kRuns = 5;
+    double w[kRuns], r[kRuns];
+    for (int i = 0; i < kRuns; ++i) {
+      auto t0 = Clock::now();
+      gh.serialize(blob);
+      w[i] = ms_since(t0);
+      index::Geohash back;
+      t0 = Clock::now();
+      back.deserialize(blob);
+      r[i] = ms_since(t0);
+    }
+    std::sort(w, w + kRuns);
+    std::sort(r, r + kRuns);
+    const double wm = w[kRuns / 2], rm = r[kRuns / 2];
+    const double mb = double(blob.size()) / (1024.0 * 1024.0);
+
+    printf("  %8zu  %11zu  %10.1f  %11.2f  %11.2f  %11.1f\n",
+           n, blob.size(), double(blob.size()) / double(n), wm, rm,
+           rm > 0 ? mb / (rm / 1000.0) : 0.0);
+    if (csv) fprintf(csv, "%zu,%zu,%.2f,%.4f,%.4f,%.1f\n", n, blob.size(),
+                     double(blob.size()) / double(n), wm, rm,
+                     rm > 0 ? mb / (rm / 1000.0) : 0.0);
+  }
+  printf("\n  44 bytes per zone: a 48-bit Morton key, a 32-bit id and four doubles.\n");
+  printf("  A whole district fits in a few hundred kB -- which is the actual offline\n");
+  printf("  argument, and it is a number rather than an adjective.\n");
+  printf("  Layout is explicitly little-endian (util/bytes.hpp), so the blob is portable\n");
+  printf("  across hosts; deserialisation validates and REFUSES malformed input rather\n");
+  printf("  than loading a prefix (tests/index/serialization_test.cpp).\n");
+}
+
 int main(int argc, char** argv) {
   std::string out;
   for (int i = 1; i < argc; ++i)
@@ -430,6 +627,18 @@ int main(int argc, char** argv) {
   FILE* f6 = out.empty() ? nullptr : fopen((out + "/power.csv").c_str(), "w");
   bench_power(f6);
   if (f6) fclose(f6);
+
+  FILE* f7 = out.empty() ? nullptr : fopen((out + "/index_build.csv").c_str(), "w");
+  bench_bulkload(f7);
+  if (f7) fclose(f7);
+
+  FILE* f8 = out.empty() ? nullptr : fopen((out + "/index_churn.csv").c_str(), "w");
+  bench_churn(f8);
+  if (f8) fclose(f8);
+
+  FILE* f9 = out.empty() ? nullptr : fopen((out + "/serialization.csv").c_str(), "w");
+  bench_serialization(f9);
+  if (f9) fclose(f9);
 
   printf("\n═════════════════════════════════════════════════════════════════════════════\n");
   printf("  correctness gates: equivalence %s   containment %s\n",

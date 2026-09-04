@@ -26,6 +26,33 @@
 //       O(log²n) amortised, handles arbitrary edge deletion. Correct and far
 //       beyond what this problem needs. Mentioned in future work.
 //
+// ── Where rollback is actually used, stated plainly ──────────────────────────
+//
+// Not in the runtime pipeline. group::CohesionMonitor rebuilds the DSU from
+// scratch every tick, and alert::Correlator builds a fresh one per batch; neither
+// calls snapshot()/rollback_to(). It would be easy to imply otherwise and claim a
+// speedup, so: there is no such speedup, and this file is not what makes the tick
+// loop fast.
+//
+// Why keep it, then. Two reasons, both honest:
+//
+//   1. It is the course-level dynamic-connectivity structure, and it is
+//      implemented, tested against a brute-force oracle on randomised
+//      merge/split sequences, and defensible in a viva -- including the part that
+//      is genuinely interesting, which is WHY path compression has to go (an
+//      unbounded number of parent writes per find cannot be recorded on a bounded
+//      undo stack) and what that costs (O(log n) find instead of near-constant).
+//
+//   2. Rebuilding is the right call at this scale and that is a measurable claim,
+//      not a excuse. At n = 200 tourists the proximity graph is rebuilt in
+//      microseconds and the O(n^2) pair scan dominates everything the DSU does;
+//      rollback would optimise the part that is already free. The threshold where
+//      that flips is where this structure starts paying, and the simulator is
+//      nowhere near it.
+//
+// The honest summary for the report: rollback DSU is an implemented and tested
+// data structure, not a component of the hot path.
+//
 #include <cstddef>
 #include <cstdint>
 #include <vector>

@@ -19,6 +19,26 @@
 // Hand-written: no std::set / std::map. Nodes live in one flat vector (indices,
 // not pointers -- cache-friendly and trivially serialisable); build uses
 // std::nth_element (an algorithm, permitted) for median partitioning.
+//
+// Determinism. Two places would otherwise be free to pick arbitrarily among
+// equals, and both are load-bearing here -- a different nearest responder is a
+// different dispatch plan, and the golden replay compares byte-identical output:
+//
+//   BUILD    std::nth_element gives no ordering guarantee among elements that
+//            compare equal, and its partition is implementation-defined, so a
+//            comparator on the axis value alone lets two standard libraries (or
+//            two -O levels) build different trees from identical input. The
+//            comparator therefore falls back to the item id, making the order a
+//            strict total order and the tree a pure function of the input set.
+//   QUERY    equidistant candidates are ordered by (distance, id), so ties
+//            resolve to the lowest id rather than to whichever branch was walked
+//            first. This also requires the pruning test to admit the far side
+//            when the splitting plane is EXACTLY as far as the current best --
+//            see the note at that line, since the obvious strict comparison
+//            silently makes the guarantee unkeepable.
+//
+// Id must therefore be less-than comparable. Every id type in this project is an
+// integer handle, so that costs nothing.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -53,11 +73,13 @@ class KdTree {
   size_t size() const { return items_.size(); }
 
   // Single nearest neighbour. Returns false if the tree is empty.
+  // Ties resolve to the lowest id.
   bool nearest(const geo::LatLon& q, Id& out_id) const {
     if (root_ < 0) return false;
     int32_t best = -1;
     double best_d2 = 1e300;
     nn_rec(root_, q, best, best_d2);
+    if (best < 0) return false;
     out_id = items_[size_t(best)].id;
     return true;
   }
@@ -78,6 +100,7 @@ class KdTree {
   struct Node { int32_t item; int32_t left = -1, right = -1; uint8_t axis = 0; };
   struct Cand { double d2; int32_t node; };
 
+
   std::vector<Item> items_;
   std::vector<Node> nodes_;
   int32_t root_ = -1;
@@ -97,8 +120,13 @@ class KdTree {
     if (lo >= hi) return -1;
     const uint8_t axis = depth % 2;
     const int32_t mid = lo + (hi - lo) / 2;
+    // Total order, not just an axis comparison -- see the determinism note above.
     std::nth_element(idx.begin() + lo, idx.begin() + mid, idx.begin() + hi,
-                     [&](int32_t a, int32_t b) { return axis_val(a, axis) < axis_val(b, axis); });
+                     [&](int32_t a, int32_t b) {
+                       const double va = axis_val(a, axis), vb = axis_val(b, axis);
+                       if (va != vb) return va < vb;
+                       return items_[size_t(a)].id < items_[size_t(b)].id;
+                     });
     const int32_t me = int32_t(nodes_.size());
     nodes_.push_back(Node{idx[size_t(mid)], -1, -1, axis});
     const int32_t l = build_rec(idx, lo, mid, uint8_t(depth + 1));
@@ -112,14 +140,28 @@ class KdTree {
     if (n < 0) return;
     const Node& nd = nodes_[size_t(n)];
     const double d2 = dist2(q, items_[size_t(nd.item)].pos);
-    if (d2 < best_d2) { best_d2 = d2; best = nd.item; }
+    if (d2 < best_d2 ||
+        (d2 == best_d2 && best >= 0 && items_[size_t(nd.item)].id < items_[size_t(best)].id)) {
+      best_d2 = d2; best = nd.item;
+    }
 
     const double diff = (nd.axis == 0 ? q.lat - items_[size_t(nd.item)].pos.lat
                                       : (q.lon - items_[size_t(nd.item)].pos.lon) * lon_scale_);
     const int32_t near = diff < 0 ? nd.left : nd.right;
     const int32_t far  = diff < 0 ? nd.right : nd.left;
     nn_rec(near, q, best, best_d2);
-    if (diff * diff < best_d2) nn_rec(far, q, best, best_d2);   // the plane could hide a closer point
+    // `<=`, not `<`. With strict `<`, the far side is pruned the moment the
+    // splitting plane is exactly as far as the current best -- which is precisely
+    // the case where the far side holds an EQUALLY near point. The result is
+    // still a correct nearest neighbour, but which of several tied points you get
+    // depends on traversal order, so the "ties break on the lower id" guarantee
+    // above would be a guarantee this function could not keep.
+    //
+    // The extra work is confined to the degenerate case: it only descends the far
+    // side when the query lies exactly on a splitting plane, so for distinct data
+    // it never triggers, and for a pile of coincident points it is bounded by how
+    // many of them there are.
+    if (diff * diff <= best_d2) nn_rec(far, q, best, best_d2);
   }
 
   // Maintain `heap` as a distance-sorted vector of the k best seen so far.
@@ -127,10 +169,15 @@ class KdTree {
     if (n < 0) return;
     const Node& nd = nodes_[size_t(n)];
     const double d2 = dist2(q, items_[size_t(nd.item)].pos);
-    if (heap.size() < k || d2 < heap.back().d2) {
+    if (heap.size() < k || d2 <= heap.back().d2) {
+      // Ordered by (distance, id): equal-distance candidates land in a defined
+      // place rather than wherever the traversal happened to reach them first.
       Cand c{d2, nd.item};
-      auto it = std::upper_bound(heap.begin(), heap.end(), c,
-                                 [](const Cand& a, const Cand& b) { return a.d2 < b.d2; });
+      auto worse_than = [&](const Cand& a, const Cand& b) {
+        if (a.d2 != b.d2) return a.d2 < b.d2;
+        return items_[size_t(a.node)].id < items_[size_t(b.node)].id;
+      };
+      auto it = std::upper_bound(heap.begin(), heap.end(), c, worse_than);
       heap.insert(it, c);
       if (heap.size() > k) heap.pop_back();
     }
@@ -139,7 +186,7 @@ class KdTree {
     const int32_t near = diff < 0 ? nd.left : nd.right;
     const int32_t far  = diff < 0 ? nd.right : nd.left;
     knn_rec(near, q, k, heap);
-    if (heap.size() < k || diff * diff < heap.back().d2) knn_rec(far, q, k, heap);
+    if (heap.size() < k || diff * diff <= heap.back().d2) knn_rec(far, q, k, heap);
   }
 };
 

@@ -1,6 +1,8 @@
 // AVL interval tree: overlap/stab correctness vs brute force, plus the AVL bound.
 #include "../test_harness.hpp"
 #include <array>
+#include <climits>
+#include <cstdint>
 #include <string>
 #include "safetrail/ds/interval_tree.hpp"
 #include "safetrail/sim/mobility.hpp"
@@ -55,5 +57,175 @@ int main() {
     t::ok(it.balanced(), "trial " + std::to_string(trial) +
           ": AVL height within 1.44 log2(n+2)");
   }
+
+  // ── real AVL deletion  ─────────────────────────────────────────────────────
+  //
+  // Deletion used to be a tombstone: mark the node dead, decrement the count,
+  // leave the node in the tree. Two consequences, both pinned below. It was O(n)
+  // -- a linear scan of the node array -- in a structure whose whole selling point
+  // is O(log n); and the tree's SHAPE stopped matching its reported size, so
+  // balanced() compared a real height against a fictional n and could "fail" on a
+  // perfectly balanced tree, or pass on a badly shaped one.
+  //
+  // check_invariants() audits BST ordering, the AVL height/balance invariant at
+  // every node, and the max_high augmentation. A broken rotation usually still
+  // answers small queries correctly, which is exactly how it survives; the audit
+  // is what catches it.
+  {
+    IntervalTree<int> d;
+    t::ok(d.check_invariants(), "an empty tree is structurally valid");
+    t::ok(!d.remove(0, 1, 0), "removing from an empty tree reports false");
+
+    d.insert(10, 20, 1);
+    t::ok(d.size() == 1 && d.check_invariants(), "single insert");
+    t::ok(d.remove(10, 20, 1), "delete the only node");
+    t::ok(d.size() == 0 && d.height() == 0, "tree is empty and its height is 0");
+    t::ok(d.check_invariants(), "and still structurally valid");
+    std::vector<int> probe;
+    d.stabbing(15, probe);
+    t::ok(probe.empty(), "and returns nothing");
+  }
+
+  // Leaf, one-child and two-child deletions, each checked structurally.
+  {
+    IntervalTree<int> d;
+    for (int i = 0; i < 7; ++i) d.insert(i * 10, i * 10 + 5, i);
+    t::ok(d.size() == 7 && d.check_invariants(), "seven intervals inserted");
+
+    t::ok(d.remove(60, 65, 6), "delete a leaf");
+    t::ok(d.check_invariants(), "invariants hold after a leaf delete");
+    t::ok(d.size() == 6, "size drops");
+
+    t::ok(d.remove(30, 35, 3), "delete an interior node");
+    t::ok(d.check_invariants(), "invariants hold after an interior delete");
+
+    // The remaining values must be exactly the ones we did not delete.
+    std::vector<int> all;
+    d.overlapping(INT64_MIN / 2, INT64_MAX / 2, all);
+    std::sort(all.begin(), all.end());
+    t::ok((all == std::vector<int>{0, 1, 2, 4, 5}), "the survivors are exactly right");
+
+    t::ok(!d.remove(30, 35, 3), "deleting the same entry twice reports false");
+    t::ok(d.size() == 5, "and does not change the size");
+    t::ok(!d.remove(0, 5, 99), "a matching interval with the wrong value is not deleted");
+    t::ok(!d.remove(0, 999, 0), "a matching value with the wrong interval is not deleted");
+    t::ok(d.size() == 5, "neither changed the size");
+  }
+
+  // Duplicates on the low key: each must be individually removable.
+  {
+    IntervalTree<int> d;
+    for (int i = 0; i < 6; ++i) d.insert(100, 100 + (i + 1) * 10, i);
+    t::ok(d.size() == 6, "six intervals sharing a low endpoint");
+    for (int i = 0; i < 6; ++i) {
+      t::ok(d.remove(100, 100 + (i + 1) * 10, i),
+            "duplicate low key: removed value " + std::to_string(i));
+      t::ok(d.check_invariants(), "invariants hold after each duplicate removal");
+    }
+    t::ok(d.size() == 0, "all six gone");
+  }
+
+  // Deletions that force rotations at several levels: insert in ascending order
+  // (which is the worst case for an unbalanced BST) and delete from one end.
+  {
+    IntervalTree<int> d;
+    for (int i = 0; i < 200; ++i) d.insert(i, i + 3, i);
+    t::ok(d.check_invariants(), "200 ascending inserts stay balanced");
+    for (int i = 0; i < 150; ++i) {
+      d.remove(i, i + 3, i);
+      if (i % 17 == 0) t::ok(d.check_invariants(),
+                             "invariants hold mid-deletion at i=" + std::to_string(i));
+    }
+    t::ok(d.size() == 50, "50 left");
+    t::ok(d.balanced(), "and balanced() now compares a real height to a real n");
+  }
+
+  // ── churn against a brute-force reference ──────────────────────────────────
+  //
+  // Randomised insert/remove, cross-checked on both queries, with the structural
+  // audit every few hundred operations. This is the test that would fail on a
+  // rotation that repairs height but not max_high: the tree stays balanced and
+  // ordered while the pruning bound silently starts excluding real matches.
+  {
+    safetrail::sim::Rng churn_rng(864213);
+    IntervalTree<int> d;
+    std::vector<std::array<Timestamp, 3>> ref;
+    size_t bad = 0, audits = 0;
+
+    for (int op = 0; op < 4000; ++op) {
+      if (!ref.empty() && churn_rng.uniform() < 0.42) {
+        const size_t k = churn_rng.below(uint32_t(ref.size()));
+        const auto r = ref[k];
+        ref.erase(ref.begin() + long(k));
+        if (!d.remove(r[0], r[1], int(r[2]))) ++bad;
+      } else {
+        const Timestamp lo = Timestamp(churn_rng.range(0, 10000));
+        const Timestamp hi = lo + Timestamp(churn_rng.range(1, 900));
+        const int v = op;
+        d.insert(lo, hi, v);
+        ref.push_back({lo, hi, Timestamp(v)});
+      }
+
+      if (op % 200 == 0) {
+        ++audits;
+        if (d.size() != ref.size()) ++bad;
+        if (!d.check_invariants()) ++bad;
+        if (!d.balanced()) ++bad;
+
+        for (int q = 0; q < 8; ++q) {
+          const Timestamp at = Timestamp(churn_rng.range(0, 11000));
+          std::vector<int> got, want;
+          d.stabbing(at, got);
+          for (const auto& r : ref) if (at >= r[0] && at < r[1]) want.push_back(int(r[2]));
+          std::sort(got.begin(), got.end());
+          std::sort(want.begin(), want.end());
+          if (got != want) ++bad;
+
+          const Timestamp lo = Timestamp(churn_rng.range(0, 10000));
+          const Timestamp hi = lo + Timestamp(churn_rng.range(1, 2000));
+          got.clear(); want.clear();
+          d.overlapping(lo, hi, got);
+          for (const auto& r : ref)
+            if (r[0] < hi && lo < r[1]) want.push_back(int(r[2]));
+          std::sort(got.begin(), got.end());
+          std::sort(want.begin(), want.end());
+          if (got != want) ++bad;
+        }
+      }
+    }
+    t::ok(bad == 0, "4000 mixed operations: structure, size and both query kinds all "
+                    "match brute force across " + std::to_string(audits) + " audits");
+
+    // Drain it completely -- the path that exercises root deletion repeatedly.
+    while (!ref.empty()) {
+      const auto r = ref.back();
+      ref.pop_back();
+      d.remove(r[0], r[1], int(r[2]));
+    }
+    t::ok(d.size() == 0, "draining leaves it empty");
+    t::ok(d.height() == 0, "with height 0");
+    t::ok(d.check_invariants(), "and structurally valid");
+  }
+
+  // ── freed slots are reused ─────────────────────────────────────────────────
+  //
+  // The node array must be bounded by the PEAK live size, not by total inserts --
+  // otherwise a long-lived tree under churn grows without limit even though it
+  // never holds more than a few entries. Measured indirectly: after many
+  // insert/remove cycles the tree is still shallow.
+  {
+    IntervalTree<int> d;
+    for (int cycle = 0; cycle < 200; ++cycle) {
+      for (int i = 0; i < 20; ++i) d.insert(i, i + 5, cycle * 20 + i);
+      for (int i = 0; i < 20; ++i) d.remove(i, i + 5, cycle * 20 + i);
+    }
+    t::ok(d.size() == 0, "4000 inserts and 4000 removes leave it empty");
+    for (int i = 0; i < 20; ++i) d.insert(i, i + 5, i);
+    t::ok(d.height() <= 6,
+          "and refilling to 20 entries gives a shallow tree (height " +
+              std::to_string(d.height()) + "), so slots were reused");
+    t::ok(d.check_invariants(), "still valid after all that churn");
+  }
+
   return t::report("ds/interval_tree");
 }

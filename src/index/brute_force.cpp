@@ -17,22 +17,18 @@ bool BruteForceIndex::remove(ZoneId id) {
 
 void BruteForceIndex::query(const geo::Bbox& q, std::vector<ZoneId>& out) const {
   ++st_.queries;
+  // `out` is an accumulating buffer the caller reuses across a whole tick, so the
+  // candidate count is what THIS query appended -- not the buffer's total length.
+  // Adding out.size() here inflated the brute-force candidate count by everything
+  // already in the buffer, which is the denominator of every pruning-ratio and
+  // speedup figure the project reports. A measurement bug in the oracle is worse
+  // than one in the thing being measured.
+  const size_t before = out.size();
   for (const auto& it : items_)
     if (it.second.intersects(q)) out.push_back(it.first);
-  st_.candidates_returned += out.size();
+  st_.candidates_returned += out.size() - before;
 }
 
-void BruteForceIndex::nearest(const geo::LatLon& p, size_t k,
-                              std::vector<ZoneId>& out) const {
-  ++st_.queries;
-  std::vector<std::pair<double, ZoneId>> d;
-  d.reserve(items_.size());
-  for (const auto& it : items_) d.emplace_back(it.second.min_distance_m(p), it.first);
-  const size_t n = std::min(k, d.size());
-  std::partial_sort(d.begin(), d.begin() + long(n), d.end());
-  for (size_t i = 0; i < n; ++i) out.push_back(d[i].second);
-  st_.candidates_returned += n;
-}
 
 IndexStats BruteForceIndex::stats() const {
   st_.node_count = items_.size();

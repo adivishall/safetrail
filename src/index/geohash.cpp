@@ -1,7 +1,10 @@
 #include "safetrail/index/geohash.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
+
+#include "safetrail/util/bytes.hpp"
 
 namespace safetrail::index {
 
@@ -27,9 +30,26 @@ uint64_t Geohash::morton(const geo::LatLon& p) {
   return (spread(qlat) << 1) | spread(qlon);
 }
 
+// The query pads by the largest item half-extent, so this value directly sets how
+// much of the key range every query scans. Growing it on insert is required for
+// correctness; never shrinking it on removal is a pruning leak -- delete the one
+// district-sized zone from a set of 50 m ones and every subsequent query keeps
+// scanning a district-wide key range forever, for no candidates.
 void Geohash::note_extent(const geo::Bbox& b) {
   max_half_lat_ = std::max(max_half_lat_, (b.max_lat - b.min_lat) * 0.5);
   max_half_lon_ = std::max(max_half_lon_, (b.max_lon - b.min_lon) * 0.5);
+}
+
+// Exact recomputation, O(n). Affordable precisely because it is only called from
+// remove(), which is already O(n) (a linear id scan plus a vector erase), so the
+// policy costs nothing asymptotically and needs no heuristic threshold to decide
+// when to run. bench/results/index_churn.csv measures what it buys.
+void Geohash::recompute_extents() {
+  max_half_lat_ = max_half_lon_ = 0.0;
+  for (const auto& r : recs_) {
+    max_half_lat_ = std::max(max_half_lat_, (r.box.max_lat - r.box.min_lat) * 0.5);
+    max_half_lon_ = std::max(max_half_lon_, (r.box.max_lon - r.box.min_lon) * 0.5);
+  }
 }
 
 void Geohash::build(const std::vector<std::pair<ZoneId, geo::Bbox>>& items) {
@@ -53,7 +73,11 @@ void Geohash::insert(ZoneId id, const geo::Bbox& box) {
 
 bool Geohash::remove(ZoneId id) {
   for (auto it = recs_.begin(); it != recs_.end(); ++it)
-    if (it->id == id) { recs_.erase(it); return true; }   // erase keeps the sort order
+    if (it->id == id) {
+      recs_.erase(it);                          // erase keeps the sort order
+      recompute_extents();                      // see note_extent()
+      return true;
+    }
   return false;
 }
 
@@ -77,18 +101,6 @@ void Geohash::query(const geo::Bbox& q, std::vector<ZoneId>& out) const {
   }
 }
 
-void Geohash::nearest(const geo::LatLon& p, size_t k, std::vector<ZoneId>& out) const {
-  // Linear by box min-distance. The geohash's headline is range query and
-  // serialisation; NN falls back to a scan (the k-d tree is the NN structure).
-  std::vector<std::pair<double, ZoneId>> d;
-  d.reserve(recs_.size());
-  for (const auto& r : recs_) d.emplace_back(r.box.min_distance_m(p), r.id);
-  if (k < d.size())
-    std::partial_sort(d.begin(), d.begin() + long(k), d.end());
-  else
-    std::sort(d.begin(), d.end());
-  for (size_t i = 0; i < k && i < d.size(); ++i) out.push_back(d[i].second);
-}
 
 IndexStats Geohash::stats() const {
   st_.node_count = recs_.size();
@@ -98,58 +110,80 @@ IndexStats Geohash::stats() const {
 }
 
 // ── Serialisation  [GAP 6] ────────────────────────────────────────────────────
-// Fixed little-endian layout so a blob written on one machine loads on another:
-//   [magic u32][count u32][max_half_lat f64][max_half_lon f64]
+// Explicitly little-endian, via util/bytes.hpp -- shifts, not memcpy of a native
+// integer, so the layout is the same on every host rather than the same on every
+// host we happened to test. Layout:
+//   [magic u32]["GEO2"][count u32][max_half_lat f64][max_half_lon f64]
 //   count x { key u64, id u32, min_lat/min_lon/max_lat/max_lon f64 }
 namespace {
-constexpr uint32_t kMagic = 0x47454F31;   // "GEO1"
-template <typename T> void put(std::vector<uint8_t>& b, T v) {
-  const auto* p = reinterpret_cast<const uint8_t*>(&v);
-  b.insert(b.end(), p, p + sizeof(T));
-}
-template <typename T> bool get(const std::vector<uint8_t>& b, size_t& off, T& v) {
-  if (off + sizeof(T) > b.size()) return false;
-  std::memcpy(&v, b.data() + off, sizeof(T));
-  off += sizeof(T);
-  return true;
-}
+constexpr uint32_t kMagic = 0x4F454732;   // "2GEO" little-endian == "GEO2" on disk
 }  // namespace
 
 bool Geohash::serialize(std::vector<uint8_t>& out) const {
   out.clear();
-  put(out, kMagic);
-  put(out, uint32_t(recs_.size()));
-  put(out, max_half_lat_);
-  put(out, max_half_lon_);
+  out.reserve(kHeaderBytes + recs_.size() * kRecBytes);
+  util::put_u32(out, kMagic);
+  util::put_u32(out, uint32_t(recs_.size()));
+  util::put_f64(out, max_half_lat_);
+  util::put_f64(out, max_half_lon_);
   for (const auto& r : recs_) {
-    put(out, r.key);
-    put(out, uint32_t(r.id));
-    put(out, r.box.min_lat); put(out, r.box.min_lon);
-    put(out, r.box.max_lat); put(out, r.box.max_lon);
+    util::put_u64(out, r.key);
+    util::put_u32(out, uint32_t(r.id));
+    util::put_f64(out, r.box.min_lat); util::put_f64(out, r.box.min_lon);
+    util::put_f64(out, r.box.max_lat); util::put_f64(out, r.box.max_lon);
   }
   return true;
 }
 
+// Rejects, rather than tolerates: a wrong magic, a truncated body, a count that
+// the remaining bytes cannot possibly satisfy, coordinates that are not finite,
+// a key array that is not sorted, and TRAILING GARBAGE. The last one matters as
+// much as the others -- a blob with extra bytes on the end is a concatenation or
+// a partial overwrite, and silently loading its prefix is how a device ends up
+// evaluating half a district's zones and reporting no error.
+//
+// The parse builds into a local and only commits on success, so a malformed blob
+// leaves the existing index intact instead of half-replaced.
 bool Geohash::deserialize(const std::vector<uint8_t>& in) {
-  size_t off = 0;
+  util::Reader r(in);
   uint32_t magic = 0, count = 0;
-  if (!get(in, off, magic) || magic != kMagic) return false;
-  if (!get(in, off, count)) return false;
-  if (!get(in, off, max_half_lat_) || !get(in, off, max_half_lon_)) return false;
-  recs_.clear();
-  recs_.reserve(count);
+  if (!r.u32(&magic) || magic != kMagic) return false;
+  if (!r.u32(&count)) return false;
+
+  double half_lat = 0, half_lon = 0;
+  if (!r.f64(&half_lat) || !r.f64(&half_lon)) return false;
+  if (!std::isfinite(half_lat) || !std::isfinite(half_lon)) return false;
+
+  // Refuse an impossible count before reserving for it. Without this a corrupt
+  // 4-billion count field turns a 40-byte file into an out-of-memory abort.
+  if (r.remaining() != size_t(count) * kRecBytes) return false;
+
+  std::vector<Rec> loaded;
+  loaded.reserve(count);
   for (uint32_t i = 0; i < count; ++i) {
-    Rec r{};
+    Rec rec{};
     uint32_t id = 0;
-    if (!get(in, off, r.key) || !get(in, off, id)) return false;
-    r.id = id;
-    if (!get(in, off, r.box.min_lat) || !get(in, off, r.box.min_lon) ||
-        !get(in, off, r.box.max_lat) || !get(in, off, r.box.max_lon)) return false;
-    recs_.push_back(r);
+    if (!r.u64(&rec.key) || !r.u32(&id)) return false;
+    rec.id = id;
+    if (!r.f64(&rec.box.min_lat) || !r.f64(&rec.box.min_lon) ||
+        !r.f64(&rec.box.max_lat) || !r.f64(&rec.box.max_lon)) return false;
+    if (!std::isfinite(rec.box.min_lat) || !std::isfinite(rec.box.min_lon) ||
+        !std::isfinite(rec.box.max_lat) || !std::isfinite(rec.box.max_lon)) return false;
+    if (rec.box.min_lat > rec.box.max_lat || rec.box.min_lon > rec.box.max_lon) return false;
+    loaded.push_back(rec);
   }
-  // Trust but verify: the on-disk array is supposed to be key-sorted.
-  return std::is_sorted(recs_.begin(), recs_.end(),
-                        [](const Rec& a, const Rec& b) { return a.key < b.key; });
+  if (!r.at_end()) return false;                    // trailing garbage
+
+  // Trust but verify: the on-disk array is supposed to be key-sorted, since the
+  // range query is a binary search over it.
+  if (!std::is_sorted(loaded.begin(), loaded.end(),
+                      [](const Rec& a, const Rec& b) { return a.key < b.key; }))
+    return false;
+
+  recs_ = std::move(loaded);
+  max_half_lat_ = half_lat;
+  max_half_lon_ = half_lon;
+  return true;
 }
 
 }  // namespace safetrail::index

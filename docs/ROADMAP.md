@@ -49,7 +49,7 @@ magnitude easier to find, and it is the highest-morale week of the project.
 ## Phase 4 — Spatial indexes (week 4–7) ★ core course content
 
 - [ ] `index/quadtree.hpp`
-- [ ] `index/rtree.hpp` — quadratic split, then STR packing
+- [x] `index/rtree.hpp` — quadratic split for inserts, STR packing for bulk build
 - [ ] `index/geohash.hpp` — Morton encoding
 - [ ] `index/kd_tree.hpp`
 - [ ] `tests/index/equivalence_test.cpp` — **every index must match brute force**

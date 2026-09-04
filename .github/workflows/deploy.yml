@@ -3,11 +3,32 @@
 # This project has no server -- the engine is a C++ program that emits ONE
 # self-contained HTML file. So "deploy" means: compile the engine, prove it
 # works, generate the dashboard from real data, and host that static file.
+#
+# ── What gates what, and why ─────────────────────────────────────────────────
+#
+#   tests        GATE. A correctness regression must not reach the page.
+#   sanitizers   GATE. Memory errors and UB are correctness failures; running
+#                them "advisory" meant a real regression could ship green, which
+#                is the same as not running them. The whole suite runs under
+#                ASan+UBSan with -fno-sanitize-recover, so UB aborts rather than
+#                being reported and ignored.
+#   determinism  GATE. The README calls determinism non-negotiable; this runs the
+#                same seed twice and diffs the output byte for byte.
+#   cmake        GATE. Cheap, and it is the check that catches the two build
+#                systems drifting apart.
+#   benchmarks   INFORMATIONAL. Timings on shared CI runners are noisy, so gating
+#                on them would produce flaky failures that teach people to ignore
+#                red builds. They still run, and their CSVs are uploaded.
+#
+# `|| true` appears exactly once below, on the benchmark step, and that is
+# deliberate rather than incidental -- it used to be on steps whose failure meant
+# something.
 name: build-test-deploy
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -20,19 +41,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Correctness gates ───────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compiler version
+        run: g++ --version
+      - name: Header hygiene (every header compiles standalone)
+        run: make check CXX=g++
+      - name: Unit, golden and integration tests
+        run: make -j$(nproc) test CXX=g++
+      - name: Deterministic replay (same seed twice, byte-identical)
+        run: make determinism CXX=g++
+
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Whole suite under AddressSanitizer + UndefinedBehaviorSanitizer
+        run: make -j$(nproc) asan CXX=g++
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
+          ASAN_OPTIONS: detect_leaks=1
+
+  # The other build system, on the same tree. Catches Make/CMake drift and any
+  # warning that only one of the two sets of flags surfaces.
+  cmake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure
+        run: cmake -B build-cmake -DCMAKE_BUILD_TYPE=Release -S .
+      - name: Build
+        run: cmake --build build-cmake -j$(nproc)
+      - name: ctest
+        run: ctest --test-dir build-cmake --output-on-failure
+
+  # macOS as well as Linux: the project claims to build easily on both, and
+  # libc++ vs libstdc++ is where portability assumptions surface.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and test with clang++
+        run: make -j$(sysctl -n hw.ncpu) test CXX=clang++
+
+  # ── Artifact generation ─────────────────────────────────────────────────────
   build:
+    needs: [test, sanitize, cmake]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Compiler version
-        run: g++ --version
-
-      - name: Run the test suite
-        run: make test CXX=g++          # full suite (28 files), gates the deploy
-
       - name: Run the benchmarks
-        run: make bench CXX=g++ || true # informational; never blocks deploy
+        run: make bench CXX=g++ || true   # informational; timings on shared CI runners are noisy
 
       - name: Generate the dashboard from real OSM data
         run: |
@@ -41,7 +104,7 @@ jobs:
           cp dashboard.html _site/index.html
           cp slides.html _site/slides.html
 
-      - name: Upload artifacts
+      - name: Upload benchmark CSVs
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
@@ -53,17 +116,9 @@ jobs:
         with:
           path: _site
 
-  # Advisory: runs in parallel, does NOT gate the deploy. Sanitizer builds are
-  # slow, and a memory/UB regression should surface without blocking a doc change.
-  sanitize:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Tests under AddressSanitizer + UBSan
-        run: make asan CXX=g++
-
   deploy:
     needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

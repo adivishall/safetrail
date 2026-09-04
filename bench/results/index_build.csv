@@ -1,0 +1,5 @@
+zones,incremental_build_ms,str_build_ms,incremental_nodes,str_nodes,incremental_depth,str_depth,incremental_us,str_us,query_gain
+1000,0.20,0.12,214,155,3,3,0.1664,0.0865,1.923
+10000,2.18,1.36,2133,1456,5,4,1.3132,0.2464,5.329
+50000,12.66,7.64,10684,7259,6,5,4.2557,0.6557,6.490
+100000,28.17,16.54,21368,14383,6,5,6.2394,1.0123,6.164

@@ -1,6 +1,7 @@
 #include "safetrail/graph/bipartite_match.hpp"
 
 #include <cfloat>
+#include <cmath>
 
 namespace safetrail::graph {
 
@@ -42,12 +43,29 @@ std::vector<int32_t> kuhn_matching(int32_t left_n, int32_t right_n,
 // Internally 1-indexed (index 0 is the sentinel the augmenting path terminates
 // on); the public interface is 0-indexed. Handles rectangular n <= m: every left
 // row gets a column, surplus columns are left unassigned.
+const char* to_string(Assignment::Status s) {
+  switch (s) {
+    case Assignment::Status::Ok: return "ok";
+    case Assignment::Status::EmptyInput: return "empty input";
+    case Assignment::Status::Ragged: return "ragged cost matrix";
+    case Assignment::Status::MoreRowsThanCols: return "more rows than columns";
+    case Assignment::Status::NonFiniteCost: return "non-finite cost entry";
+  }
+  return "?";
+}
+
 Assignment hungarian(const std::vector<std::vector<double>>& cost) {
   Assignment result;
   const int n = int(cost.size());
-  if (n == 0) return result;
+  if (n == 0) { result.status = Assignment::Status::EmptyInput; return result; }
   const int m = int(cost[0].size());
-  if (m < n) return result;   // contract: rows <= cols (see header)
+  if (m == 0) { result.status = Assignment::Status::Ragged; return result; }
+  for (const auto& row : cost) {
+    if (int(row.size()) != m) { result.status = Assignment::Status::Ragged; return result; }
+    for (double c : row)
+      if (!std::isfinite(c)) { result.status = Assignment::Status::NonFiniteCost; return result; }
+  }
+  if (m < n) { result.status = Assignment::Status::MoreRowsThanCols; return result; }
 
   const double INF = DBL_MAX / 4.0;
   // a[1..n][1..m], 1-indexed copy.
@@ -78,6 +96,7 @@ Assignment hungarian(const std::vector<std::vector<double>>& cost) {
         if (used[size_t(j)]) { u[size_t(p[size_t(j)])] += delta; v[size_t(j)] -= delta; }
         else                   minv[size_t(j)] -= delta;
       }
+      if (j1 < 0) { result.status = Assignment::Status::NonFiniteCost; return result; }
       j0 = j1;
     } while (p[size_t(j0)] != 0);
     // Unwind the augmenting path.

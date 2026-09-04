@@ -1,14 +1,14 @@
 #pragma once
-// safetrail :: server :: ws_stream
+// safetrail :: WebSocket streaming
 //
-// TODO(impl): see docs/ARCHITECTURE.md for this module's responsibility and
-// docs/DATA_STRUCTURES.md for its complexity target.
-//
-// Ground rules: hand-write the structure. No std::unordered_map, no std::set,
-// no std::priority_queue. std::vector as raw storage is fine.
+// NOT IMPLEMENTED, AND NOT PLANNED. See `server/http_api.hpp` -- this project has
+// no server. Live event streaming to a browser was the other half of that dropped
+// roadmap item; the dashboard replays a recorded trace instead, which is both
+// simpler and reproducible, and reproducibility is a property this project cares
+// about more than liveness.
 
 namespace safetrail::server {
 
-// TODO(impl)
+// Intentionally empty. See the note above.
 
 }  // namespace safetrail::server

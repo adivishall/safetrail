@@ -11,8 +11,16 @@
 // Model: groups are connected components under a proximity threshold. Each tick,
 // build the proximity graph and compare components against the previous tick.
 //
-//   proximity pairs   grid-bucketed, O(n) expected rather than O(n²)
-//   components        RollbackDSU, O(n log n)
+//   proximity pairs   O(n²) all-pairs scan. Grid bucketing would make it O(n)
+//                     expected and is the documented next step; at n = 200 the
+//                     scan is ~20k distance calls per tick and is not the
+//                     bottleneck, so it has not been done. Saying "grid-bucketed"
+//                     here would be describing code that does not exist.
+//   components        RollbackDSU, O(n log n) -- rebuilt each tick, NOT rolled
+//                     back. See the note in ds/dynamic_connectivity.hpp for why
+//                     rebuilding is the right call at this scale and why the
+//                     rollback capability is not being credited for a speedup it
+//                     does not provide here.
 //   split detection   set difference against previous tick, O(n)
 //
 // Declared groups (a tour party that booked together) are compared against

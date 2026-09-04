@@ -1,14 +1,16 @@
 #pragma once
-// safetrail :: sim :: recorder
+// safetrail :: Replay recording
 //
-// TODO(impl): see docs/ARCHITECTURE.md for this module's responsibility and
-// docs/DATA_STRUCTURES.md for its complexity target.
+// SUPERSEDED. Trace recording is `viz::TraceRecorder` in `viz/html_export.cpp`,
+// which captures per-tick state and writes the self-contained HTML replay. That is
+// the whole of the recorder's intended job, and putting it next to the exporter
+// that consumes it kept one format instead of two.
 //
-// Ground rules: hand-write the structure. No std::unordered_map, no std::set,
-// no std::priority_queue. std::vector as raw storage is fine.
+// This header survives so that references to "sim/recorder.hpp" point somewhere
+// honest. Include `viz/html_export.hpp`.
 
 namespace safetrail::sim {
 
-// TODO(impl)
+// Intentionally empty. See the note above.
 
 }  // namespace safetrail::sim

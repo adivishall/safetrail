@@ -11,9 +11,27 @@ struct QItem {
   double f;        // g + h, the A* priority
   double g;        // cost so far (kept so we relax on true cost, not on f)
   NodeId node;
-  bool operator<(const QItem& o) const { return f < o.f; }
+  // (f, node): same reason as Dijkstra's frontier -- a binary heap is unstable,
+  // so equal-f entries must be ordered explicitly or the expansion order (and
+  // the reported nodes_expanded, which the report compares against Dijkstra's)
+  // becomes implementation-defined.
+  bool operator<(const QItem& o) const {
+    return f != o.f ? f < o.f : node < o.node;
+  }
 };
 }  // namespace
+
+bool heuristic_is_admissible(const RoadGraph& g) {
+  for (size_t u = 0; u < g.node_count(); ++u)
+    for (const auto& e : g.neighbors(NodeId(u))) {
+      const double geometric = geo::distance_m(g.pos(NodeId(u)), g.pos(e.to));
+      // Tolerance of a millimetre: weights written by save_file are rounded to
+      // micron precision, so an exact >= would report a false violation on a
+      // graph that merely made a round trip through a file.
+      if (e.weight_m + 1e-3 < geometric) return false;
+    }
+  return true;
+}
 
 AStarResult astar(const RoadGraph& g, NodeId source, NodeId target) {
   AStarResult out;
@@ -48,6 +66,15 @@ AStarResult astar(const RoadGraph& g, NodeId source, NodeId target) {
         best_g[size_t(e.to)] = ng;
         parent[size_t(e.to)] = cur.node;
         frontier.push({ng + h(e.to), ng, e.to});
+      } else if (e.weight_m > 0.0 && ng == best_g[size_t(e.to)] &&
+                 cur.node < parent[size_t(e.to)]) {
+        // The positive-weight guard is not cosmetic. Rewriting a parent on an
+        // equal-cost path is only safe when the new parent is strictly closer
+        // to the source; with a zero-weight edge two nodes can share a distance
+        // and each become the other's parent, and path_to() then walks a cycle
+        // forever. Road weights are positive, but add_edge() accepts zero, so
+        // the invariant is enforced here rather than assumed.
+        parent[size_t(e.to)] = cur.node;      // deterministic equal-cost parent
       }
     }
   }

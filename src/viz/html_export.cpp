@@ -588,13 +588,13 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
     // would query, not a re-derivation.
     const auto changes = s.versioned().changes_between(0, INT64_MAX);
     bool f2 = true;
-    for (const auto& c : changes) {
-      const auto* z = s.zones().get(c.zone);
+    for (const auto& ch : changes) {
+      const auto* z = s.zones().get(ch.zone);
       if (!z || z->synthetic) continue;
       if (!f2) d += ",";
       f2 = false;
-      d += "{\"v\":" + std::to_string(c.version) + ",\"at\":" + std::to_string(c.at) +
-           ",\"z\":" + std::to_string(c.zone) + ",\"k\":" + std::to_string(int(c.kind)) + "}";
+      d += "{\"v\":" + std::to_string(ch.version) + ",\"at\":" + std::to_string(ch.at) +
+           ",\"z\":" + std::to_string(ch.zone) + ",\"k\":" + std::to_string(int(ch.kind)) + "}";
     }
   }
   d += "],\"versions\":" + std::to_string(s.versioned().version_count());
@@ -666,7 +666,7 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
     for (size_t i = 0; i < ts.size(); ++i) {
       if (i) d += ",";
       d += "{\"did\":\"";
-      for (char c : ts[i].digital_id) if (c != '"' && c != '\\') d += c;
+      for (char ch : ts[i].digital_id) if (ch != '"' && ch != '\\') d += ch;
       d += "\",\"grp\":" + std::to_string(ts[i].group) + "}";
     } }
   d += "]";

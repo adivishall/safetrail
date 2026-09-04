@@ -29,4 +29,20 @@ struct AStarResult {
 
 AStarResult astar(const RoadGraph& g, NodeId source, NodeId target);
 
+// Does the great-circle heuristic actually under-estimate on THIS graph?
+//
+// A* is optimal only if h never over-estimates the true remaining cost. With
+// distance weights that holds by the triangle inequality, so the check passes
+// trivially -- but nothing in RoadGraph forces weights to be distances. Give an
+// edge a travel-TIME weight, or a penalty for a rough track, and the metres-based
+// heuristic can exceed the real cost and A* will happily return a suboptimal
+// path while looking like it worked.
+//
+// So the assumption is testable rather than asserted in a comment: an edge u->v
+// is heuristic-safe when weight(u,v) >= great-circle(u,v), because then any path
+// costs at least its geometric length and h can never exceed it.
+// tests/graph/shortest_path_test.cpp checks it before comparing A* to Dijkstra.
+// O(E).
+bool heuristic_is_admissible(const RoadGraph& g);
+
 }  // namespace safetrail::graph

@@ -93,5 +93,95 @@ int main() {
     t::ok(ok, "5000 keys survive repeated growth/rehash");
   }
 
+
+  // ── tombstones under churn: the table must stay bounded ────────────────────
+  //
+  // The bug: a rehash triggered by tombstones always DOUBLED the table. Insert
+  // and erase the same 100 keys forever and the table doubled forever, holding
+  // 100 entries in a structure that had grown to make room for corpses. Memory
+  // climbed, locality collapsed, and lookups got slower the longer it ran.
+  //
+  // The policy now asks what actually filled the table: the trigger counts
+  // count + tombstones (it must -- probe length depends on occupied slots), but
+  // the DECISION is made on count alone. Live entries justify a bigger table;
+  // tombstones justify a same-size rebuild that sweeps them out.
+  {
+    ds::HashMap<uint32_t, uint32_t> churn;
+    for (uint32_t i = 0; i < 100; ++i) churn.put(i, i);
+    const size_t buckets_at_100 = churn.bucket_count();
+    const size_t growths_at_100 = churn.growths();   // the initial fill legitimately grew
+    const size_t rehashes_at_100 = churn.rehashes();
+
+    // 50,000 insert/erase pairs on a live set that never exceeds ~100 entries.
+    for (uint32_t round = 0; round < 500; ++round)
+      for (uint32_t i = 0; i < 100; ++i) {
+        const uint32_t key = 1000 + round * 100 + i;
+        churn.put(key, key);
+        churn.erase(key);
+      }
+
+    t::ok(churn.size() == 100, "the live set is still exactly 100 entries");
+    t::ok(churn.bucket_count() == buckets_at_100,
+          "and the table has NOT grown (" + std::to_string(buckets_at_100) + " -> " +
+              std::to_string(churn.bucket_count()) + " buckets after 50,000 churned keys)");
+    t::ok(churn.rehashes() > rehashes_at_100,
+          "same-size rebuilds did happen (" +
+              std::to_string(churn.rehashes() - rehashes_at_100) + " of them)");
+    t::ok(churn.growths() == growths_at_100,
+          "and the churn caused NO growth at all (the initial fill's " +
+              std::to_string(growths_at_100) + " were the only ones)");
+    t::ok(churn.tombstones() < churn.bucket_count(),
+          "tombstones are bounded by the table size, not unbounded");
+
+    // Everything still resolves after all that churn.
+    bool intact = true;
+    for (uint32_t i = 0; i < 100; ++i) {
+      const uint32_t* v = churn.get(i);
+      if (!v || *v != i) intact = false;
+    }
+    t::ok(intact, "all 100 live keys still resolve correctly after the churn");
+
+    // And a key that was erased stays erased.
+    t::ok(churn.get(1000) == nullptr, "an erased key is not resurrected by a rehash");
+  }
+
+  // Growth still happens when it is the LIVE set that needs room. The fix must
+  // not have traded unbounded growth for no growth at all.
+  {
+    ds::HashMap<uint32_t, uint32_t> grow;
+    const size_t initial = grow.bucket_count();
+    for (uint32_t i = 0; i < 4000; ++i) grow.put(i, i);
+    t::ok(grow.bucket_count() > initial * 100,
+          "4000 live entries do grow the table (" + std::to_string(initial) + " -> " +
+              std::to_string(grow.bucket_count()) + ")");
+    t::ok(grow.growths() > 0, "and they are recorded as growths");
+    t::ok(grow.size() == 4000, "with every entry present");
+  }
+
+  // A rebuild must not break a probe chain that ran through a tombstone: erase
+  // colliding keys, then look up the survivor. Keys i and i + bucket_count()
+  // collide under any power-of-two masking of a multiplicative hash.
+  {
+    ds::HashMap<uint32_t, uint32_t> probe;
+    std::vector<uint32_t> keys;
+    for (uint32_t i = 0; i < 400; ++i) { probe.put(i, i); keys.push_back(i); }
+    // Erase every other key, forcing many tombstones inside live probe chains.
+    for (size_t i = 0; i < keys.size(); i += 2) probe.erase(keys[i]);
+    bool ok2 = true;
+    for (size_t i = 1; i < keys.size(); i += 2) {
+      const uint32_t* v = probe.get(keys[i]);
+      if (!v || *v != keys[i]) ok2 = false;
+    }
+    t::ok(ok2, "survivors are still reachable through tombstoned probe chains");
+    // Force a rebuild by inserting until the threshold trips, then re-check.
+    for (uint32_t i = 10000; i < 10400; ++i) probe.put(i, i);
+    ok2 = true;
+    for (size_t i = 1; i < keys.size(); i += 2) {
+      const uint32_t* v = probe.get(keys[i]);
+      if (!v || *v != keys[i]) ok2 = false;
+    }
+    t::ok(ok2, "and still reachable after the rebuild that swept the tombstones");
+  }
+
   return t::report("ds/hash_table");
 }

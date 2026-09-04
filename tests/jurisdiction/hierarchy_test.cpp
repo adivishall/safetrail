@@ -102,5 +102,104 @@ int main() {
                                 std::to_string(agree) + "/" + std::to_string(trials * 5) + ")");
   }
 
+
+  // ── concave containment: vertices alone are not enough ─────────────────────
+  //
+  // The old test was "every vertex of the inner ring is inside the outer one".
+  // That is not containment. Take a C-shaped district and a block drawn as a bar
+  // across the mouth of the C: both ends of the bar sit inside the two arms while
+  // its middle lies in the gap, outside the district entirely. Every vertex
+  // passes; the region is not contained, and treating it as contained puts the
+  // bar in the wrong branch of the tree, so every alert raised in it is routed to
+  // the wrong authority.
+  //
+  // Containment now requires BOTH: every inner vertex inside, AND no inner edge
+  // crossing the outer boundary.
+  {
+    // C opening to the east, spanning lat [-2, 2], lon [-2, 2] with a notch.
+    geo::Ring c_shape = {{-2, -2}, {-2, 2}, {-1, 2}, {-1, -1},
+                         {1, -1}, {1, 2}, {2, 2}, {2, -2}};
+    // A bar lying across the mouth: its ends are in the arms, its middle in the gap.
+    geo::Ring bar = {{-1.6, 1.2}, {1.6, 1.2}, {1.6, 1.6}, {-1.6, 1.6}};
+
+    Hierarchy h;
+    const JurisdictionId district = h.add("C district", geo::Polygon(c_shape));
+    const JurisdictionId block = h.add("bar block", geo::Polygon(bar));
+    h.build();
+
+    t::ok(h.parent(block) != district,
+          "a bar across the mouth of a C is NOT nested inside it");
+    t::ok(h.parent(block) == kNoJurisdiction, "so it is a root in its own right");
+
+    // A point in the middle of the bar is outside the district entirely, and must
+    // resolve to the bar, not to the district.
+    const JurisdictionId owner = h.resolve({0.0, 1.4});
+    t::ok(owner == block, "a point in the gap resolves to the bar, not the district");
+
+    // Sanity: a genuinely nested block IS nested, so the stricter rule has not
+    // simply started rejecting everything.
+    Hierarchy h2;
+    const JurisdictionId d2 = h2.add("C district", geo::Polygon(c_shape));
+    geo::Ring inner = {{-1.8, -1.8}, {-1.2, -1.8}, {-1.2, -1.2}, {-1.8, -1.2}};
+    const JurisdictionId b2 = h2.add("real block", geo::Polygon(inner));
+    h2.build();
+    t::ok(h2.parent(b2) == d2, "a block genuinely inside the C IS nested");
+    t::ok(h2.resolve({-1.5, -1.5}) == b2, "and owns points inside itself");
+    t::ok(h2.resolve({-1.9, -1.9}) == d2, "while the district owns the rest");
+  }
+
+  // ── shared administrative boundaries must still nest ───────────────────────
+  //
+  // Real boundary data shares edges constantly: a block whose northern limit IS
+  // the district's northern limit is normal, correctly nested data. The crossing
+  // test therefore has to be TRANSVERSAL crossing, not "do these segments touch" --
+  // otherwise the stricter rule breaks the exact input it was written for.
+  {
+    geo::Ring district = {{0, 0}, {0, 10}, {10, 10}, {10, 0}};
+    geo::Ring block = {{0, 0}, {0, 4}, {4, 4}, {4, 0}};   // shares two whole edges
+    Hierarchy h;
+    const JurisdictionId d = h.add("district", geo::Polygon(district));
+    const JurisdictionId b = h.add("corner block", geo::Polygon(block));
+    h.build();
+    t::ok(h.parent(b) == d, "a block sharing edges with its district still nests");
+    t::ok(h.resolve({2, 2}) == b, "and owns its own interior");
+    t::ok(h.resolve({8, 8}) == d, "while the district owns the rest");
+  }
+
+  // ── a district's holes are real: an enclave is not owned by it ─────────────
+  //
+  // The hierarchy ranks regions by OUTER area, because nesting is a statement
+  // about outlines -- a district contains a block whether or not either has exempt
+  // enclaves punched out of it. Worth noting what that does NOT mean: it does not
+  // make holes cosmetic. Containment itself goes through geo::contains(), which
+  // respects holes, so a region sitting inside a district's exempt enclave is not
+  // owned by that district, and a point in the enclave does not resolve to it.
+  //
+  // (Ranking by REGION area instead cannot actually invert the tree -- a
+  // genuinely contained block is a subset of the container minus its holes, so
+  // its area is necessarily smaller. Outer area is chosen for stability and for
+  // matching what "nesting" means administratively, not to fix a bug.)
+  {
+    geo::Polygon district(geo::Ring{{0, 0}, {0, 10}, {10, 10}, {10, 0}});
+    district.add_hole(geo::Ring{{3, 3}, {3, 7}, {7, 7}, {7, 3}});     // exempt enclave
+    t::ok(district.validate() == geo::Polygon::Validity::Ok, "the holey district is valid");
+
+    geo::Polygon inside_solid(geo::Ring{{0.5, 0.5}, {0.5, 2.5}, {2.5, 2.5}, {2.5, 0.5}});
+    geo::Polygon inside_hole(geo::Ring{{4, 4}, {4, 6}, {6, 6}, {6, 4}});
+
+    Hierarchy h;
+    const JurisdictionId d = h.add("holey district", std::move(district));
+    const JurisdictionId solid = h.add("block in the solid part", std::move(inside_solid));
+    const JurisdictionId enclave = h.add("region inside the enclave", std::move(inside_hole));
+    h.build();
+
+    t::ok(h.parent(solid) == d, "a block in the district's solid part nests inside it");
+    t::ok(h.parent(enclave) != d, "a region inside the exempt enclave does NOT");
+    t::ok(h.resolve({1.5, 1.5}) == solid, "a point in the block resolves to the block");
+    t::ok(h.resolve({5.0, 5.0}) == enclave,
+          "a point in the enclave resolves to the enclave, not the district");
+    t::ok(h.resolve({8.5, 8.5}) == d, "and the district still owns its own solid ground");
+  }
+
   return t::report("jurisdiction/hierarchy");
 }

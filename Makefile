@@ -1,54 +1,48 @@
 # Plain make, no cmake needed. `make cmake-build` uses CMake if you have it.
-CXX      ?= clang++
+#
+# Source set: both this Makefile and CMakeLists.txt discover sources by globbing
+# src/**.cpp and tests/**_test.cpp. Neither maintains a hand-written list, so the
+# two build systems cannot drift apart -- which they did, historically, when the
+# Makefile carried an explicit CORE list. `make manifest` prints what is found.
+
+CXX      ?= c++
 CXXFLAGS := -std=c++17 -Iinclude -Wall -Wextra -Wpedantic
-OPT      := -O2
-BUILD    := build
+OPT      ?= -O2
+BUILD    ?= build
 
-# Modules implemented so far. Stubs are excluded until they have a body --
-# see docs/ROADMAP.md for which phase each belongs to.
-CORE := src/geo/point.cpp src/geo/bbox.cpp src/geo/polygon.cpp src/geo/containment.cpp \
-        src/ds/dynamic_connectivity.cpp src/index/brute_force.cpp src/index/quadtree.cpp src/index/rtree.cpp \
-        src/index/versioned_index.cpp \
-        src/util/json.cpp src/fence/zone.cpp src/fence/hysteresis.cpp src/fence/evaluator.cpp \
-        src/track/tourist.cpp src/power/adaptive_sampler.cpp src/alert/alert.cpp \
-        src/alert/correlator.cpp src/group/cohesion.cpp src/sim/mobility.cpp src/sim/simulator.cpp \
-        src/viz/html_export.cpp \
-        src/evidence/sha256.cpp src/evidence/merkle_log.cpp src/evidence/digital_id.cpp \
-        src/graph/road_graph.cpp src/graph/dijkstra.cpp src/graph/astar.cpp \
-        src/graph/bipartite_match.cpp src/dispatch/assigner.cpp \
-        src/index/geohash.cpp src/geo/sweep_line.cpp \
-        src/sync/lamport.cpp src/jurisdiction/hierarchy.cpp \
-        src/track/trajectory.cpp src/track/anomaly.cpp
+# `sort` for determinism: glob order is filesystem-dependent, and a reproducible
+# link order is one less variable when chasing a nondeterministic result.
+SRC      := $(sort $(shell find src -name '*.cpp'))
+OBJ      := $(patsubst src/%.cpp,$(BUILD)/obj/%.o,$(SRC))
+LIB      := $(BUILD)/libsafetrail.a
 
-TESTS := tests/geo/ray_casting_test.cpp tests/geo/containment_uncertainty_test.cpp \
-         tests/index/equivalence_test.cpp tests/index/versioned_index_test.cpp \
-         tests/ds/dynamic_connectivity_test.cpp tests/ds/interval_tree_test.cpp \
-         tests/ds/circular_buffer_test.cpp tests/ds/priority_queue_test.cpp \
-         tests/ds/hash_table_test.cpp tests/ds/timer_wheel_test.cpp \
-         tests/alert/correlator_test.cpp \
-         tests/group/cohesion_test.cpp tests/golden/scenario_replay_test.cpp \
-         tests/golden/hysteresis_ab_test.cpp tests/golden/incident_formation_test.cpp \
-         tests/evidence/merkle_log_test.cpp tests/evidence/digital_id_test.cpp \
-         tests/graph/shortest_path_test.cpp tests/graph/matching_test.cpp \
-         tests/dispatch/assigner_test.cpp \
-         tests/index/kd_tree_test.cpp tests/index/geohash_test.cpp \
-         tests/geo/sweep_line_test.cpp tests/sync/lamport_test.cpp \
-         tests/sync/offline_scenario_test.cpp \
-         tests/jurisdiction/hierarchy_test.cpp \
-         tests/alert/triage_escalation_test.cpp tests/track/anomaly_test.cpp
+TEST_SRC := $(sort $(shell find tests -name '*_test.cpp'))
+TEST_BIN := $(patsubst tests/%.cpp,$(BUILD)/test/%,$(TEST_SRC))
 
-.PHONY: all demo bench test check clean asan cmake-build help
+APPS     := $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench
 
-all: $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench
+.PHONY: all demo dashboard bench test check asan ubsan cmake-build clean help manifest determinism
 
-$(BUILD)/safetrail_headless: $(CORE) apps/safetrail_headless.cpp
-	@mkdir -p $(BUILD)
-	@$(CXX) $(CXXFLAGS) $(OPT) $^ -o $@
+all: $(APPS)
 
-$(BUILD)/safetrail_bench: $(CORE) apps/safetrail_bench.cpp
-	@mkdir -p $(BUILD)
-	@$(CXX) $(CXXFLAGS) $(OPT) $^ -o $@
+# ── core library ─────────────────────────────────────────────────────────────
+# Compiled once into an archive. Tests link against it instead of recompiling the
+# whole core per test file, which took the suite from ~4 min to well under one.
+$(BUILD)/obj/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	@$(CXX) $(CXXFLAGS) $(OPT) -MMD -MP -c $< -o $@
 
+$(LIB): $(OBJ)
+	@mkdir -p $(dir $@)
+	@ar rcs $@ $(OBJ)
+
+$(BUILD)/%: apps/%.cpp $(LIB)
+	@mkdir -p $(dir $@)
+	@$(CXX) $(CXXFLAGS) $(OPT) $< $(LIB) -o $@
+
+-include $(OBJ:.o=.d)
+
+# ── running things ───────────────────────────────────────────────────────────
 demo: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 40 --hours 1 --synthetic 5000 --show 12
 
@@ -56,49 +50,103 @@ demo: $(BUILD)/safetrail_headless
 dashboard: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 60 --hours 2 --synthetic 400 --show 6 --export-html dashboard.html
 
-# Render the slide deck to a PDF (one landscape page per slide) via headless Chrome.
-CHROME ?= /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+bench: $(BUILD)/safetrail_bench
+	@mkdir -p bench/results
+	@./$(BUILD)/safetrail_bench --out bench/results
+
+# Render the slide deck to a PDF (one landscape page per slide) via headless
+# Chrome. CHROME is overridable because the binary's name and path differ per
+# platform; the default probes the usual macOS and Linux locations.
+CHROME ?= $(firstword $(wildcard \
+            /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+            /usr/bin/google-chrome /usr/bin/chromium /usr/bin/chromium-browser) \
+          google-chrome)
 pdf:
 	@"$(CHROME)" --headless --disable-gpu --no-pdf-header-footer \
 	  --print-to-pdf="$(PWD)/safetrail-slides.pdf" --print-to-pdf-no-header \
 	  --virtual-time-budget=4000 "file://$(PWD)/slides.html" 2>/dev/null
 	@echo "wrote safetrail-slides.pdf"
 
-bench: $(BUILD)/safetrail_bench
-	@mkdir -p bench/results
-	@./$(BUILD)/safetrail_bench --out bench/results
+# ── tests ────────────────────────────────────────────────────────────────────
+$(BUILD)/test/%: tests/%.cpp $(LIB)
+	@mkdir -p $(dir $@)
+	@$(CXX) $(CXXFLAGS) -O1 -Itests -MMD -MP $< $(LIB) -o $@
 
-test:
-	@mkdir -p $(BUILD)/test; fail=0; \
-	for t in $(TESTS); do \
-	  n=$$(basename $$t .cpp); \
-	  $(CXX) $(CXXFLAGS) -O1 $(CORE) $$t -o $(BUILD)/test/$$n 2>/dev/null || { echo "  build FAIL $$n"; fail=1; continue; }; \
-	  ./$(BUILD)/test/$$n || fail=1; \
-	done; echo; [ $$fail -eq 0 ] && echo "ALL TESTS PASS" || { echo "TESTS FAILED"; exit 1; }
+-include $(TEST_BIN:=.d)
 
-# Sanitizers are opt-in: they make link times painful and timing numbers useless.
-# Sanitizer run: compile the core ONCE into an instrumented archive, then link
-# each sensitive test against it -- avoids recompiling ~20 files per test.
-ASAN_FLAGS := -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer
-ASAN_TESTS := tests/index/versioned_index_test.cpp tests/evidence/merkle_log_test.cpp
-asan:
-	@mkdir -p $(BUILD)/asan
-	@echo "building instrumented core (once)..."
-	@$(CXX) $(CXXFLAGS) $(ASAN_FLAGS) -c $(CORE) && mv *.o $(BUILD)/asan/ 2>/dev/null || true
-	@ar rcs $(BUILD)/asan/libcore.a $(BUILD)/asan/*.o
-	@fail=0; for t in $(ASAN_TESTS); do \
-	  n=$$(basename $$t .cpp); \
-	  $(CXX) $(CXXFLAGS) $(ASAN_FLAGS) $$t $(BUILD)/asan/libcore.a -o $(BUILD)/asan/$$n \
-	    2>/dev/null || { echo "  build FAIL $$n"; fail=1; continue; }; \
-	  ./$(BUILD)/asan/$$n || fail=1; \
-	done; echo; [ $$fail -eq 0 ] && echo "ASAN CLEAN" || { echo "ASAN FAILURES"; exit 1; }
+test: $(TEST_BIN)
+	@fail=0; for t in $(TEST_BIN); do ./$$t || fail=1; done; \
+	 echo; [ $$fail -eq 0 ] && echo "ALL TESTS PASS" || { echo "TESTS FAILED"; exit 1; }
 
+# Byte-identical output across runs of the same seed. Determinism is a claim the
+# README makes, so it is a gated test, not a footnote.
+determinism: $(BUILD)/safetrail_headless
+	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson \
+	   --tourists 30 --hours 1 --seed 4242 --show 40 > $(BUILD)/det_a.txt
+	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson \
+	   --tourists 30 --hours 1 --seed 4242 --show 40 > $(BUILD)/det_b.txt
+	@cmp -s $(BUILD)/det_a.txt $(BUILD)/det_b.txt \
+	  && echo "determinism: identical output across runs" \
+	  || { echo "DETERMINISM FAILURE: runs diverged"; diff $(BUILD)/det_a.txt $(BUILD)/det_b.txt | head; exit 1; }
+
+# ── sanitizers ───────────────────────────────────────────────────────────────
+# The WHOLE suite, not a hand-picked pair. The core is compiled once with the
+# sanitizers on and archived, so the marginal cost of covering every test is a
+# per-test compile and run -- cheap enough that narrowing coverage would only be
+# hiding failures.
+#
+# `make asan`   AddressSanitizer + UndefinedBehaviorSanitizer. What CI runs.
+# `make ubsan`  UBSan only, into a separate build directory.
+#
+# Why the second target exists, since one sanitizer set would be tidier:
+# AddressSanitizer's runtime is currently broken on macOS 26 with Apple clang 17 --
+# an empty `int main(){}` linked with -fsanitize=address hangs in dyld's
+# __malloc_init before reaching main, so no ASan binary of any kind can run on
+# such a host. That is a platform bug, not a project one, and the right response
+# is to keep ASan authoritative in CI (Linux/g++, where it works) while leaving
+# macOS developers a sanitizer they can actually run locally. Silently dropping
+# sanitizer coverage on one platform would be worse than saying this out loud.
+SAN_KIND  ?= address,undefined
+SAN_DIR   ?= $(BUILD)/asan
+# -fno-sanitize-recover makes UB abort rather than print-and-continue: a
+# sanitizer whose findings do not fail the build is a sanitizer nobody reads.
+SAN_FLAGS := -O1 -g -fsanitize=$(SAN_KIND) -fno-omit-frame-pointer \
+             -fno-sanitize-recover=undefined
+SAN_OBJ   := $(patsubst src/%.cpp,$(SAN_DIR)/obj/%.o,$(SRC))
+SAN_LIB   := $(SAN_DIR)/libsafetrail.a
+SAN_BIN   := $(patsubst tests/%.cpp,$(SAN_DIR)/test/%,$(TEST_SRC))
+
+$(SAN_DIR)/obj/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -c $< -o $@
+
+$(SAN_LIB): $(SAN_OBJ)
+	@mkdir -p $(dir $@)
+	@ar rcs $@ $(SAN_OBJ)
+
+$(SAN_DIR)/test/%: tests/%.cpp $(SAN_LIB)
+	@mkdir -p $(dir $@)
+	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -Itests $< $(SAN_LIB) -o $@
+
+asan: $(SAN_BIN)
+	@fail=0; for t in $(SAN_BIN); do ./$$t || fail=1; done; \
+	 echo; [ $$fail -eq 0 ] && echo "SANITIZERS CLEAN ($(SAN_KIND))" \
+	                       || { echo "SANITIZER FAILURES"; exit 1; }
+
+ubsan:
+	@$(MAKE) --no-print-directory asan SAN_KIND=undefined SAN_DIR=$(BUILD)/ubsan
+
+# ── hygiene ──────────────────────────────────────────────────────────────────
 check:
-	@fail=0; for h in $$(find include -name '*.hpp'); do \
+	@fail=0; for h in $$(find include -name '*.hpp' | sort); do \
 	  rel=$${h#include/}; \
 	  out=$$(printf '#include "%s"\nint main(){}\n' "$$rel" | $(CXX) $(CXXFLAGS) -fsyntax-only -x c++ - 2>&1); \
-	  if [ -n "$$out" ]; then echo "  FAIL $$rel"; fail=1; fi; done; \
+	  if [ -n "$$out" ]; then echo "  FAIL $$rel"; echo "$$out" | head -5; fail=1; fi; done; \
 	[ $$fail -eq 0 ] && echo "all headers compile standalone" || exit 1
+
+manifest:
+	@echo "sources ($(words $(SRC))):"; printf '  %s\n' $(SRC)
+	@echo "tests ($(words $(TEST_SRC))):"; printf '  %s\n' $(TEST_SRC)
 
 cmake-build:
 	@cmake -B $(BUILD)-cmake -DCMAKE_BUILD_TYPE=Release -S . && cmake --build $(BUILD)-cmake -j
@@ -107,10 +155,13 @@ clean:
 	@rm -rf $(BUILD) $(BUILD)-cmake build-rel
 
 help:
-	@echo "make          build demo + benchmark"
-	@echo "make demo     run the simulation, print the event stream and counters"
-	@echo "make dashboard  build dashboard.html and open it in a browser"
-	@echo "make bench    index scaling, equivalence, hysteresis A/B  -> bench/results/"
-	@echo "make test     unit tests"
-	@echo "make asan     unit tests under ASan/UBSan"
-	@echo "make check    syntax-check every header standalone"
+	@echo "make            build the headless engine + benchmark"
+	@echo "make demo       run the simulation, print the event stream and counters"
+	@echo "make dashboard  build dashboard.html (self-contained, just open it)"
+	@echo "make bench      index scaling, equivalence, hysteresis A/B -> bench/results/"
+	@echo "make test       unit + golden + integration tests"
+	@echo "make asan       the whole test suite under ASan + UBSan"
+	@echo "make ubsan      the whole suite under UBSan only (macOS ASan fallback)"
+	@echo "make determinism  same seed twice, assert byte-identical output"
+	@echo "make check      syntax-check every header standalone"
+	@echo "make manifest   print the source/test set both build systems see"

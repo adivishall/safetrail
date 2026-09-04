@@ -58,7 +58,7 @@ gaps — all eleven are now built:
 | 5 | One landslide → forty alert cards | **Correlate** them into one incident |
 | 6 | "Offline-first" that only queues | **Serialise the index** for local eval; reconcile with **Lamport clocks** |
 | 7 | Continuous GPS = 8–12% battery/hr | **Sample by proximity** to danger |
-| 8 | GPS drift makes fences fire constantly | **Hysteresis filter** — removes ~91% of false alerts |
+| 8 | GPS drift makes fences fire constantly | **Hysteresis filter** — removes ~93% of false alerts |
 | 9 | Ethereum for a tamper-proof log | **Merkle log**, offline-verifiable, no chain |
 | 10 | No validation on hand-drawn zones | Reject self-intersections — pairwise + **Shamos–Hoey sweep-line** |
 | 11 | No owner across district lines | Resolve **jurisdiction** from nested boundaries |
@@ -176,15 +176,15 @@ library); the data is **simulated**. State those three before quoting a figure.
 
 | Result | Number |
 |---|---|
-| Spatial index speedup (100k zones) | **~33×** quadtree and R-tree vs brute force (median of 7, ±~5%) |
+| Spatial index speedup (100k zones) | **~33×** quadtree, **~247×** R-tree with STR bulk packing, vs brute force (median of 7, ±~5%) |
 | Candidate pruning (real run) | 438 zones → ~2.4 per query, **~180×** |
-| Hysteresis false-alert removal | **~91% under realistic drift**, ~92% white noise (simulated GPS) |
+| Hysteresis false-alert removal | **~93% under realistic drift**, ~94% white noise (simulated GPS) |
 | Persistent index sharing (5,000 versions) | **13×** vs full copies |
 | Alert correlation (GAP 5) | **scenario-dependent**: ~450:1 on a clustered incident, ~9:1 scattered |
 | Index equivalence (correctness) | 18,000 queries, **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, **0 disagreements** |
 | Merkle tamper detection | forged entries + rewritten history **rejected** |
-| Unit tests | **285 assertions across 28 files**, each vs a brute-force oracle, all pass |
+| Unit tests | **691 assertions across 39 files**, each vs a brute-force oracle, all pass |
 
 **The most interesting result:** our design doc predicted a ~29,000× speedup.
 Measurement brought it down to 33×, and *explaining why* is worth more than the big
@@ -218,7 +218,7 @@ from a sales pitch. Full prep for hard questions: docs/DESIGN_DEFENSE.md.*
 ## 11. Live demo (do this) 
 
 ```bash
-make test        # 285 assertions across 28 files pass — each vs a brute-force oracle
+make test        # 691 assertions across 39 files pass — each vs a brute-force oracle
 make demo        # watch events stream over real geography
 make bench       # the speedup + correctness numbers
 make dashboard   # open dashboard.html — animated map, scrub the timeline
@@ -241,7 +241,7 @@ Or just open the **live URL** — it's the same file, deployed via CI to GitHub 
   oracle — that's how we caught our bugs.
 - **Determinism:** same seed → byte-identical output, which makes the replay and
   every A/B comparison valid.
-- **CI on every push:** builds on g++, runs the full suite (28 files, gates the deploy), runs
+- **CI on every push:** builds on g++, runs the full suite (39 files, gates the deploy), runs
   AddressSanitizer/UBSan (advisory), regenerates the dashboard, publishes to Pages.
 - **No dependencies:** `git clone && make`, nothing else. No cmake, no libraries.
 

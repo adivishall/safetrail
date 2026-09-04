@@ -78,13 +78,16 @@ class MerkleLog {
                                  uint64_t new_size, const Hash& new_root,
                                  const std::vector<Hash>& proof);
 
+  // Binary round-trip. load() validates rather than trusts: wrong magic,
+  // truncated body, an implausible entry count or length, and trailing garbage
+  // are all refused, and a failed load leaves the log unchanged rather than
+  // half-replaced. See the format note in the .cpp.
   bool save(const std::string& path) const;
   bool load(const std::string& path);
 
  private:
   std::vector<Hash>                 leaves_;
   std::vector<std::vector<uint8_t>> entries_;
-  mutable std::vector<Hash>         cached_level_;   // incremental root cache
 };
 
 }  // namespace safetrail::evidence

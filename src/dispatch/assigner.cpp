@@ -60,6 +60,11 @@ Plan assign_greedy(const ResponderPool& pool,
       if (resp_used[a]) continue;
       for (size_t i = 0; i < I; ++i) {
         if (inc_used[i]) continue;
+        // Strict <: among equal-cost pairs the first in (responder, incident)
+        // index order wins. The scan order is fixed, so the greedy plan is a pure
+        // function of the cost matrix -- which matters because greedy-vs-optimal
+        // is a reported number, and a plan that varied run to run would make the
+        // comparison meaningless.
         const double c = cost[avail[a]][i];
         if (c < best) { best = c; ba = a; bi = i; found = true; }
       }
@@ -96,21 +101,28 @@ Plan assign_optimal(const ResponderPool& pool,
       plan.dispatches.push_back({pool[avail[resp_idx]].id, incidents[inc_idx].id, cst});
   };
 
+  // A rejected Assignment carries an EMPTY row_to_col, so its status must be
+  // checked before indexing. The orientation above guarantees rows <= cols and
+  // cost_matrix() only ever writes finite values, so a failure here means a bug
+  // upstream, not bad user input -- and it degrades to "nothing assigned" rather
+  // than reading past the end of a vector.
   if (R <= I) {
     const auto asg = graph::hungarian(C);              // rows = responders
-    for (size_t r = 0; r < R; ++r) {
-      const int col = asg.row_to_col[r];
-      if (col >= 0) commit(r, size_t(col));
-    }
+    if (asg.ok())
+      for (size_t r = 0; r < R; ++r) {
+        const int col = asg.row_to_col[r];
+        if (col >= 0) commit(r, size_t(col));
+      }
   } else {
     std::vector<std::vector<double>> CT(I, std::vector<double>(R));  // rows = incidents
     for (size_t i = 0; i < I; ++i)
       for (size_t r = 0; r < R; ++r) CT[i][r] = C[r][i];
     const auto asg = graph::hungarian(CT);
-    for (size_t i = 0; i < I; ++i) {
-      const int col = asg.row_to_col[i];
-      if (col >= 0) commit(size_t(col), i);
-    }
+    if (asg.ok())
+      for (size_t i = 0; i < I; ++i) {
+        const int col = asg.row_to_col[i];
+        if (col >= 0) commit(size_t(col), i);
+      }
   }
 
   finalize(plan, I);

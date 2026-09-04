@@ -11,6 +11,7 @@ namespace safetrail::fence {
 using safetrail::ZoneId;
 
 enum class ZoneKind { Restricted, Caution, Safe, Advisory };
+const char* to_string(ZoneKind k);
 
 struct Zone {
   ZoneId       id = kNoId;
@@ -58,6 +59,12 @@ class ZoneStore {
   // GeoJSON round-trip. Validates on load and REJECTS invalid geometry rather
   // than storing it — a self-intersecting polygon in the store is a landmine.
   // See Polygon::validate(), GAP 10.
+  //
+  // The round trip is complete: save_geojson writes every property
+  // load_geojson understands (name, kind, severity, dwell, validity, synthetic,
+  // jurisdiction, per-zone hysteresis margins) plus the outer ring and all
+  // holes, with strings JSON-escaped. load -> save -> load is asserted
+  // semantically identical in tests/fence/zone_roundtrip_test.cpp.
   bool load_geojson(const std::string& path, std::string* error);
   bool save_geojson(const std::string& path) const;
 

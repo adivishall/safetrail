@@ -44,12 +44,20 @@ everything. (All of this exercised in simulation; there is no device or app.)
 ## Quickstart
 
 No dependencies beyond a C++17 compiler. No cmake required, no libraries to fetch.
+(`make cmake-build` uses CMake if you have it; both build systems glob the same
+source set, so they cannot drift.)
 
 ```bash
 make demo        # run the simulation, print event stream + counters
 make bench       # brute force vs quadtree vs R-tree, + correctness gates
-make test        # unit tests
+make test        # unit, golden and integration tests (~25 s)
 make dashboard   # writes dashboard.html — open it, no server needed
+
+make determinism # same seed twice, assert byte-identical output
+make asan        # the whole suite under AddressSanitizer + UBSan
+make ubsan       # the whole suite under UBSan only (see below)
+make check       # every header compiles standalone
+make manifest    # print the source/test set both build systems see
 ```
 
 The default dataset is **real OpenStreetMap geography** — actual reservoirs,
@@ -57,6 +65,13 @@ forests, and landmarks (Wards Lake, Sonapani Waterfall Cliff) around Shillong,
 Meghalaya, fetched via the Overpass API and converted by `tools/osm_to_zones.py`.
 Regenerate it any time with that script; see
 [docs/DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md).
+
+> **On `make ubsan`.** AddressSanitizer's runtime is currently broken on macOS 26
+> with Apple clang 17 — an empty `int main(){}` linked with `-fsanitize=address`
+> hangs in dyld before reaching `main`, so no ASan binary runs on such a host.
+> ASan is therefore authoritative in CI (Linux/g++, where it works) and `make ubsan`
+> exists so macOS developers have a sanitizer they can actually run. Both run the
+> **whole** suite, and UB aborts rather than printing and continuing.
 
 `make dashboard` produces a single self-contained HTML file: animated map, live
 counters, event stream, timeline scrubber, an incident-investigation panel showing
@@ -80,17 +95,24 @@ oracle, not an external library — so it measures the structure, not a vendor.
 
 ```
 index scaling, 100,000 zones, 450 m query (median of 7, ±~5%):
-  brute force  ~230 us/query
-  quadtree      ~7.0 us/query   ~33x
-  R-tree        ~6.5 us/query   ~33x    (QT and RT converge; which leads is within noise)
+  brute force  ~242 us/query
+  quadtree      ~7.3 us/query    ~33x
+  R-tree        ~1.0 us/query   ~247x    (STR bulk packing; see below)
 
-hysteresis A/B [GAP 8]:  91% removed under realistic drift, 92% under white noise (simulated GPS)
+R-tree bulk load:        STR packing vs repeated insertion — 6.5x faster queries,
+                         33% smaller tree, from the SAME data and query code
+hysteresis A/B [GAP 8]:  93% removed under realistic drift, 94% under white noise (simulated GPS)
 equivalence:             18,000 queries, 0 mismatches vs brute force
 ray cast vs winding:     100,000 points, 0 disagreements
 persistent index [GAP 3]: 13.0x structural sharing at 5,001 versions
+A* vs Dijkstra:          78% fewer nodes settled, same optimal path
+dispatch (Hungarian):    16% less total travel than greedy, never worse in 200/200
+adaptive sampling [GAP 7]: 28,800 fixes -> 257, 99% battery saved at 100% near-zone recall
 alert correlation [GAP 5]: scenario-dependent — a clustered incident compresses
                            ~450:1, a scattered run ~9:1 (see the caveat below)
-unit tests:              285 assertions across 28 files, each fast structure vs a brute-force oracle
+determinism:             same seed, two runs, byte-identical output (`make determinism`)
+unit tests:              691 assertions across 39 files, each fast structure vs a brute-force
+                         oracle; whole suite clean under UBSan locally, ASan+UBSan in CI
 ```
 
 **Read the numbers honestly.** Everything is measured on **simulated** tourists
@@ -101,9 +123,13 @@ on one hazard. That is the case the feature exists for, but the ratio is a
 property of how clustered the incident is, not a fixed law — a scattered
 population compresses far less, and we report both.
 
-See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the ceiling is
-~33x and not the ~29,000x originally estimated — the answer is the most
-interesting result in the project.
+See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) for why the quadtree's
+ceiling is ~33x and not the ~29,000x originally estimated — at 100k zones over a
+district, **98.8 zones genuinely intersect each 450 m query box**, and no index can
+return fewer results than the query actually has. That output-size bound is the
+most interesting result in the project. The R-tree beats it not by returning less
+but by visiting fewer nodes to find the same answers, which is what STR bulk
+packing buys.
 
 ## Layout
 

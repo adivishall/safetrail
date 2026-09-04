@@ -1,6 +1,7 @@
 #include "safetrail/graph/road_graph.hpp"
 
 #include <cfloat>
+#include <cmath>
 #include <cstdio>
 
 namespace safetrail::graph {
@@ -8,21 +9,48 @@ namespace safetrail::graph {
 NodeId RoadGraph::add_node(geo::LatLon pos) {
   nodes_.push_back(pos);
   adj_.emplace_back();
+  snap_index_.reset();                  // the snap index no longer covers the graph
   return NodeId(nodes_.size() - 1);
 }
 
-void RoadGraph::add_edge(NodeId u, NodeId v, double weight_m) {
+// Validated at the boundary rather than trusted. Dijkstra and A* both assume
+// non-negative finite weights; a NaN weight in particular is corrosive, because
+// every comparison against it is false, so it neither relaxes nor fails to relax
+// and the resulting distances are silently wrong rather than obviously wrong.
+bool RoadGraph::add_edge(NodeId u, NodeId v, double weight_m) {
+  if (!valid(u) || !valid(v)) return false;
+  if (!(weight_m >= 0.0) || std::isinf(weight_m)) return false;   // catches NaN too
   adj_[size_t(u)].push_back(Edge{v, weight_m});
   ++edge_count_;
+  return true;
 }
 
-void RoadGraph::add_road(NodeId u, NodeId v) {
+bool RoadGraph::add_road(NodeId u, NodeId v) {
+  if (!valid(u) || !valid(v)) return false;
   const double w = geo::distance_m(nodes_[size_t(u)], nodes_[size_t(v)]);
-  add_edge(u, v, w);
-  add_edge(v, u, w);
+  return add_edge(u, v, w) && add_edge(v, u, w);
+}
+
+void RoadGraph::ensure_snap_index() const {
+  if (snap_index_ || nodes_.empty()) return;
+  std::vector<index::KdTree<NodeId>::Item> items;
+  items.reserve(nodes_.size());
+  for (size_t i = 0; i < nodes_.size(); ++i) items.push_back({NodeId(i), nodes_[i]});
+  snap_index_ = std::make_unique<index::KdTree<NodeId>>();
+  snap_index_->build(std::move(items));
 }
 
 NodeId RoadGraph::nearest_node(geo::LatLon p) const {
+  if (nodes_.empty()) return kNoNode;
+  ensure_snap_index();
+  NodeId out = kNoNode;
+  return snap_index_->nearest(p, out) ? out : kNoNode;
+}
+
+// The O(V) reference implementation. Ties break on the lower NodeId so it and the
+// k-d tree agree exactly, which is what lets the test assert equality rather than
+// "equal distance".
+NodeId RoadGraph::nearest_node_linear(geo::LatLon p) const {
   NodeId best = kNoNode;
   double best_d = DBL_MAX;
   for (size_t i = 0; i < nodes_.size(); ++i) {
@@ -54,15 +82,17 @@ struct Rng {
 bool RoadGraph::save_file(const std::string& path) const {
   std::FILE* f = std::fopen(path.c_str(), "w");
   if (!f) return false;
-  std::fprintf(f, "safetrail-roads 1\n%zu\n", nodes_.size());
+  std::fprintf(f, "safetrail-roads %d\n%zu\n", kFileVersion, nodes_.size());
+  // %.9f on coordinates is ~0.1 mm; %.6f on a weight in metres is a micron. Both
+  // are far finer than anything the data means, and both are exact enough that
+  // save->load->save is byte-identical, which the round-trip test asserts.
   for (const auto& n : nodes_) std::fprintf(f, "%.9f %.9f\n", n.lat, n.lon);
-  // Emit each undirected road once (u < v), dropping the mirrored back-edge.
-  size_t undirected = 0;
+  std::fprintf(f, "%zu\n", edge_count_);
+  // One line per DIRECTED edge, carrying its own weight. See the format note in
+  // road_graph.hpp for why v1's "one line per unordered pair" was lossy.
   for (size_t u = 0; u < adj_.size(); ++u)
-    for (const auto& e : adj_[u]) if (u < size_t(e.to)) ++undirected;
-  std::fprintf(f, "%zu\n", undirected);
-  for (size_t u = 0; u < adj_.size(); ++u)
-    for (const auto& e : adj_[u]) if (u < size_t(e.to)) std::fprintf(f, "%zu %d\n", u, e.to);
+    for (const auto& e : adj_[u])
+      std::fprintf(f, "%zu %d %.6f\n", u, e.to, e.weight_m);
   std::fclose(f);
   return true;
 }
@@ -73,26 +103,45 @@ bool RoadGraph::load_file(const std::string& path, std::string* err) {
   auto fail = [&](const char* m) { if (err) *err = m; std::fclose(f); return false; };
 
   int version = 0;
-  if (std::fscanf(f, "safetrail-roads %d", &version) != 1 || version != 1)
-    return fail("bad header or version");
+  if (std::fscanf(f, "safetrail-roads %d", &version) != 1)
+    return fail("bad header");
+  if (version != 1 && version != 2)
+    return fail("unsupported road-file version");
 
-  nodes_.clear(); adj_.clear(); edge_count_ = 0;
+  // Parse into a fresh graph and only adopt it on success, so a truncated or
+  // malformed file leaves the caller's existing network untouched rather than
+  // half-replaced.
+  RoadGraph loaded;
   size_t nc = 0;
   if (std::fscanf(f, "%zu", &nc) != 1) return fail("bad node count");
   for (size_t i = 0; i < nc; ++i) {
     double lat = 0, lon = 0;
     if (std::fscanf(f, "%lf %lf", &lat, &lon) != 2) return fail("bad node line");
-    add_node({lat, lon});
+    if (!geo::LatLon{lat, lon}.valid()) return fail("node coordinates out of range");
+    loaded.add_node({lat, lon});
   }
   size_t ec = 0;
   if (std::fscanf(f, "%zu", &ec) != 1) return fail("bad edge count");
   for (size_t i = 0; i < ec; ++i) {
     long u = 0, v = 0;
     if (std::fscanf(f, "%ld %ld", &u, &v) != 2) return fail("bad edge line");
-    if (!valid(NodeId(u)) || !valid(NodeId(v))) return fail("edge references a missing node");
-    add_road(NodeId(u), NodeId(v));
+    if (!loaded.valid(NodeId(u)) || !loaded.valid(NodeId(v)))
+      return fail("edge references a missing node");
+    if (version == 1) {
+      // Legacy: undirected, weight re-derived from the geometry. That is exactly
+      // what a v1 file meant when it was written, so reading it this way is
+      // faithful -- it is only WRITING that way that lost information.
+      if (!loaded.add_road(NodeId(u), NodeId(v))) return fail("bad legacy edge");
+    } else {
+      double w = 0;
+      if (std::fscanf(f, "%lf", &w) != 1) return fail("bad edge weight");
+      if (!loaded.add_edge(NodeId(u), NodeId(v), w))
+        return fail("edge weight must be finite and non-negative");
+    }
   }
   std::fclose(f);
+  *this = std::move(loaded);
+  snap_index_.reset();
   return true;
 }
 

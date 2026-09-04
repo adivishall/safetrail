@@ -68,10 +68,21 @@ class SpatialIndex {
   // across the whole tick and we do not allocate 200 vectors per 100 ms.
   virtual void query(const geo::Bbox& query, std::vector<ZoneId>& out) const = 0;
 
-  // k nearest zone boxes to a point. Drives the adaptive sampler (GAP 7):
-  // "how far is the nearest thing I could possibly breach?"
-  virtual void nearest(const geo::LatLon& p, size_t k,
-                       std::vector<ZoneId>& out) const = 0;
+  // ── Why there is no nearest() here  ───────────────────────────────────────
+  //
+  // There used to be. Every implementation satisfied it by collecting all items
+  // and sorting them -- an O(n log n) scan behind an interface that sat next to
+  // an O(log n + k) range query and looked like a peer. Benchmarking "the
+  // quadtree's nearest-neighbour query" would have been benchmarking a linear
+  // scan with extra steps, and the header claimed it drove the adaptive sampler,
+  // which it never did: the evaluator gets that distance from the candidates it
+  // already has, for free.
+  //
+  // So the capability split is explicit rather than implied. These indexes answer
+  // RANGE queries over boxes. Nearest-neighbour over POINTS is a different
+  // structure with a different pruning argument, and this project has one:
+  // index/kd_tree.hpp, which is what RoadGraph::nearest_node and the dispatch
+  // layer use. An index should not advertise an operation it can only fake.
 
   virtual size_t size() const = 0;
   virtual IndexStats stats() const = 0;

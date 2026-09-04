@@ -1,14 +1,18 @@
 #pragma once
-// safetrail :: geo :: douglas_peucker
+// safetrail :: Polyline simplification
 //
-// TODO(impl): see docs/ARCHITECTURE.md for this module's responsibility and
-// docs/DATA_STRUCTURES.md for its complexity target.
+// NOT IN THE ENGINE, BY DESIGN. Douglas-Peucker boundary simplification runs once,
+// offline, in the data-prep tool (`tools/osm_to_zones.py`) when an OpenStreetMap
+// extract is converted into the project's zone set. By the time the engine loads a
+// zone the simplification has already happened, so a runtime implementation would
+// have no caller.
 //
-// Ground rules: hand-write the structure. No std::unordered_map, no std::set,
-// no std::priority_queue. std::vector as raw storage is fine.
+// If simplification ever needs to happen at runtime -- an operator drawing a
+// hand-traced boundary, say -- this is where it goes, and the O(n log n) average /
+// O(n^2) worst-case analysis belongs with it.
 
 namespace safetrail::geo {
 
-// TODO(impl)
+// Intentionally empty. See the note above.
 
 }  // namespace safetrail::geo

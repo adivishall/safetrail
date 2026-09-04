@@ -34,9 +34,13 @@ class Geohash final : public SpatialIndex {
   void insert(ZoneId id, const geo::Bbox& box) override;
   bool remove(ZoneId id) override;
   void query(const geo::Bbox& q, std::vector<ZoneId>& out) const override;
-  void nearest(const geo::LatLon& p, size_t k, std::vector<ZoneId>& out) const override;
 
   size_t size() const override { return recs_.size(); }
+
+  // The half-extents the query pads by. Exposed so the churn benchmark can show
+  // the pruning leak that recompute-on-remove closes.
+  double query_pad_lat() const { return max_half_lat_; }
+  double query_pad_lon() const { return max_half_lon_; }
   IndexStats stats() const override;
   void reset_counters() override { st_ = IndexStats{}; }
 
@@ -61,6 +65,7 @@ class Geohash final : public SpatialIndex {
   mutable IndexStats st_{};
 
   void note_extent(const geo::Bbox& b);   // grow the query-padding half-extents
+  void recompute_extents();               // exact recompute after a removal
   static uint64_t spread(uint32_t v);     // spread 24 bits into every other bit
 };
 

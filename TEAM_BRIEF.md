@@ -61,7 +61,7 @@ manager, no internet.
 ```bash
 git clone https://github.com/adivishall/safetrail
 cd safetrail
-make test        # 285 assertions across 28 files, all pass
+make test        # 691 assertions across 39 files, all pass
 make demo        # run the simulation, watch the event stream
 make bench       # the measurements — this is the money shot
 make dashboard   # writes dashboard.html, open it in any browser
@@ -139,7 +139,7 @@ Each traces to a documented gap. Details in
 | 5 | One landslide, forty alert cards | Correlate them into **one incident** with forty people on it | ✅ done |
 | 6 | "Offline-first" that isn't | Theirs queues requests. Can't reach PostGIS = can't check a single zone. We serialise the index for local evaluation and reconcile event logs with Lamport clocks on reconnect | ✅ done |
 | 7 | Continuous GPS = 8–12% battery/hour | Sample based on how close the danger is | ✅ done |
-| 8 | Drift makes fences fire constantly | Hysteresis filter. **Removes 91% of false alerts** (measured under realistic correlated drift) | ✅ done |
+| 8 | Drift makes fences fire constantly | Hysteresis filter. **Removes 93% of false alerts** (measured under realistic correlated drift) | ✅ done |
 | 9 | Ethereum for a tamper-proof log | A Merkle log (RFC 6962, SHA-256 from scratch) gives the same property offline, no chain | ✅ done |
 | 10 | No validation on hand-drawn zones | Self-intersecting polygons make the geometry return garbage. We reject them — pairwise check plus an O((n+k) log n) Shamos–Hoey sweep-line, and the zone editor warns live | ✅ done |
 | 11 | Nobody owns the alert across district lines | Resolve jurisdiction from nested administrative boundaries | ✅ done |
@@ -150,11 +150,19 @@ Each traces to a documented gap. Details in
 
 Honest status. **Every structure and algorithm in the inventory is built,
 exercised, and cross-checked against a brute-force oracle.** Nothing in the
-data-structures inventory is designed-but-unbuilt any more. The only remaining
-`TODO(impl)` stubs are the `server/` scaffolding (the project is serverless by
-design — the engine emits one HTML file) and a couple of helpers whose logic
-lives in another file. Full inventory with complexity and status:
-[docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md).
+data-structures inventory is designed-but-unbuilt any more, and there is no
+`TODO(impl)` anywhere in `include/`, `src/`, `apps/` or `tests/`.
+
+Seven headers exist with no implementation, and each now says in its own file
+exactly why: `server/http_api.hpp` and `server/ws_stream.hpp` (the project is
+serverless by design — the engine emits one HTML file), `geo/haversine.hpp` and
+`geo/predict.hpp` (the logic lives beside its callers, in `geo/point.cpp` and
+`fence/evaluator.cpp`), `geo/douglas_peucker.hpp` (simplification runs offline in
+`tools/osm_to_zones.py`), and `sim/recorder.hpp` / `sync/delta_sync.hpp`
+(superseded by `viz/html_export.cpp` and `sync/lamport.hpp`). They survive so that
+the comments referring to them lead somewhere honest rather than to a missing
+file. Full inventory with complexity and status, including a "what is deliberately
+NOT built" table: [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md).
 
 ### What's built
 
@@ -195,11 +203,13 @@ on **simulated** data. State those three caveats before quoting the number.
 | | time per query (median of 7) | speedup |
 |---|---|---|
 | Brute force | ~230 µs | baseline |
-| Quadtree | ~7.0 µs | **~33×** |
-| R-tree | ~6.5 µs | **~33×** |
+| Quadtree | ~7.3 µs | **~33×** |
+| R-tree (STR bulk build) | ~1.0 µs | **~247×** |
 
 Quadtree and R-tree converge at 100k; which one leads is within the ±5% spread,
-so we report both as "~33×" rather than pinning a digit that noise flips.
+The R-tree pulled ahead once `build()` switched from repeated insertion to STR
+bulk packing — same data, same query code, 6.5× faster queries and a 33% smaller
+tree purely from how it was assembled.
 
 ### The most interesting thing in the project
 
@@ -223,7 +233,7 @@ actually has. The ceiling is output size, not the tree. That's exactly what
 | Index equivalence | 18,000 queries — quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | **Scenario-dependent.** A scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1 compression); a scattered run still compresses ~9:1. The ratio reflects how clustered the incident is, not a fixed number — we report both |
-| Unit tests | **285 assertions across 28 files**, every fast structure vs a brute-force oracle, all pass |
+| Unit tests | **691 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass |
 
 ### Three bugs the measurements caught
 
@@ -356,5 +366,5 @@ That's how we caught all three bugs above.
 We built the geofencing engine everyone else imports, and fixed eleven things that
 importing it makes impossible. Hand-written quadtree, R-tree, persistent quadtree,
 rollback union-find, interval tree, plus real computational geometry. It runs,
-there's a dashboard, 285 assertions across 28 files pass, and the index is 33× faster than brute force
+there's a dashboard, 691 assertions across 39 files pass, and the index is 33-247× faster than brute force
 with provably identical output.

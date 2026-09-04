@@ -64,7 +64,25 @@ bool contains_winding(const Polygon& poly, const LatLon& p);
 //
 // O(V) — same order as ray casting, but with a real distance computation per
 // edge rather than a comparison, so measurably slower. Worth benchmarking.
+//
+// THIS IS THE ONE AUTHORITATIVE DEFINITION of three-valued containment. Nothing
+// else in the engine is allowed to re-derive it from signed_distance_m and its
+// own threshold comparison: fence::Evaluator used to, and a policy layer that
+// quietly redefines the geometry it is applying policy to is the shortest route
+// to two subsystems disagreeing about whether someone is inside a zone.
+// tests/geo/containment_uncertainty_test.cpp asserts the two layers agree.
 Containment evaluate(const Polygon& poly, const UncertainPoint& p);
+
+// Same verdict, and also the signed distance it was derived from. The evaluator
+// needs both -- the verdict for the transition machine, the distance for dwell,
+// ETA and the adaptive sampler -- and computing them in one call is what keeps
+// there from being a second, drifting copy of the classification rule.
+//
+// Note this overload does NOT take the bbox fast-reject the two-argument form
+// uses, because a caller asking for the distance wants the real number, not a
+// lower bound. Both agree on the verdict; see the .cpp.
+Containment evaluate(const Polygon& poly, const UncertainPoint& p,
+                     double* out_signed_distance_m);
 
 // Signed distance from p to the polygon boundary. Negative inside, positive
 // outside. This is the workhorse: `evaluate` needs it, the predictive alerting

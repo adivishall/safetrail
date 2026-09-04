@@ -12,6 +12,12 @@ namespace safetrail::ds {
 
 template <typename T, size_t N>
 class CircularBuffer {
+  // A zero-capacity ring buffer has no coherent behaviour: push() would compute
+  // head_ % 0, and every accessor would index an empty array. Rejecting it at
+  // compile time turns an instantiation mistake into an error message instead of
+  // undefined behaviour at the first push.
+  static_assert(N > 0, "CircularBuffer capacity must be at least 1");
+
  public:
   void push(const T& v) {
     buf_[head_] = v;

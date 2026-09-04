@@ -2,25 +2,58 @@
 
 #include <cmath>
 
+#include "safetrail/geo/segment.hpp"
+
 namespace safetrail::jurisdiction {
 
 JurisdictionId Hierarchy::add(std::string name, geo::Polygon shape) {
   Node n;
-  n.area = std::fabs(shape.signed_area());
+  // OUTER area, deliberately. Nesting is a statement about outlines: a district
+  // contains a block whether or not either has exempt enclaves punched out of it,
+  // and using region area (which subtracts holes) would let a large region with
+  // large holes rank as "smaller" than the block it contains and invert the tree.
+  n.area = std::fabs(shape.outer_signed_area());
   n.name = std::move(name);
   n.shape = std::move(shape);
   nodes_.push_back(std::move(n));
   return JurisdictionId(nodes_.size() - 1);
 }
 
+// Containment of a REGION, not of a point set.
+//
+// The obvious test -- "is every vertex of the inner ring inside the outer?" -- is
+// not sufficient, and the counterexample is not exotic. Take a C-shaped (concave)
+// district and a block drawn as a long bar across the mouth of the C: both of the
+// bar's ends can sit inside the two arms while its middle lies in the gap,
+// entirely outside the district. Every vertex passes; the region is not contained.
+//
+// A region is contained iff BOTH hold:
+//   1. every inner vertex is inside (or on) the outer polygon, and
+//   2. no inner edge crosses the outer boundary.
+// (1) alone admits the bar; (2) alone admits a disjoint region that never touches
+// the outer ring. Together they are exactly containment for simple polygons:
+// having no boundary crossing means the inner ring lies wholly in one face of the
+// outer ring, and (1) identifies which face.
+//
+// Cost: O(V_inner * V_outer) edge tests instead of O(V_inner) point tests. Both
+// are dominated by build()'s O(n^2) pairwise loop, and boundaries are authored in
+// dozens, so the exact answer is affordable.
 bool Hierarchy::strictly_contains(JurisdictionId outer, JurisdictionId inner) const {
   if (outer == inner) return false;
   const Node& o = nodes_[outer];
   const Node& i = nodes_[inner];
   if (o.area <= i.area) return false;                 // a container must be larger
-  // Every vertex of the inner ring must lie inside (or on) the outer polygon.
+
   for (const auto& v : i.shape.outer())
     if (!geo::contains(o.shape, v)) return false;
+
+  const auto& ir = i.shape.outer();
+  const auto& orr = o.shape.outer();
+  for (size_t a = 0; a < ir.size(); ++a)
+    for (size_t b = 0; b < orr.size(); ++b)
+      if (geo::segments_properly_cross(ir[a], ir[(a + 1) % ir.size()],
+                                       orr[b], orr[(b + 1) % orr.size()]))
+        return false;
   return true;
 }
 

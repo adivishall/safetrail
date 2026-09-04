@@ -1,14 +1,18 @@
 #pragma once
-// safetrail :: sync :: delta_sync
+// safetrail :: Delta synchronisation
 //
-// TODO(impl): see docs/ARCHITECTURE.md for this module's responsibility and
-// docs/DATA_STRUCTURES.md for its complexity target.
+// SUPERSEDED. The offline story (GAP 6) is `sync/lamport.hpp`: an append-only
+// device queue, Lamport-ordered reconciliation on the server, and idempotent
+// merge. A delta-sync layer on top -- shipping only what changed since a
+// watermark -- was on an early roadmap and was dropped: the payloads here are
+// events, which are already deltas, so it would have been a compression scheme
+// with nothing to compress.
 //
-// Ground rules: hand-write the structure. No std::unordered_map, no std::set,
-// no std::priority_queue. std::vector as raw storage is fine.
+// This header survives so that references to "delta_sync.hpp" point somewhere
+// honest. Include `sync/lamport.hpp`.
 
 namespace safetrail::sync {
 
-// TODO(impl)
+// Intentionally empty. See the note above.
 
 }  // namespace safetrail::sync

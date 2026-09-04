@@ -11,7 +11,39 @@
 // allocation, everything in one cache-friendly array, which is the right choice
 // for the small POD keys/values here. Deletion uses tombstones (a deleted slot
 // stays probeable so it does not break a probe chain that runs through it), and
-// the table grows and rehashes at a 0.7 load factor to keep probe chains short.
+// the table rehashes at a 0.7 load factor to keep probe chains short.
+//
+// ── Tombstones, and why the rehash policy has two cases ──────────────────────
+//
+// A tombstone occupies a slot for probing purposes without holding a live entry,
+// so under insert/delete churn the table fills with them while the live count
+// stays flat. The load factor that triggers a rehash counts tombstones -- it has
+// to, since probe length depends on occupied slots, not live ones -- so a churning
+// table hits the threshold repeatedly.
+//
+// The bug was what happened next: the rehash always DOUBLED. A workload that
+// inserts and erases the same 100 keys forever therefore doubled the table
+// forever, growing without bound while holding 100 entries, purely to make room
+// for the corpses. Memory grew, cache locality collapsed, and lookups got slower
+// the longer the table ran -- the classic open-addressing failure mode.
+//
+// The fix is to ask what actually filled the table. The trigger fires on
+// count + tombstones; the decision is made on count alone:
+//
+//   live entries alone justify a bigger table  ->  grow (double)
+//   they do not, so it is tombstones           ->  rehash at the SAME size,
+//                                                  which sweeps them away
+//
+// Rebuilding in place is O(n) and happens at most once per O(size) deletions, so
+// it is O(1) amortised -- the same argument that justifies doubling. The
+// alternative, deleting by backward-shift instead of tombstoning, avoids the
+// problem entirely but costs an unbounded shift per erase and is far easier to
+// get wrong; this is the standard trade. bench/results/hash_churn.csv measures
+// the before/after.
+//
+// Shrinking is deliberately NOT done: a table that halves as soon as it is half
+// empty thrashes on a workload that oscillates around the boundary, and nothing
+// here holds a table long enough after a bulk delete for the memory to matter.
 //
 // Hashing is hand-written (Fibonacci hashing for integers, FNV-1a for strings) so
 // the structure owns its whole behaviour.
@@ -44,9 +76,16 @@ class HashMap {
   size_t size() const { return count_; }
   bool   empty() const { return count_ == 0; }
 
+  // Exposed for the churn benchmark and the tests: the invariant worth asserting
+  // is that a bounded live set keeps a bounded table, however much it churns.
+  size_t bucket_count() const { return slots_.size(); }
+  size_t tombstones() const { return tombstones_; }
+  size_t rehashes() const { return rehashes_; }
+  size_t growths() const { return growths_; }
+
   // Insert or overwrite. Returns true if the key was newly inserted.
   bool put(const K& key, const V& value) {
-    if ((count_ + tombstones_ + 1) * 10 >= slots_.size() * 7) grow();
+    if ((count_ + tombstones_ + 1) * 10 >= slots_.size() * 7) maybe_rehash();
     size_t mask = slots_.size() - 1;
     size_t i = H{}(key) & mask;
     int64_t first_tomb = -1;
@@ -98,6 +137,7 @@ class HashMap {
   static constexpr size_t kInitial = 16;   // power of two
   std::vector<Slot> slots_;
   size_t count_ = 0, tombstones_ = 0;
+  size_t rehashes_ = 0, growths_ = 0;
 
   int64_t find(const K& key) const {
     const size_t mask = slots_.size() - 1;
@@ -111,10 +151,22 @@ class HashMap {
     return -1;
   }
 
-  void grow() {
+  // See the header note. Grow only if the LIVE entries need a bigger table;
+  // otherwise rebuild at the same size to sweep out tombstones.
+  void maybe_rehash() {
+    const size_t n = slots_.size();
+    const bool live_needs_growth = (count_ + 1) * 10 >= n * 7;
+    rehash(live_needs_growth ? n * 2 : n);
+    if (live_needs_growth) ++growths_; else ++rehashes_;
+  }
+
+  void rehash(size_t new_size) {
     std::vector<Slot> old = std::move(slots_);
-    slots_.assign(old.size() * 2, Slot{});
+    slots_.assign(new_size, Slot{});
     count_ = 0; tombstones_ = 0;
+    // Reinsert live entries only; tombstones are simply not carried over, which
+    // is the whole point. put() cannot recurse into maybe_rehash() here because
+    // the destination is sized for these entries by construction.
     for (auto& s : old) if (s.state == Full) put(s.key, s.value);
   }
 };

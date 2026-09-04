@@ -35,8 +35,31 @@ std::vector<int32_t> kuhn_matching(int32_t left_n, int32_t right_n,
 struct Assignment {
   std::vector<int32_t> row_to_col;   // size = number of rows (left vertices)
   double               total_cost = 0.0;
+  // Why a call produced nothing. `Ok` with an empty row_to_col means the input
+  // had zero rows, which is a legitimate no-op; anything else is malformed input.
+  enum class Status {
+    Ok,
+    EmptyInput,        // zero rows
+    Ragged,            // rows of differing widths, or a zero-width row
+    MoreRowsThanCols,  // violates the documented rows <= cols contract
+    NonFiniteCost,     // a NaN or infinite entry
+  } status = Status::Ok;
+  bool ok() const { return status == Status::Ok; }
 };
+const char* to_string(Assignment::Status s);
 
+// Validates its input rather than trusting it. A ragged matrix used to read past
+// the end of a short row -- undefined behaviour reached from a plain data error --
+// and a NaN entry silently poisons the dual potentials so every subsequent
+// comparison is false and the algorithm returns an arbitrary assignment that
+// still looks well-formed. Both are now refused with a status.
+//
+// Determinism on equal costs: the potentials method scans columns left to right
+// and takes the FIRST minimum (`cur < minv[j]`, `minv[j] < delta`, both strict),
+// so among several optimal assignments it always returns the same one. That is
+// asserted directly in tests/graph/matching_test.cpp -- several optima exist on
+// any symmetric cost matrix, and the dispatch plan must not depend on which one
+// the compiler's floating-point happened to reach first.
 Assignment hungarian(const std::vector<std::vector<double>>& cost);
 
 }  // namespace safetrail::graph

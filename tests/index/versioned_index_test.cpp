@@ -90,6 +90,107 @@ int main() {
           "validity-only change allocates no new nodes");
   }
 
+  // ── validity history is itself versioned  ──────────────────────────────────
+  //
+  // The bug this pins: validity used to live in a mutable current-state array, so
+  // a historical query fetched the OLD geometry and filtered it with the NEW
+  // rules -- an answer that never existed at any point in time. These assertions
+  // fail loudly against that implementation.
+  {
+    index::VersionedIndex ix;
+    // A trail closed 10:00-12:00 on the day of the incident.
+    ix.add_zone(0, box_at(25.55, 91.88), Validity{36000000, 43200000}, 1000);
+
+    std::vector<ZoneId> o;
+    o.clear(); ix.query_at(39600000, world, o);                 // 11:00
+    t::ok(o.size() == 1, "closure is in force at 11:00 under the original rule");
+    o.clear(); ix.query_at(46800000, world, o);                 // 13:00
+    t::ok(o.empty(), "closure is NOT in force at 13:00 under the original rule");
+
+    // At 20:00 the operator extends the closure retroactively-looking window to
+    // 18:00-23:00 -- a different window that does not cover 11:00 at all.
+    ix.update_validity(0, Validity{64800000, 82800000}, 72000000);
+
+    o.clear(); ix.query_at(39600000, world, o);
+    t::ok(o.size() == 1,
+          "history intact: 11:00 still shows the closure that was in force THEN");
+    o.clear(); ix.query_at(46800000, world, o);
+    t::ok(o.empty(), "history intact: 13:00 still shows nothing in force");
+    o.clear(); ix.query_at(75600000, world, o);                 // 21:00, after the edit
+    t::ok(o.size() == 1, "the NEW window applies to queries after the edit");
+    // Transaction time vs valid time, made explicit: 19:26 falls INSIDE the new
+    // 18:00-23:00 window, but it is BEFORE the 20:00 edit that created it, so the
+    // rules in force at 19:26 are still the old ones and the answer is empty.
+    // Getting this wrong is exactly how a temporal query starts inventing history.
+    o.clear(); ix.query_at(70000000, world, o);                 // 19:26
+    t::ok(o.empty(), "an edit does not apply to timestamps before the edit itself");
+
+    // Between the two intervals, under the new rules: not in force.
+    o.clear(); ix.query_at(50400000, world, o);                 // 14:00
+    t::ok(o.empty(), "query between the old and new windows returns nothing");
+
+    // The accessor states the same thing directly.
+    Validity got{};
+    t::ok(ix.validity_at(0, 39600000, &got) && got.from == 36000000 && got.to == 43200000,
+          "validity_at() reports the ORIGINAL window for a pre-edit timestamp");
+    t::ok(ix.validity_at(0, 75600000, &got) && got.from == 64800000 && got.to == 82800000,
+          "validity_at() reports the EDITED window for a post-edit timestamp");
+  }
+
+  // Several successive validity edits, each visible only from its own version on.
+  {
+    index::VersionedIndex ix;
+    ix.add_zone(0, box_at(25.55, 91.88), Validity{0, 1000}, 100);
+    ix.update_validity(0, Validity{0, 2000}, 200);
+    ix.update_validity(0, Validity{0, 3000}, 300);
+    ix.update_validity(0, Validity{0, 4000}, 400);
+
+    Validity got{};
+    t::ok(ix.validity_at(0, 150, &got) && got.to == 1000, "edit 1 of 4: window ends 1000");
+    t::ok(ix.validity_at(0, 250, &got) && got.to == 2000, "edit 2 of 4: window ends 2000");
+    t::ok(ix.validity_at(0, 350, &got) && got.to == 3000, "edit 3 of 4: window ends 3000");
+    t::ok(ix.validity_at(0, 450, &got) && got.to == 4000, "edit 4 of 4: window ends 4000");
+
+    // The history is O(changes), not O(versions x zones) -- the whole reason the
+    // structural-sharing argument survives.
+    t::ok(ix.validity_records() == 4, "one record per change, not per version");
+  }
+
+  // active_at() is version-aware too: the interval tree keeps every historical
+  // window, and the version filter picks the one that was actually in effect.
+  {
+    index::VersionedIndex ix;
+    ix.add_zone(0, box_at(25.55, 91.88), Validity{1000, 2000}, 10);
+    ix.update_validity(0, Validity{5000, 6000}, 3000);
+
+    std::vector<ZoneId> o;
+    o.clear(); ix.active_at(1500, o);
+    t::ok(o.size() == 1 && o[0] == 0, "active under the ORIGINAL window before the edit");
+    o.clear(); ix.active_at(5500, o);
+    t::ok(o.size() == 1 && o[0] == 0, "active under the EDITED window after the edit");
+    o.clear(); ix.active_at(2500, o);
+    t::ok(o.empty(), "not active between the windows");
+    // A stab that matches BOTH historical intervals must still yield one zone.
+    ix.update_validity(0, Validity{0, kForever}, 9000);
+    o.clear(); ix.active_at(9500, o);
+    t::ok(o.size() == 1, "overlapping historical intervals never duplicate a zone");
+  }
+
+  // Remove then re-add: the gap must read as "did not exist".
+  {
+    index::VersionedIndex ix;
+    ix.add_zone(0, box_at(25.55, 91.88), Validity{0, kForever}, 100);
+    ix.remove_zone(0, 200);
+    ix.add_zone(0, box_at(25.55, 91.88), Validity{0, kForever}, 300);
+
+    std::vector<ZoneId> o;
+    o.clear(); ix.query_at(150, world, o); t::ok(o.size() == 1, "present before removal");
+    o.clear(); ix.query_at(250, world, o); t::ok(o.empty(), "absent between removal and re-add");
+    o.clear(); ix.query_at(350, world, o); t::ok(o.size() == 1, "present again after re-add");
+    Validity got{};
+    t::ok(!ix.validity_at(0, 250, &got), "validity_at() reports absence in the gap");
+  }
+
   // ── the real gate: agree with brute force at EVERY historical version ──────
   {
     sim::Rng rng(1234);

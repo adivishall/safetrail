@@ -1,4 +1,5 @@
 build/
+build-cmake/
 build-rel/
 compile_commands.json
 data/osm/*.pbf

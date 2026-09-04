@@ -19,10 +19,12 @@
 // run and benchmark on. A real OSM adjacency list drops in behind the same
 // interface via add_node/add_edge.
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include "safetrail/geo/bbox.hpp"
 #include "safetrail/geo/point.hpp"
+#include "safetrail/index/kd_tree.hpp"
 
 namespace safetrail::graph {
 
@@ -39,13 +41,17 @@ class RoadGraph {
   // ── construction ──────────────────────────────────────────────────────────
   NodeId add_node(geo::LatLon pos);
 
-  // Directed edge u -> v with an explicit weight.
-  void add_edge(NodeId u, NodeId v, double weight_m);
+  // Directed edge u -> v with an explicit weight. Rejects (returns false)
+  // out-of-range node ids and weights that are negative, NaN, or infinite --
+  // Dijkstra's correctness rests on non-negative finite weights, so an invalid
+  // one must be refused at the boundary rather than silently producing a wrong
+  // shortest path deep inside the frontier loop. See dijkstra.hpp.
+  bool add_edge(NodeId u, NodeId v, double weight_m);
 
   // Undirected road: both directions, weight = great-circle length of the segment.
   // This is the normal way to build a road; add_edge is for one-way streets and
   // for tests that want a specific asymmetric weight.
-  void add_road(NodeId u, NodeId v);
+  bool add_road(NodeId u, NodeId v);
 
   // ── queries ───────────────────────────────────────────────────────────────
   size_t node_count() const { return nodes_.size(); }
@@ -55,20 +61,47 @@ class RoadGraph {
   const geo::LatLon&       pos(NodeId u)       const { return nodes_[size_t(u)]; }
   bool valid(NodeId u) const { return u >= 0 && size_t(u) < nodes_.size(); }
 
-  // Snap a free position to the closest junction. Linear O(V) -- fine for the
-  // dispatch cost matrix, and the documented place a k-d tree would slot in
-  // (see docs/DATA_STRUCTURES.md, the nearest-responder row).
+  // Snap a free position to the closest junction.
+  //
+  // Backed by the k-d tree (index/kd_tree.hpp), built lazily on first use and
+  // invalidated by add_node. O(log V) expected per query instead of the O(V)
+  // scan this used to do -- which mattered: building the dispatch cost matrix
+  // snaps every responder and every incident, and the simulator re-snaps each
+  // time it dispatches. The linear scan is kept as nearest_node_linear() and the
+  // two are asserted equal on randomised input in tests/graph/shortest_path_test.
+  //
+  // Ties: when two junctions are equidistant the k-d tree and the scan can pick
+  // different ones, so both break ties on the lower NodeId. Determinism here is
+  // load-bearing -- a different snap changes the whole dispatch plan.
   NodeId nearest_node(geo::LatLon p) const;
+
+  // The O(V) reference. Kept permanently as the correctness oracle, in the same
+  // spirit as BruteForceIndex.
+  NodeId nearest_node_linear(geo::LatLon p) const;
 
   // ── file I/O ──────────────────────────────────────────────────────────────
   // A plain-text road network, so a real OpenStreetMap extract (produced by
   // tools/osm_to_roads.py) can replace the synthetic grid behind the same
   // interface. Format:
-  //   safetrail-roads 1
+  //   safetrail-roads 2
   //   <node_count>
-  //   <lat> <lon>            (x node_count)
+  //   <lat> <lon>                 (x node_count)
   //   <edge_count>
-  //   <u> <v>                (x edge_count; undirected, weight = great-circle length)
+  //   <u> <v> <weight_m>          (x edge_count; each line is ONE DIRECTED edge)
+  //
+  // Version 2 exists because version 1 was lossy in a way that quietly broke the
+  // graph. v1 wrote one line per unordered pair and reloaded it with add_road(),
+  // which re-derives the weight from the great-circle distance and inserts BOTH
+  // directions. So a one-way street came back two-way, and any edge whose weight
+  // was not its geometric length (a slow road, a travel-time edge, a test's
+  // deliberately asymmetric pair) came back with a different number. Round-trip
+  // an asymmetric graph through v1 and the shortest paths change.
+  //
+  // v2 writes every directed edge with its own weight, so save->load is
+  // semantically identity. v1 files still load -- data/osm/roads.txt is one --
+  // and are interpreted exactly as before, undirected with derived weights,
+  // which is what they meant when they were written.
+  static constexpr int kFileVersion = 2;
   bool save_file(const std::string& path) const;
   bool load_file(const std::string& path, std::string* err = nullptr);
 
@@ -85,6 +118,12 @@ class RoadGraph {
   std::vector<geo::LatLon>        nodes_;
   std::vector<std::vector<Edge>>  adj_;
   size_t                          edge_count_ = 0;
+
+  // Lazily built, invalidated whenever a node is added. mutable because
+  // nearest_node() is logically const -- it observes the graph, it does not
+  // change it -- and rebuilding a cache is the textbook case for mutable.
+  mutable std::unique_ptr<index::KdTree<NodeId>> snap_index_;
+  void ensure_snap_index() const;
 };
 
 }  // namespace safetrail::graph

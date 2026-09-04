@@ -1,14 +1,20 @@
 #pragma once
-// safetrail :: server :: http_api
+// safetrail :: HTTP API
 //
-// TODO(impl): see docs/ARCHITECTURE.md for this module's responsibility and
-// docs/DATA_STRUCTURES.md for its complexity target.
+// NOT IMPLEMENTED, AND NOT PLANNED. This project has no server.
 //
-// Ground rules: hand-write the structure. No std::unordered_map, no std::set,
-// no std::priority_queue. std::vector as raw storage is fine.
+// The engine is a C++ program that runs a scenario and writes ONE self-contained
+// HTML replay; the "deployment" is that static file (see docs/ARCHITECTURE.md and
+// the README's "what this is - and isn't" note). A live HTTP API was on an early
+// roadmap and was dropped, because a network service is not what a data-structures
+// course project is graded on and shipping a half-built one would misrepresent the
+// architecture.
+//
+// The header survives so that a stale reference fails here, loudly and with an
+// explanation, rather than mysteriously somewhere else.
 
 namespace safetrail::server {
 
-// TODO(impl)
+// Intentionally empty. See the note above.
 
 }  // namespace safetrail::server

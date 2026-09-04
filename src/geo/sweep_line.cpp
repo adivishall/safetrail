@@ -3,31 +3,19 @@
 #include <algorithm>
 #include <cmath>
 
+#include "safetrail/geo/segment.hpp"
+
 namespace safetrail::geo {
 
 // Coordinates: x = lon, y = lat. Same orientation/segment-cross predicate as
 // Polygon::validate(), so the two agree segment-for-segment.
 namespace {
 
-int orient(double ax, double ay, double bx, double by, double cx, double cy) {
-  const double v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-  return v > 1e-14 ? 1 : (v < -1e-14 ? -1 : 0);
-}
-bool on_seg(double ax, double ay, double bx, double by, double px, double py) {
-  return std::fmin(ax, bx) - 1e-14 <= px && px <= std::fmax(ax, bx) + 1e-14 &&
-         std::fmin(ay, by) - 1e-14 <= py && py <= std::fmax(ay, by) + 1e-14;
-}
+// The crossing predicate is shared with Polygon::validate() (geo/segment.hpp) so
+// the sweep and the O(n^2) reference cannot disagree segment-for-segment -- which
+// is what tests/geo/sweep_line_test.cpp asserts on randomised input.
 bool segs_cross(const Segment& s, const Segment& t) {
-  const double ax = s.a.lon, ay = s.a.lat, bx = s.b.lon, by = s.b.lat;
-  const double cx = t.a.lon, cy = t.a.lat, dx = t.b.lon, dy = t.b.lat;
-  const int o1 = orient(ax, ay, bx, by, cx, cy), o2 = orient(ax, ay, bx, by, dx, dy);
-  const int o3 = orient(cx, cy, dx, dy, ax, ay), o4 = orient(cx, cy, dx, dy, bx, by);
-  if (o1 != o2 && o3 != o4) return true;
-  if (o1 == 0 && on_seg(ax, ay, bx, by, cx, cy)) return true;
-  if (o2 == 0 && on_seg(ax, ay, bx, by, dx, dy)) return true;
-  if (o3 == 0 && on_seg(cx, cy, dx, dy, ax, ay)) return true;
-  if (o4 == 0 && on_seg(cx, cy, dx, dy, bx, by)) return true;
-  return false;
+  return segments_intersect(s.a, s.b, t.a, t.b);
 }
 double y_at(const Segment& s, double x) {
   const double x1 = s.a.lon, y1 = s.a.lat, x2 = s.b.lon, y2 = s.b.lat;

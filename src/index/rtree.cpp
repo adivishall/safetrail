@@ -1,5 +1,7 @@
 #include "safetrail/index/rtree.hpp"
+
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace safetrail::index {
@@ -120,6 +122,11 @@ std::unique_ptr<RTree::Node> do_insert(RTree::Node* n, ZoneId id, const geo::Bbo
   return nullptr;
 }
 
+void collect(const RTree::Node* n, std::vector<std::pair<ZoneId, geo::Bbox>>& out) {
+  if (n->leaf) { for (const auto& e : n->entries) out.push_back(e); return; }
+  for (const auto& k : n->kids) collect(k.get(), out);
+}
+
 void query_node(const RTree::Node* n, const geo::Bbox& q, std::vector<ZoneId>& out) {
   if (!n->box.intersects(q)) return;
   if (n->leaf) {
@@ -129,7 +136,29 @@ void query_node(const RTree::Node* n, const geo::Bbox& q, std::vector<ZoneId>& o
   for (const auto& k : n->kids) query_node(k.get(), q, out);
 }
 
-bool remove_node(RTree::Node* n, ZoneId id) {
+// ── Deletion with condensing (Guttman's CondenseTree, simplified) ────────────
+//
+// Removing an entry used to just erase it and refit the boxes. Correct, and
+// progressively worse: nodes drained below the minimum fill were left in place,
+// so after heavy churn the tree carried a scaffold of near-empty nodes that every
+// query still had to descend. Node count never recovered and the fan-out that
+// makes an R-tree fast quietly went away.
+//
+// Condensing: after the erase, unwind the path. Any node that has fallen below
+// min_entries (and is not the root) is DETACHED from its parent; the entries
+// beneath it are collected and reinserted from the top afterwards.
+//
+// Deliberate simplification, stated plainly. Guttman reinserts an orphaned NODE
+// at its original level, preserving both the height balance and the work already
+// spent grouping its contents. We flatten orphans to leaf entries and reinsert
+// them one by one. That is a real cost -- O(m log n) instead of O(1) relinks per
+// underflow, and it can reshape more of the tree than necessary -- but it removes
+// the need to track and re-enter at a specific level, which is where the fiddly
+// bugs in R-tree deletion live. At this project's scale (thousands of zones,
+// deletions rare and batched) the trade is worth it, and the churn benchmark
+// reports what it costs rather than leaving it as an assertion.
+bool remove_node(RTree::Node* n, ZoneId id, size_t min_entries,
+                 std::vector<std::pair<ZoneId, geo::Bbox>>& orphans) {
   if (n->leaf) {
     for (size_t i = 0; i < n->entries.size(); ++i)
       if (n->entries[i].first == id) {
@@ -139,25 +168,133 @@ bool remove_node(RTree::Node* n, ZoneId id) {
       }
     return false;
   }
-  for (auto& k : n->kids)
-    if (remove_node(k.get(), id)) { n->refit(); return true; }
+  for (size_t i = 0; i < n->kids.size(); ++i) {
+    if (!remove_node(n->kids[i].get(), id, min_entries, orphans)) continue;
+    if (n->kids[i]->fill() < min_entries) {
+      collect(n->kids[i].get(), orphans);            // rescue its contents
+      n->kids.erase(n->kids.begin() + long(i));      // and drop the underfull node
+    }
+    n->refit();
+    return true;
+  }
   return false;
+}
+
+// ── STR bulk loading (Sort-Tile-Recursive, Leutenegger et al. 1997) ──────────
+//
+// Inserting n items one at a time builds a tree whose quality depends on
+// insertion order: each ChooseSubtree decision is made with no knowledge of the
+// items still to come, so early splits are guesses and the resulting node boxes
+// overlap more than they need to. Overlap is what forces a query to descend
+// several branches, so it is the thing that actually costs query time.
+//
+// STR uses the fact that a bulk build knows everything up front. To pack n items
+// into P = ceil(n/M) leaves, arrange the leaves as a roughly square S x S grid of
+// tiles (S = ceil(sqrt(P))): sort all items by centre longitude, cut into S
+// vertical slices, sort each slice by centre latitude, and cut each into leaves
+// of M. The result is a near-square tiling with far less overlap than incremental
+// insertion produces. Then repeat the same procedure over those leaves' boxes to
+// build the level above, until one node remains.
+//
+// Cost: O(n log n), dominated by the sorts -- the same order as n incremental
+// inserts, but with a markedly better tree at the end. build() vs
+// build_incremental() is a benchmark row (bench/results/index_build.csv), which
+// is the point of keeping both.
+//
+// Sorts break ties on the id so the packing is deterministic; std::sort is not
+// stable and equal centres are common in synthetic data.
+template <typename T>
+void str_slice_sort(std::vector<T>& v, size_t lo, size_t hi, bool by_lon,
+                    const geo::Bbox* (*boxof)(const T&), ZoneId (*idof)(const T&)) {
+  std::sort(v.begin() + long(lo), v.begin() + long(hi), [&](const T& a, const T& b) {
+    const geo::LatLon ca = boxof(a)->center(), cb = boxof(b)->center();
+    const double va = by_lon ? ca.lon : ca.lat;
+    const double vb = by_lon ? cb.lon : cb.lat;
+    if (va != vb) return va < vb;
+    return idof(a) < idof(b);
+  });
+}
+
+ZoneId id_of_entry(const std::pair<ZoneId, geo::Bbox>& e) { return e.first; }
+ZoneId id_of_kid(const std::unique_ptr<RTree::Node>& n) {
+  // A node's identity for tie-breaking is its smallest contained id, which is
+  // stable regardless of how the level below was packed.
+  ZoneId best = UINT32_MAX;
+  std::vector<std::pair<ZoneId, geo::Bbox>> all;
+  collect(n.get(), all);
+  for (const auto& e : all) best = std::min(best, e.first);
+  return best;
+}
+
+// One STR pass: group `items` into runs of at most M, in tile order.
+template <typename T>
+std::vector<std::vector<T>> str_partition(std::vector<T> items, size_t M,
+                                          const geo::Bbox* (*boxof)(const T&),
+                                          ZoneId (*idof)(const T&)) {
+  const size_t n = items.size();
+  const size_t P = (n + M - 1) / M;                        // leaves needed
+  const size_t S = size_t(std::ceil(std::sqrt(double(P)))); // slices
+  const size_t per_slice = (n + S - 1) / S;
+
+  str_slice_sort(items, 0, n, /*by_lon=*/true, boxof, idof);
+
+  std::vector<std::vector<T>> groups;
+  for (size_t s = 0; s < n; s += per_slice) {
+    const size_t e = std::min(n, s + per_slice);
+    str_slice_sort(items, s, e, /*by_lon=*/false, boxof, idof);
+    for (size_t i = s; i < e; i += M) {
+      const size_t j = std::min(e, i + M);
+      std::vector<T> g;
+      g.reserve(j - i);
+      for (size_t k = i; k < j; ++k) g.push_back(std::move(items[k]));
+      groups.push_back(std::move(g));
+    }
+  }
+  return groups;
 }
 
 void walk(const RTree::Node* n, size_t depth, size_t& nodes, size_t& maxd) {
   ++nodes; maxd = std::max(maxd, depth);
   if (!n->leaf) for (const auto& k : n->kids) walk(k.get(), depth + 1, nodes, maxd);
 }
-void collect(const RTree::Node* n, std::vector<std::pair<ZoneId, geo::Bbox>>& out) {
-  if (n->leaf) { for (const auto& e : n->entries) out.push_back(e); return; }
-  for (const auto& k : n->kids) collect(k.get(), out);
-}
 }  // namespace
 
-void RTree::build(const std::vector<std::pair<ZoneId, geo::Bbox>>& items) {
+void RTree::build_incremental(const std::vector<std::pair<ZoneId, geo::Bbox>>& items) {
   root_ = std::make_unique<Node>();
   count_ = 0;
   for (const auto& it : items) insert(it.first, it.second);
+}
+
+void RTree::build(const std::vector<std::pair<ZoneId, geo::Bbox>>& items) {
+  root_ = std::make_unique<Node>();
+  count_ = items.size();
+  if (items.empty()) return;
+
+  // Level 0: pack the entries into leaves.
+  auto groups = str_partition(items, max_entries_, box_of_entry, id_of_entry);
+  std::vector<std::unique_ptr<Node>> level;
+  level.reserve(groups.size());
+  for (auto& g : groups) {
+    auto leaf = std::make_unique<Node>();
+    leaf->leaf = true;
+    leaf->entries = std::move(g);
+    leaf->refit();
+    level.push_back(std::move(leaf));
+  }
+
+  // Levels above: pack the previous level's nodes the same way.
+  while (level.size() > 1) {
+    auto parents = str_partition(std::move(level), max_entries_, box_of_kid, id_of_kid);
+    level.clear();
+    for (auto& g : parents) {
+      auto node = std::make_unique<Node>();
+      node->leaf = false;
+      node->kids = std::move(g);
+      node->refit();
+      level.push_back(std::move(node));
+    }
+  }
+  root_ = std::move(level.front());
 }
 
 void RTree::insert(ZoneId id, const geo::Bbox& box) {
@@ -173,8 +310,27 @@ void RTree::insert(ZoneId id, const geo::Bbox& box) {
 }
 
 bool RTree::remove(ZoneId id) {
-  if (remove_node(root_.get(), id)) { --count_; return true; }
-  return false;
+  std::vector<std::pair<ZoneId, geo::Bbox>> orphans;
+  if (!remove_node(root_.get(), id, min_entries_, orphans)) return false;
+  --count_;
+
+  // Root collapse: an internal root left with a single child is a level of
+  // indirection every query pays for and nothing gains from.
+  while (!root_->leaf && root_->kids.size() == 1) {
+    auto only = std::move(root_->kids[0]);
+    root_ = std::move(only);
+  }
+  // An internal root with no children at all became a leaf.
+  if (!root_->leaf && root_->kids.empty()) {
+    root_->leaf = true;
+    root_->refit();
+  }
+
+  for (const auto& e : orphans) {
+    insert(e.first, e.second);
+    --count_;                     // insert() counts it; it was already counted
+  }
+  return true;
 }
 
 void RTree::query(const geo::Bbox& q, std::vector<ZoneId>& out) const {
@@ -184,18 +340,6 @@ void RTree::query(const geo::Bbox& q, std::vector<ZoneId>& out) const {
   st_.candidates_returned += out.size() - before;
 }
 
-void RTree::nearest(const geo::LatLon& p, size_t k, std::vector<ZoneId>& out) const {
-  ++st_.queries;
-  std::vector<std::pair<ZoneId, geo::Bbox>> all;
-  collect(root_.get(), all);
-  std::vector<std::pair<double, ZoneId>> d;
-  d.reserve(all.size());
-  for (const auto& it : all) d.emplace_back(it.second.min_distance_m(p), it.first);
-  const size_t n = std::min(k, d.size());
-  std::partial_sort(d.begin(), d.begin() + long(n), d.end());
-  for (size_t i = 0; i < n; ++i) out.push_back(d[i].second);
-  st_.candidates_returned += n;
-}
 
 IndexStats RTree::stats() const {
   size_t nodes = 0, maxd = 0;

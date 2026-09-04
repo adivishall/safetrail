@@ -132,13 +132,62 @@ VersionId VersionedIndex::commit(std::shared_ptr<const Node> root, Timestamp at)
   return VersionId(roots_.size() - 1);
 }
 
+// ── Validity history ─────────────────────────────────────────────────────────
+//
+// Append-only, one record per change, per zone. Nothing is ever overwritten, so
+// a query at an old version sees the rule that was in force under that version
+// rather than whatever an operator has done since.
+
+// Pack (zone, slot) into the interval tree's payload. 32 bits each is plenty:
+// ZoneId is uint32_t, and a zone with 4 billion validity edits is not a case
+// worth designing for.
+static uint64_t pack(ZoneId zone, size_t slot) {
+  return (uint64_t(zone) << 32) | uint64_t(uint32_t(slot));
+}
+static ZoneId unpack_zone(uint64_t v) { return ZoneId(v >> 32); }
+static size_t unpack_slot(uint64_t v) { return size_t(uint32_t(v)); }
+
+void VersionedIndex::push_record(ZoneId id, Validity v, bool present, VersionId version) {
+  if (history_.size() <= id) history_.resize(size_t(id) + 1);
+  auto& h = history_[id];
+  h.push_back(ValidityRecord{version, v, present});
+  // Only live records go into the temporal index: a removed zone is not "in
+  // force" at any time, so it has no interval to stab.
+  if (present) validity_tree_.insert(v.from, v.to, pack(id, h.size() - 1));
+}
+
+// The record in force for `id` as of version `v`: the last one with
+// record.version <= v. Binary search, O(log h) in that zone's change count.
+const VersionedIndex::ValidityRecord* VersionedIndex::record_as_of(ZoneId id,
+                                                                  VersionId v) const {
+  if (id >= history_.size()) return nullptr;
+  const auto& h = history_[id];
+  if (h.empty() || h.front().version > v) return nullptr;
+  size_t lo = 0, hi = h.size();                 // last index with version <= v
+  while (lo + 1 < hi) {
+    const size_t mid = lo + (hi - lo) / 2;
+    if (h[mid].version <= v) lo = mid; else hi = mid;
+  }
+  return &h[lo];
+}
+
+size_t VersionedIndex::validity_records() const {
+  size_t n = 0;
+  for (const auto& h : history_) n += h.size();
+  return n;
+}
+
+bool VersionedIndex::validity_at(ZoneId id, Timestamp t, Validity* out) const {
+  const ValidityRecord* r = record_as_of(id, version_at(t));
+  if (!r || !r->present) return false;
+  if (out) *out = r->validity;
+  return true;
+}
+
 VersionId VersionedIndex::add_zone(ZoneId id, const geo::Bbox& box, Validity v, Timestamp at) {
-  if (validity_.size() <= id) { validity_.resize(id + 1); live_.resize(id + 1, 0); }
-  validity_[id] = v;
-  live_[id] = 1;
-  validity_tree_.insert(v.from, v.to, id);
   auto root = insert_copy(roots_.back().get(), id, box, nodes_allocated_);
   const VersionId ver = commit(std::move(root), at);
+  push_record(id, v, /*present=*/true, ver);
   changelog_.push_back({ver, at, id, Change::Kind::Added});
   return ver;
 }
@@ -147,21 +196,17 @@ VersionId VersionedIndex::remove_zone(ZoneId id, Timestamp at) {
   bool found = false;
   auto root = remove_copy(roots_.back().get(), id, nodes_allocated_, found);
   const VersionId ver = commit(std::move(root), at);
-  if (id < live_.size()) live_[id] = 0;
-  if (id < validity_.size()) validity_tree_.remove(validity_[id].from, validity_[id].to, id);
+  push_record(id, Validity{}, /*present=*/false, ver);
   changelog_.push_back({ver, at, id, Change::Kind::Removed});
   return ver;
 }
 
 VersionId VersionedIndex::update_validity(ZoneId id, Validity v, Timestamp at) {
-  if (id < validity_.size()) {
-    validity_tree_.remove(validity_[id].from, validity_[id].to, id);
-    validity_[id] = v;
-    validity_tree_.insert(v.from, v.to, id);
-  }
   // Geometry is unchanged, so the new version SHARES the entire tree with the
   // previous one -- zero new nodes. Exactly the case persistence is good at.
+  // The validity change costs one appended record, not a copy of the rule set.
   const VersionId ver = commit(roots_.back(), at);
+  push_record(id, v, /*present=*/true, ver);
   changelog_.push_back({ver, at, id, Change::Kind::ValidityChanged});
   return ver;
 }
@@ -178,8 +223,10 @@ void VersionedIndex::query_at(Timestamp t, const geo::Bbox& box,
   const VersionId v = version_at(t);
   std::vector<ZoneId> spatial;
   query_node(roots_[v].get(), box, spatial);
-  for (ZoneId id : spatial)
-    if (id < validity_.size() && validity_[id].active_at(t)) out.push_back(id);
+  for (ZoneId id : spatial) {
+    const ValidityRecord* r = record_as_of(id, v);       // ← as of THAT version
+    if (r && r->present && r->validity.active_at(t)) out.push_back(id);
+  }
 }
 
 void VersionedIndex::query_now(const geo::Bbox& box, std::vector<ZoneId>& out) const {
@@ -187,7 +234,18 @@ void VersionedIndex::query_now(const geo::Bbox& box, std::vector<ZoneId>& out) c
 }
 
 void VersionedIndex::active_at(Timestamp t, std::vector<ZoneId>& out) const {
-  validity_tree_.stabbing(t, out);
+  const VersionId v = version_at(t);
+  std::vector<uint64_t> hits;
+  validity_tree_.stabbing(t, hits);
+  // The tree holds every historical interval, so a zone whose closure window was
+  // edited can match more than once. Keep only the record that was actually in
+  // force at version v -- which is at most one per zone, so no de-duplication
+  // pass is needed on top.
+  for (uint64_t hit : hits) {
+    const ZoneId id = unpack_zone(hit);
+    const ValidityRecord* r = record_as_of(id, v);
+    if (r && r->present && &history_[id][unpack_slot(hit)] == r) out.push_back(id);
+  }
 }
 
 std::vector<VersionedIndex::Change> VersionedIndex::history_for(ZoneId id) const {
