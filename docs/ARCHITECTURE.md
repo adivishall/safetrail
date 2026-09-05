@@ -9,9 +9,11 @@ was extended from.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ web/        Leaflet map · zone editor · alert rail · replay     │
+│ viz/        ONE self-contained HTML file: canvas map · zone     │
+│             editor · alert rail · index overlay · replay        │
+│             (no Leaflet, no tile server, no network)            │
 ├────────────────────────────────────────────────────────────────┤
-│ server/     HTTP API (CRUD) + WebSocket (state deltas, 10 Hz)   │
+│ (no server layer — see "What is not here", below)               │
 ├────────────────────────────────────────────────────────────────┤
 │ sim/        tick loop · mobility models · scenarios · replay    │
 ├────────────────────────────────────────────────────────────────┤
@@ -63,7 +65,9 @@ scenario.json ──► Simulator ──► positions
                                    │
                             UncertainPoint (pos + accuracy)  [GAP 1]
                                    │
-              VersionedIndex.query_at(now, bbox) ──► candidates  [GAP 3]
+       SpatialIndex.query(bbox) ──► candidates      (Quadtree by default;
+                                   │            --rtree / --brute swap it)
+                      per candidate: validity.active_at(now)     [GAP 3]
                                    │
                       three-valued containment per candidate
                                    │
@@ -79,10 +83,36 @@ scenario.json ──► Simulator ──► positions
                                    │
                             Dispatcher (matching + A*)
                                    │
-                     WebSocket delta ──► browser
+                     TraceRecorder ──► one static dashboard.html
                                    │
                      offline? ──► OfflineQueue ──► Reconciler  [GAP 6]
 ```
+
+## What is not here, and where the temporal structures actually live
+
+Two corrections that this diagram used to get wrong, kept explicit because the
+difference is exactly what a reader would otherwise assume:
+
+**There is no server and no Leaflet.** `server/http_api.hpp` and
+`server/ws_stream.hpp` carry no implementation and are not planned;
+`apps/safetrail_server.cpp` exists only to fail loudly if something still
+references the target. The engine writes one self-contained HTML file that opens
+over `file://`. See `viz/html_export.hpp`.
+
+**`VersionedIndex` is not in the tick loop.** The per-tick spatial query goes to
+`index::SpatialIndex` (a Quadtree by default), and the per-tick temporal filter is
+a direct `z->validity.active_at(now_ms)` — O(1) per candidate, on a candidate set
+the spatial prune has already cut to a handful. `VersionedIndex` is built at load
+time (`Simulator::reindex`) and read by the dashboard export for the history
+panel: `changes_between()`, `version_count()`, `share_stats()`.
+
+That is a deliberate ordering, not an oversight. The spatial filter prunes far
+harder than the temporal one — a tourist is near a handful of zones, while MANY
+zones are temporally active at any instant — so running the cheap O(1) validity
+check over the already-pruned candidates beats running a temporal index first.
+`VersionedIndex::query_at()` composes both filters and is what the historical /
+audit path uses; `active_at()` is where the interval tree earns its place, on the
+temporal-only question where no spatial prune is available.
 
 ## Non-negotiables
 

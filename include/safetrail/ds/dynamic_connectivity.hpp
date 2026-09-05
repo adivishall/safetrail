@@ -78,9 +78,17 @@ class RollbackDSU {
   // snapshot() records the current undo-stack depth. rollback_to() undoes every
   // union performed since, in reverse. O(1) per undone union.
   //
-  // The tick loop uses this to evaluate hypotheticals cheaply: "if this tourist
-  // moves 50 m further, does the group fragment?" — try it, read the answer,
-  // roll back.
+  // NOT called by the runtime. Read the note at the top of this file: both
+  // callers (group::CohesionMonitor and alert::Correlator) rebuild the DSU from
+  // scratch, and nothing outside tests/ds/dynamic_connectivity_test.cpp calls
+  // snapshot() or rollback_to(). This comment used to claim "the tick loop uses
+  // this to evaluate hypotheticals", which contradicted the top of its own file.
+  //
+  // What it is FOR, stated as a capability rather than a usage: evaluating a
+  // hypothetical without paying to rebuild -- "if this tourist moves 50 m
+  // further, does the group fragment?" -- try it, read the answer, roll back.
+  // That becomes worth doing when rebuilding stops being free, which at n = 200
+  // it is.
   size_t snapshot() const { return undo_.size(); }
   void   rollback_to(size_t mark);
 
