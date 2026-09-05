@@ -7,6 +7,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_options(-Wall -Wextra -Wpedantic -Wshadow)
 
+# Must match the Makefile. See the long note there: without this, whether the
+# compiler fuses `a*b + c` into an FMA depends on the optimisation level and the
+# compiler, and a last-bit difference in a distance flips an inside/outside test
+# and diverges the whole run. With it off, every build of this program produces
+# byte-identical output for a given seed.
+add_compile_options(-ffp-contract=off)
+
 # Sanitizers on by default in Debug. Geometry bugs and off-by-one index errors are
 # exactly what ASan/UBSan catch, and this project has a lot of both kinds of code.
 # `make asan` is the equivalent for the plain-make path.

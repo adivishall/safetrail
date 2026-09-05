@@ -6,7 +6,33 @@
 # Makefile carried an explicit CORE list. `make manifest` prints what is found.
 
 CXX      ?= c++
-CXXFLAGS := -std=c++17 -Iinclude -Wall -Wextra -Wpedantic
+# -ffp-contract=off is load-bearing, not a style choice.
+#
+# By default both clang and gcc are allowed to CONTRACT `a*b + c` into a single
+# fused multiply-add, which keeps more intermediate precision than the two
+# separate operations would. That is usually a free accuracy win. Here it is a
+# reproducibility bug: whether the contraction happens depends on the
+# optimisation level and on the compiler, so the same source produced different
+# results on the same machine. Measured, before this flag existed:
+#
+#   macOS / clang -O0   80,916 events   root 0e5ada65...
+#   macOS / clang -O2   80,917 events   root acf2610b...
+#   Linux / g++   -O2   81,202 events   root 59736c1b...
+#
+# Three builds of one program, three answers, all of them internally consistent.
+# The simulation is a long chain of floating-point arithmetic feeding threshold
+# comparisons, so a difference in the last bit of a distance decides an
+# inside/outside test, which changes an event, which changes every later one.
+#
+# With contraction off, all three agree exactly: 81,202 events, root 59736c1b.
+# That is what makes "same seed -> byte-identical output" a property of the
+# PROGRAM rather than of one particular build of it, and it is what lets the
+# dashboard published by CI match the one a developer builds locally.
+#
+# Cost: a handful of FMA instructions not emitted. Unmeasurable here -- the hot
+# loop is dominated by index traversal and branchy geometry, not by arithmetic
+# throughput.
+CXXFLAGS := -std=c++17 -Iinclude -Wall -Wextra -Wpedantic -ffp-contract=off
 OPT      ?= -O2
 BUILD    ?= build
 

@@ -12,8 +12,23 @@
 namespace safetrail::sim {
 
 // Deterministic PRNG. std::mt19937 would work, but an explicit xorshift makes
-// runs reproducible across platforms and standard-library versions -- which
-// matters because the golden replay tests compare byte-identical output.
+// the random STREAM reproducible across platforms and standard-library versions:
+// it is integer arithmetic with a fixed algorithm, so every host produces the
+// same sequence from the same seed. std::mt19937's sequence is standardised too,
+// but the distributions layered on it are not.
+//
+// That is necessary for a reproducible run and is not sufficient, which is worth
+// being precise about. The stream feeds normal() (Box-Muller: log, sqrt, sin,
+// cos) and then haversine distances and threshold comparisons, all in floating
+// point -- so identical random integers can still yield different runs if the
+// arithmetic differs. It did: allowing the compiler to fuse `a*b + c` into an FMA
+// gave three different answers from one source (clang -O0, clang -O2, g++ -O2),
+// because a last-bit difference in a distance flips one inside/outside test and
+// every later event diverges. `-ffp-contract=off` in the Makefile and
+// CMakeLists.txt closes that; see the note in the Makefile for the measurements.
+//
+// With both pieces in place the property the golden replay tests rely on is real:
+// same seed, same source -> byte-identical output, on any build.
 class Rng {
  public:
   explicit Rng(uint64_t seed = 0x2545F4914F6CDD1DULL) : s_(seed ? seed : 1) {}

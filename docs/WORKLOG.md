@@ -6,6 +6,56 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-05 — Make the determinism claim true for the program, not one build of it
+
+**What:** Added `-ffp-contract=off` to both build systems, and corrected the two
+places that described determinism more strongly than the code delivered.
+
+**Why:** Checking whether the project was ready to publish, the dashboard CI had
+deployed did not match the one built locally — 81,202 events against 80,917. Not a
+formatting difference: a different number of events. Narrowing it down:
+
+```
+macOS / clang -O0   80,916 events   root 0e5ada65...
+macOS / clang -O2   80,917 events   root acf2610b...
+Linux / g++   -O2   81,202 events   root 59736c1b...
+```
+
+Three builds of one program, three answers, each internally consistent and each
+reproducible on its own. So it was not uninitialised memory or a race — the suite
+is clean under UBSan and under ASan in CI — it was floating-point contraction. Both
+compilers may fuse `a*b + c` into a single FMA, which keeps more intermediate
+precision than the two separate operations; whether they do depends on the
+optimisation level and the compiler. The simulation is a long chain of
+floating-point arithmetic feeding threshold comparisons, so one last-bit difference
+in a distance flips an inside/outside test, which changes an event, which changes
+every event after it.
+
+`-ffp-contract=off` costs a handful of unemitted FMA instructions — unmeasurable
+here, since the hot loop is index traversal and branchy geometry rather than
+arithmetic throughput — and buys exact agreement:
+
+```
+macOS / clang -O0   81,202 events   root 59736c1b...
+macOS / clang -O2   81,202 events   root 59736c1b...
+Linux / g++   -O2   81,202 events   root 59736c1b...   (what CI publishes)
+```
+
+**The claim that was wrong.** `sim/mobility.hpp` said the xorshift PRNG "makes runs
+reproducible across platforms and standard-library versions -- which matters
+because the golden replay tests compare byte-identical output." The first half is
+true: the random *stream* is integer arithmetic and is identical everywhere. The
+justification clause was not — the stream feeds Box-Muller and then haversine
+distances, and identical random integers can still produce different runs if the
+arithmetic differs. `make determinism` and the golden tests compare two runs of the
+*same binary*, so they were valid tests; they simply did not test what the comment
+implied. Both now say what holds.
+
+**Impact:** the dashboard published at the live URL is now byte-identical to one
+built from a clean checkout on a different OS and compiler, which is the property
+the replay harness was always claimed to have. Suite green, 769 assertions, 0
+failures.
+
 ### 2026-09-05 — Closing the last gaps between claim and code (tier 5)
 
 **What:** Tier 4 audited behaviour against claims and fixed twelve defects. This

@@ -1,3 +1,3 @@
 noise_model,correlation,trans_off,trans_on,removed_pct
-white noise (rho=0),0.0,20797,1275,93.9
-realistic drift (rho=0.9),0.9,16146,1144,92.9
+white noise (rho=0),0.0,20848,1257,94.0
+realistic drift (rho=0.9),0.9,16168,1142,92.9

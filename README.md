@@ -207,6 +207,18 @@ speedup number we report.
 output across runs of the same scenario. Without it, the replay harness is
 worthless and timing-dependent bugs are unfindable.
 
+Three things are needed for that and only two are obvious. A fixed-seed integer
+PRNG (`sim/mobility.hpp`) gives a reproducible random stream. Explicit tie-breaks
+in every structure that orders by a key with ties -- the k-d tree's median
+partition, Dijkstra's and A*'s frontiers, the Hungarian assignment's equal-cost
+choice -- stop two standard libraries returning different-but-equally-valid
+answers. The third is `-ffp-contract=off`: by default the compiler may fuse
+`a*b + c` into an FMA, and whether it does depends on the optimisation level and
+the compiler, so the same source gave three different runs (clang -O0, clang -O2,
+g++ -O2). One last bit in a distance flips an inside/outside test and every later
+event diverges. With it off, a local build and the one CI publishes agree exactly
+-- 81,202 events, Merkle root `59736c1b...`, on both.
+
 **Ground truth before optimisation.** Scenarios have known expected outcomes.
 "It runs" is not a result; "33x faster with byte-identical output" is.
 
