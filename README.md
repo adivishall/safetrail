@@ -94,13 +94,18 @@ oracle, not an external library — so it measures the structure, not a vendor.
 100k zones, larger at small n where the times are sub-microsecond).
 
 ```
-index scaling, 100,000 zones, 450 m query (median of 7, ±~5%):
-  brute force  ~242 us/query
-  quadtree      ~7.3 us/query    ~33x
-  R-tree        ~1.0 us/query   ~247x    (STR bulk packing; see below)
+index scaling, 100,000 zones, 450 m query (median of 7, ±16% spread on this run):
+  brute force  ~238 us/query
+  quadtree      ~7.1 us/query    ~33x
+  R-tree        ~1.0 us/query   ~240x    (STR bulk packing; see below)
 
 R-tree bulk load:        STR packing vs repeated insertion — 6.5x faster queries,
                          33% smaller tree, from the SAME data and query code
+self-intersection:       Shamos-Hoey sweep vs the O(V^2) reference — 1.6x at 128
+                         vertices, ~9x at 2048 (8.9-9.1 across runs); crossover at ~56, which is where
+                         `Polygon::validate()` switches between them
+node snapping:           k-d tree vs linear scan — 43x at 10,000 road junctions,
+                         same junction returned on every probe
 hysteresis A/B [GAP 8]:  93% removed under realistic drift, 94% under white noise (simulated GPS)
 equivalence:             18,000 queries, 0 mismatches vs brute force
 ray cast vs winding:     100,000 points, 0 disagreements
@@ -111,7 +116,7 @@ adaptive sampling [GAP 7]: 28,800 fixes -> 257, 99% battery saved at 100% near-z
 alert correlation [GAP 5]: scenario-dependent — a clustered incident compresses
                            ~450:1, a scattered run ~9:1 (see the caveat below)
 determinism:             same seed, two runs, byte-identical output (`make determinism`)
-unit tests:              691 assertions across 39 files, each fast structure vs a brute-force
+unit tests:              765 assertions across 39 files, each fast structure vs a brute-force
                          oracle; whole suite clean under UBSan locally, ASan+UBSan in CI
 ```
 
@@ -203,7 +208,7 @@ output across runs of the same scenario. Without it, the replay harness is
 worthless and timing-dependent bugs are unfindable.
 
 **Ground truth before optimisation.** Scenarios have known expected outcomes.
-"It runs" is not a result; "32.7x faster with byte-identical output" is.
+"It runs" is not a result; "33x faster with byte-identical output" is.
 
 ## Stack
 

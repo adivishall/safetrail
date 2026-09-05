@@ -242,8 +242,9 @@ self-intersecting polygon makes ray casting return arbitrary results.
 degenerate geometry rejection, overlap warnings, and vertex-count reduction with
 an accuracy bound.
 
-**Structures:** **Bentley–Ottmann sweep line** for segment intersection,
-Douglas–Peucker simplification.
+**Structures:** **Shamos–Hoey sweep line** for segment intersection (existence,
+which is what a validity gate needs — Bentley–Ottmann's enumeration of all k
+crossings is strictly more than the question asks), Douglas–Peucker simplification.
 
 ---
 

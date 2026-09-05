@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "safetrail/geo/segment.hpp"
+#include "safetrail/geo/sweep_line.hpp"
 
 namespace safetrail::geo {
 
@@ -30,6 +31,40 @@ double ring_signed_area(const Ring& r) {
   return a / 2.0;
 }
 
+// ── Self-intersection: the O(V^2) reference ──────────────────────────────────
+//
+// Every non-adjacent edge pair. Kept permanently, not as legacy: it is the oracle
+// the sweep is checked against (tests/geo/sweep_line_test.cpp), and it is what
+// validate() actually runs on small rings, where V^2 is a dozen comparisons and
+// beats building an event list and a balanced tree.
+bool ring_self_intersects_pairwise(const Ring& r) {
+  const size_t n = r.size();
+  if (n < 4) return false;                  // a triangle cannot self-intersect
+  for (size_t i = 0; i < n; ++i) {
+    const LatLon& a = r[i];
+    const LatLon& b = r[(i + 1) % n];
+    for (size_t j = i + 1; j < n; ++j) {
+      // Edges i and j share a vertex when consecutive, including the wrap-around
+      // pair (n-1, 0). Only non-adjacent edges may not touch.
+      if (j == i + 1 || (i == 0 && j == n - 1)) continue;
+      if (segments_intersect(a, b, r[j], r[(j + 1) % n])) return true;
+    }
+  }
+  return false;
+}
+
+// ── ...and the dispatch ──────────────────────────────────────────────────────
+//
+// Below the threshold the pairwise scan wins on constants; above it the sweep's
+// O(V log V) wins on growth. The number is measured, not guessed -- section 12 of
+// `make bench` times both on rings from 8 to 4096 vertices and prints where they
+// cross. Both answer the same question and are asserted to give the same verdict
+// on randomised rings at sizes either side of it.
+bool ring_self_intersects(const Ring& r) {
+  return r.size() >= kSweepThresholdVertices ? ring_self_intersects_sweep(r)
+                                             : ring_self_intersects_pairwise(r);
+}
+
 namespace {
 // First moment of a ring: (sum of 2*A*cx, 2*A*cy scaled), returned alongside its
 // signed area so callers can combine rings without recomputing.
@@ -51,25 +86,6 @@ double ring_perimeter_m(const Ring& r) {
   if (n < 2) return 0.0;
   for (size_t i = 0, j = n - 1; i < n; j = i++) p += distance_m(r[j], r[i]);
   return p;
-}
-
-// Self-intersection of a single ring: every non-adjacent edge pair. O(n^2), run
-// once per zone at authoring time. sweep_line.hpp is the O((n+k) log n) version
-// used for bulk validation.
-bool ring_self_intersects(const Ring& r) {
-  const size_t n = r.size();
-  if (n < 4) return false;                  // a triangle cannot self-intersect
-  for (size_t i = 0; i < n; ++i) {
-    const LatLon& a = r[i];
-    const LatLon& b = r[(i + 1) % n];
-    for (size_t j = i + 1; j < n; ++j) {
-      // Edges i and j share a vertex when consecutive, including the wrap-around
-      // pair (n-1, 0). Only non-adjacent edges may not touch.
-      if (j == i + 1 || (i == 0 && j == n - 1)) continue;
-      if (segments_intersect(a, b, r[j], r[(j + 1) % n])) return true;
-    }
-  }
-  return false;
 }
 
 // Point-in-ring by the half-open crossing rule. Local to validation: the public

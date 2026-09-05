@@ -25,13 +25,13 @@ completed work. Do not read a `◻` row as delivered.
 | ✅ built | **Quadtree** | `index/quadtree.hpp` | build O(n log n) · query O(log n + k) avg · **doubling root expansion, subtree collapse on delete** | Primary spatial index; drawn live in the diagnostics overlay |
 | ✅ built | **R-tree** | `index/rtree.hpp` | query O(log n + k) avg · insert O(log n) · **STR bulk build O(n log n)** · condensing delete | Second index, quadratic node split + Sort-Tile-Recursive packing — the head-to-head comparison |
 | ✅ built | **Brute force** | `index/brute_force.hpp` | O(n) | **Never deleted.** Correctness oracle + speedup denominator |
-| ✅ built | **Interval tree** | `ds/interval_tree.hpp` | query O(log n + k) · **delete O(log n)** | AVL-balanced with real rotation-repairing deletion (not tombstones); zone validity spans (Gap 3). Real O(log n) guarantee |
+| ✅ built | **Interval tree** | `ds/interval_tree.hpp` | query O(log n + k) · **delete O(log n) unconditionally** | AVL-balanced, rotation-repairing deletion (not tombstones); zone validity spans (Gap 3). Ordered on the total key **(low, high, value, seq)** so deletion is one descent even when thousands of intervals share a low endpoint — which is the normal case here |
 | ✅ built | **Circular buffer** | `ds/circular_buffer.hpp` | push/access O(1) | Fixed-window GPS ping history, bounded memory per tourist |
 | ✅ built | **Geohash** | `index/geohash.hpp` | encode O(1) · query O(range + k) | Third index (Morton/Z-order) + offline serialisation format; == brute force |
-| ✅ built | **k-d tree** | `index/kd_tree.hpp` | build O(n log n) · NN O(log n) avg | Nearest-responder / nearest-hazard queries; NN & k-NN vs linear-scan oracle |
+| ✅ built | **k-d tree** | `index/kd_tree.hpp` | build O(n log n) · NN O(log n) avg | Nearest-responder / nearest-hazard / road-junction snapping; NN & k-NN vs a linear scan **in the tree's own metric** (the local tangent plane). Backs `RoadGraph::nearest_node`, 46× the scan at 10k junctions |
 | ✅ built | **Binary heap** | `ds/priority_queue.hpp` | push/pop O(log n) | Min-heap; the Dijkstra/A* frontier, and the alert-triage frontier |
 | ✅ built | **Hash table** | `ds/hash_table.hpp` | O(1) expected · rebuild O(n) amortised O(1) | Open-addressed, linear probing, tombstone delete with a **same-size rebuild policy** so churn does not grow the table; vs linear-scan oracle |
-| ✅ built | **Timer wheel** | `ds/timer_wheel.hpp` | O(1) amortised | Escalation deadlines; single-level hashed wheel vs brute-force due-set oracle |
+| ✅ built | **Timer wheel** | `ds/timer_wheel.hpp` | schedule O(1) · cancel O(b) · **advance O(Δticks + fired)** | Escalation deadlines; single-level hashed wheel vs brute-force due-set oracle. Not flatly "O(1)": `advance` steps tick by tick, so a large jump walks every slot in between — see the worst-case table |
 | ✅ built | **Adjacency list** | `graph/road_graph.hpp` | space O(V+E) · neighbours O(deg) | Weighted road graph; loads real OSM roads (`tools/osm_to_roads.py`) or a synthetic grid |
 | ✅ built | **Merkle tree** (RFC 6962) | `evidence/merkle_log.hpp` | append O(1) am. · proof O(log n) | Tamper-evident log (Gap 9), SHA-256 from scratch |
 
@@ -44,9 +44,9 @@ completed work. Do not read a `◻` row as delivered.
 | ✅ built | **Local tangent-plane projection** | `geo/projection.hpp` | O(1) | Planar arithmetic in metres instead of degrees; error budget measured, not assumed (`tests/geo/projection_test.cpp` prints it every run) |
 | ✅ built | **Shared segment predicates** | `geo/segment.hpp` | O(1) | One orientation / intersection / proper-crossing definition for polygon validation, the sweep, ray casting and jurisdiction nesting |
 | ✅ built | **STR bulk loading** | `index/rtree.hpp` | O(n log n) | Sort-Tile-Recursive packing; measured against incremental insertion (section 9 of `make bench`) |
-| ✅ built | Self-intersection check | `geo/polygon.hpp` | O(V²) outer + O(H·V) holes | Zone validation (Gap 10): outer ring, every hole, holes inside the outer ring, holes not crossing it, holes pairwise disjoint. Simple pairwise; the sweep-line below is the faster path |
+| ✅ built | Self-intersection check | `geo/polygon.hpp` | **O(V log V) at ≥56 vertices**, O(V²) below | Zone validation (Gap 10): outer ring, every hole, holes inside the outer ring, holes not crossing it, holes pairwise disjoint. `validate()` dispatches to the sweep-line below at `kSweepThresholdVertices`; the pairwise version stays as the oracle. Threshold measured (`make bench` §12) |
 | ✅ built | Douglas–Peucker | `tools/osm_to_zones.py` | O(n log n) avg | Boundary simplification (in the data-prep tool) |
-| ✅ built | **Sweep-line (Shamos–Hoey)** | `geo/sweep_line.hpp` | O((n+k) log n) — AVL status structure | Faster self-intersection detection; verdict == `validate()`, verified on 1000+ random polygons |
+| ✅ built | **Sweep-line (Shamos–Hoey)** | `geo/sweep_line.hpp` | O(V log V) — AVL status structure | **What `Polygon::validate()` actually calls** for rings of ≥56 vertices, outer and holes alike. Existence, not enumeration — which is all a validity gate needs and is why it is Shamos–Hoey rather than Bentley–Ottmann. 1.6× the pairwise scan at 128 vertices, ~9× at 2048 (8.9–9.1 across runs); verdicts identical on every ring tested |
 | ✅ built | **Dijkstra / A*** | `graph/dijkstra.hpp`, `astar.hpp` | O((V+E) log V) | Responder routing. Dijkstra checked vs Floyd–Warshall; A* uses an admissible haversine heuristic, verified to expand ≤ Dijkstra |
 | ✅ built | **Kuhn's / Hungarian** | `graph/bipartite_match.hpp` | O(VE) / O(n³) | Responder→incident assignment. Both checked against exhaustive search |
 
@@ -87,7 +87,7 @@ three-valued containment, signed distance, predictive crossing, STR bulk loading
 spatio-temporal clustering, hysteresis, adaptive sampling, Dijkstra, A*, Kuhn's
 matching, Hungarian assignment, Lamport reconciliation, polygon-nesting
 resolution, QR digital ID verification) **+ SHA-256** implemented from scratch and
-checked against NIST vectors. Every one is exercised by the test suite (**691 assertions across 39 files**), and every fast structure is checked against a
+checked against NIST vectors. Every one is exercised by the test suite (**765 assertions across 39 files**), and every fast structure is checked against a
 brute-force oracle.
 
 **Nothing in this inventory is `◻ designed`.** Every row above is implemented and
@@ -128,19 +128,46 @@ has to include the worst case — and for the spatial indexes it is not O(log n)
 | Dijkstra (lazy-deletion heap) | O((V+E) log V) | **O((V+E) log V)** | — | ✓ | non-negative finite weights, enforced by `add_edge` |
 | A* | ≤ Dijkstra | **O((V+E) log V)** | — | ✓ optimality **only if** h is admissible | checkable with `heuristic_is_admissible()` |
 | Hungarian assignment | O(n³) | **O(n³)** | — | ✓ — fixed n phases, each O(n²) | rows ≤ cols, all costs finite |
-| k-d tree NN | O(log n) | **O(n)** | — | ✗ — not balanced; pathological on clustered data | ties resolve to the lowest id, which costs an extra descent when the query sits exactly on a splitting plane |
+| k-d tree NN | O(log n) | **O(n)** | — | ✗ — not balanced; pathological on clustered data | ties resolve to the lowest id, which costs an extra descent when the query sits exactly on a splitting plane. Minimises the tangent-plane metric, not the great circle — see below |
 | Hash table get/put | O(1) | **O(n)** | O(1) | ✗ — probe chains degrade under a bad hash | load ≤ 0.7; tombstones swept by same-size rebuild |
-| Timing wheel | O(1) schedule | **O(n) on one tick** | O(1) | ✗ | a slot can hold many entries across revolutions |
+| Timing wheel schedule | O(1) | **O(1)** | — | ✓ | one modulo, one push_back |
+| Timing wheel cancel | O(b) | **O(n)** | — | ✗ | b = entries in that deadline's slot; O(n) only if every timer shares one slot |
+| Timing wheel advance | O(Δ + F + S) | **O(Δ + n)** | O(1) per timer | ✗ — see below | Δ = ticks elapsed since the last call, F = fired, S = entries held for a later revolution |
 | Geohash query | O(log n + s + k) | **O(n)** | — | ✗ — Z-order gaps over-scan; exact after refine | s = keys scanned, set by the largest item half-extent |
 | Geohash insert/remove | O(n) (vector shift) | **O(n)** | — | ✗ | remove also recomputes extents, O(n) |
 | Ray casting / winding | O(V) | **O(V)** | — | ✓ | V = vertices including holes |
-| Polygon validate | O(V²) outer | **O(V² + H·V·Vₕ + H²·Vₕ²)** | — | ✓ | H holes; run once per zone at authoring time |
-| Sweep-line (Shamos–Hoey) | O((n+k) log n) | **O((n+k) log n)** | — | ✓ — AVL status structure | existence only, not enumeration |
+| Polygon validate | O(V log V) outer at ≥56 vertices | **O(V² + H·V·Vₕ + H²·Vₕ²)** | — | ✓ | self-intersection is the sweep above the threshold; the hole-vs-outer and hole-vs-hole terms are still pairwise. H holes; run once per zone at authoring time |
+| Sweep-line (Shamos–Hoey) | O(V log V) | **O(V log V)** | — | ✓ — AVL status structure | existence only, not enumeration. k does not appear: it stops at the first crossing |
 | Merkle append / prove | O(1) am. / O(log n) | O(log n) | O(1) append | ✓ | `root()` recomputes in O(n) — see below |
 | Jurisdiction build | O(n²·V) | O(n²·V·V') | — | ✓ | pairwise containment, V' = outer vertices |
 | Jurisdiction resolve | O(depth·V) | **O(n·V)** | — | ✗ | degenerate when everything is a root |
 
-Three rows deserve the fine print spelled out rather than left in a cell.
+Five rows deserve the fine print spelled out rather than left in a cell.
+
+**The timing wheel is not unconditionally O(1), and saying so is the point.**
+The literature's "O(1)" describes `schedule`, and that is exactly true here. What
+`advance(now)` does is step one tick at a time — it has to, because the rounds
+comparison that lets many expiry ticks share a slot is only correct if every tick
+is visited. So advancing an hour on a one-second grid walks 3,600 slots whether or
+not anything is in them. Amortised over the TIMERS it is still O(1) each; per
+CALL it is not. The caller in this project advances once per simulation tick, so
+Δ = 1 every time, and a workload that jumped far ahead sparsely would want the
+hierarchical multi-level wheel — which is precisely the argument for that variant.
+Writing "O(1) amortised" in the cell and leaving it there would have hidden the
+one thing worth knowing about the structure.
+
+**The k-d tree answers "nearest" in the tangent plane.** It minimises the local
+east-north metric (`geo/projection.hpp`'s linearisation, anchored at the data
+centroid), not the great-circle distance. Over a district those rank candidates
+identically almost always; on a 4,096-junction grid they picked different
+junctions on 1 probe in 4,000, and the plane's choice was **2 mm** further. That
+is far inside GPS noise, so it cannot change an operational outcome — but it does
+mean a brute-force oracle written against haversine is not an oracle for this
+tree, which is a distinction that cost a real bug before it was noticed. Both
+`RoadGraph::nearest_node` and `nearest_node_linear` now use the tree's metric, and
+the modelling difference is measured on its own in
+`tests/graph/road_graph_io_test.cpp` rather than folded into a correctness
+assertion.
 
 **`k` is never hidden.** Every query complexity above that says `+ k` means the
 output size, and section 1 of `make bench` reports it in its own column precisely
@@ -438,7 +465,7 @@ to test on.
 | Adaptive sampling (GAP 7) | 28,800 continuous fixes → 257 adaptive, **99.1% battery saved at 100% near-zone recall** |
 | Alert correlation (GAP 5) | **Scenario-dependent** — a scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1); a scattered run compresses ~9:1. Both reported; the ratio is a property of incident clustering, not a fixed law |
 | Determinism | same seed, two runs: byte-identical event streams, parent trees, dispatch plans and k-d tree answers (`tests/golden/determinism_test.cpp`, `make determinism`) |
-| Unit tests | **691 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass; the whole suite is clean under UBSan locally and under ASan+UBSan in CI |
+| Unit tests | **765 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass; the whole suite is clean under UBSan locally and under ASan+UBSan in CI |
 
 ## Measurements to produce
 

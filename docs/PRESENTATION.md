@@ -176,7 +176,7 @@ library); the data is **simulated**. State those three before quoting a figure.
 
 | Result | Number |
 |---|---|
-| Spatial index speedup (100k zones) | **~33×** quadtree, **~247×** R-tree with STR bulk packing, vs brute force (median of 7, ±~5%) |
+| Spatial index speedup (100k zones) | **~33×** quadtree, **~240×** R-tree with STR bulk packing, vs brute force (median of 7; the R-tree figure moves 230–250× between runs, so it is quoted as a band, not a constant) |
 | Candidate pruning (real run) | 438 zones → ~2.4 per query, **~180×** |
 | Hysteresis false-alert removal | **~93% under realistic drift**, ~94% white noise (simulated GPS) |
 | Persistent index sharing (5,000 versions) | **13×** vs full copies |
@@ -184,7 +184,7 @@ library); the data is **simulated**. State those three before quoting a figure.
 | Index equivalence (correctness) | 18,000 queries, **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, **0 disagreements** |
 | Merkle tamper detection | forged entries + rewritten history **rejected** |
-| Unit tests | **691 assertions across 39 files**, each vs a brute-force oracle, all pass |
+| Unit tests | **765 assertions across 39 files**, each vs a brute-force oracle, all pass |
 
 **The most interesting result:** our design doc predicted a ~29,000× speedup.
 Measurement brought it down to 33×, and *explaining why* is worth more than the big
@@ -218,7 +218,7 @@ from a sales pitch. Full prep for hard questions: docs/DESIGN_DEFENSE.md.*
 ## 11. Live demo (do this) 
 
 ```bash
-make test        # 691 assertions across 39 files pass — each vs a brute-force oracle
+make test        # 765 assertions across 39 files pass — each vs a brute-force oracle
 make demo        # watch events stream over real geography
 make bench       # the speedup + correctness numbers
 make dashboard   # open dashboard.html — animated map, scrub the timeline
@@ -241,9 +241,16 @@ Or just open the **live URL** — it's the same file, deployed via CI to GitHub 
   oracle — that's how we caught our bugs.
 - **Determinism:** same seed → byte-identical output, which makes the replay and
   every A/B comparison valid.
-- **CI on every push:** builds on g++, runs the full suite (39 files, gates the deploy), runs
-  AddressSanitizer/UBSan (advisory), regenerates the dashboard, publishes to Pages.
-- **No dependencies:** `git clone && make`, nothing else. No cmake, no libraries.
+- **CI on every push:** four independent gates, all of which must pass before
+  anything publishes — the full suite on g++ (39 files) and again on macOS/clang++,
+  the whole suite under **AddressSanitizer + UBSan** with `-fno-sanitize-recover`
+  (so UB aborts rather than printing and continuing), a byte-for-byte determinism
+  diff, and a CMake build + `ctest`. Benchmarks run but do **not** gate: timings on
+  shared runners are noisy, and a flaky red build teaches people to ignore red
+  builds. Then the dashboard is regenerated and published to Pages.
+- **No dependencies:** `git clone && make`, nothing else — no libraries, and cmake
+  is optional (`CMakeLists.txt` exists so CI can build the tree a second way, which
+  is what catches the two build systems drifting apart).
 
 ---
 

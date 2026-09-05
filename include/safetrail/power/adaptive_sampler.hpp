@@ -16,8 +16,16 @@
 //   < 200 m                  →  every 2 s        (full rate)
 //   inside a zone            →  every 2 s
 //
-// Distance comes free from SpatialIndex::nearest() plus signed_distance_m(), both
-// of which the evaluator already calls.
+// The distance costs nothing extra. The evaluator has already run its range query
+// and pulled each candidate zone's bbox for the cheap pre-reject; the minimum of
+// those bbox distances is the "how far is the nearest thing I could breach"
+// number, so the sampler is fed from work already done rather than from a second
+// query. (It is a bbox distance, so it UNDER-estimates the distance to the
+// polygon itself -- which is the safe direction: the sampler errs toward sampling
+// more often, never less.) There is no SpatialIndex::nearest(): a nearest-
+// neighbour scan behind a range-query interface was removed, and point
+// nearest-neighbour lives in index/kd_tree.hpp -- see the note in
+// index/spatial_index.hpp.
 //
 // The reportable result: projected battery life and total fix count against
 // fixed-interval polling on the same scenario, at identical alert recall. If

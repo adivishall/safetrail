@@ -93,6 +93,44 @@ int main() {
     t::ok(e4.empty(), "each alert escalates at most once");
   }
 
+  // ── Acknowledgement removes the timer, it does not just ignore it ──────────
+  //
+  // The observable difference between eager and lazy cancellation: tracked()
+  // counts LIVE deadlines. Under the old lazy scheme an acknowledged alert stayed
+  // in the wheel until its deadline passed, so a busy shift's wheel grew with
+  // total alerts raised rather than with the ones anybody was still waiting on.
+  {
+    EscalationTracker esc(5 * 60'000, 1000, 64, 0);
+    for (AlertId i = 1; i <= 100; ++i) esc.arm(i, 0);
+    t::ok(esc.tracked() == 100, "100 live deadlines");
+    t::ok(esc.known() == 100, "and 100 alerts known");
+
+    for (AlertId i = 1; i <= 90; ++i) esc.acknowledge(i);
+    t::ok(esc.tracked() == 10, "acknowledging 90 leaves 10 live deadlines");
+    t::ok(esc.known() == 100, "while all 100 are still known -- the two differ on purpose");
+
+    auto fired = esc.advance(5 * 60'000);
+    t::ok(fired.size() == 10, "exactly the 10 unacknowledged escalate");
+    t::ok(esc.tracked() == 0, "and the wheel is empty afterwards");
+
+    // Acknowledging after escalation must not resurrect or double-count anything.
+    esc.acknowledge(95);
+    t::ok(esc.tracked() == 0, "acknowledging an already-escalated alert is a no-op");
+    t::ok(esc.advance(60 * 60'000).empty(), "and nothing fires an hour later");
+  }
+
+  // Re-arming an already-tracked alert must not create a second timer -- the
+  // wheel itself does not deduplicate, so this is the tracker's invariant.
+  {
+    EscalationTracker esc(60'000, 1000, 32, 0);
+    esc.arm(7, 0);
+    esc.arm(7, 30'000);
+    esc.arm(7, 45'000);
+    t::ok(esc.tracked() == 1, "re-arming does not stack timers");
+    auto f = esc.advance(10 * 60'000);
+    t::ok(f.size() == 1 && f[0] == 7, "and the alert escalates exactly once");
+  }
+
   // ── Escalation vs a brute-force oracle over random arm/ack/advance ─────────
   {
     Rng rng(0xE5CA1);

@@ -2,7 +2,7 @@
 // The segment predicates, in one place.
 //
 // Orientation and segment-intersection are needed by four separate modules --
-// polygon validation, the Bentley-Ottmann sweep, ray-casting's on-boundary rule,
+// polygon validation, the Shamos–Hoey sweep, ray-casting's on-boundary rule,
 // and jurisdiction nesting. They were written three times with three slightly
 // different epsilons, which is exactly how two layers of the same system end up
 // disagreeing about whether a point is inside a zone. One definition now; every

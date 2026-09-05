@@ -64,7 +64,7 @@ libraries. `std::vector` is used only as raw contiguous storage.
 
 Ray casting and winding number for containment (implemented independently and
 cross-validated against each other) · circle–polygon and segment–polygon
-intersection · Bentley–Ottmann sweep line for self-intersection detection ·
+intersection · Shamos–Hoey sweep line for self-intersection detection ·
 Douglas–Peucker simplification · Dijkstra and A* · Kuhn's and Hungarian bipartite
 matching · Lamport logical clocks
 

@@ -47,14 +47,33 @@ NodeId RoadGraph::nearest_node(geo::LatLon p) const {
   return snap_index_->nearest(p, out) ? out : kNoNode;
 }
 
-// The O(V) reference implementation. Ties break on the lower NodeId so it and the
-// k-d tree agree exactly, which is what lets the test assert equality rather than
-// "equal distance".
+// The O(V) reference implementation.
+//
+// Two things make it an exact oracle rather than an approximate one, and both
+// were wrong here before:
+//
+//   METRIC     it scans with the k-d tree's own metric (the local tangent plane,
+//              index/kd_tree.hpp), not with haversine. Scanning with haversine
+//              compares two DIFFERENT questions: on a few-thousand-node grid some
+//              query always has two junctions the plane and the great circle rank
+//              differently, and the scan then "disagrees" with a tree that is
+//              working perfectly. A benchmark over 2000 probes on a 4096-node
+//              grid is what surfaced it.
+//   TIES       strict `<` keeps the FIRST node seen at a given distance, and the
+//              scan runs in ascending NodeId order, so ties break on the lower
+//              id -- which is what the k-d tree's query does too.
+//
+// The two therefore agree node-for-node, which is what lets the test assert
+// equality rather than "equal distance". What this does NOT test is the modelling
+// approximation itself; that is measured separately in
+// tests/graph/road_graph_io_test.cpp.
 NodeId RoadGraph::nearest_node_linear(geo::LatLon p) const {
+  if (nodes_.empty()) return kNoNode;
+  ensure_snap_index();
   NodeId best = kNoNode;
   double best_d = DBL_MAX;
   for (size_t i = 0; i < nodes_.size(); ++i) {
-    const double d = geo::distance_m(p, nodes_[i]);
+    const double d = snap_index_->distance_m(p, nodes_[i]);
     if (d < best_d) { best_d = d; best = NodeId(i); }
   }
   return best;

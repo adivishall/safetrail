@@ -6,6 +6,103 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-05 — Closing the last gaps between claim and code (tier 5)
+
+**What:** Tier 4 audited behaviour against claims and fixed twelve defects. This
+pass re-audited the tree that tier 4 left behind, looking specifically for the
+things a big correctness pass tends to leave: complexity claims that are true for
+typical data but not for *our* data, a module built but never wired to a caller, a
+brute-force oracle that is not actually an oracle, and documentation that describes
+the project as it was two tiers ago.
+
+Five code defects, two of them real bugs rather than imprecision:
+
+1. **The interval tree's delete was O(n) on exactly the data this project has.**
+   The BST key was the interval's low endpoint alone, so intervals sharing a start
+   time — every zone whose closure begins at midnight — formed a block of equal
+   keys with no internal order. Rotations scatter such a block to both sides of a
+   node, so `remove()` could not descend a single path: on a key match with the
+   wrong payload it searched the right subtree and then the left, degenerating to a
+   full traversal. The header and the complexity table both said O(log n). Now the
+   nodes carry a total order `(low, high, value, seq)` — `seq` being a per-insert
+   counter, so no two live nodes ever tie — and removal compares on the
+   `(low, high, value)` triple, which is monotone in that order, so the nodes
+   matching a triple form one contiguous in-order run and an ordinary descent lands
+   in it. One path, always. The structural audit was strengthened to check the
+   composite order rather than `low` alone, which is what would have caught the
+   original problem.
+
+2. **The k-d tree and its "oracle" were minimising different distances.**
+   `RoadGraph::nearest_node_linear()` — kept as the brute-force reference, in the
+   same spirit as `BruteForceIndex` — scanned with haversine, while the k-d tree
+   minimises its own local tangent-plane metric. Those rank two candidates
+   differently when the candidates are within the plane's error of each other, so
+   the "oracle" was not an oracle: a disagreement could mean either a search bug or
+   nothing at all. The existing test ran one 40×40 grid and passed; a new benchmark
+   at 64×64 reported *same node: NO*. Both now use the tree's metric, so they agree
+   node-for-node and a disagreement means a real bug. The modelling difference is
+   measured separately rather than assumed away: on a 4,096-junction grid the plane
+   and the great circle pick different junctions on **1 probe in 4,000**, and the
+   plane's choice is **2 mm** further — four orders of magnitude inside GPS noise.
+   That test pins the exact configuration that exhibits it, and asserts the case
+   actually occurs, so the bound cannot become vacuous.
+
+3. **The sweep line was built, tested, and called by nothing.** `polygon.hpp`
+   claimed self-intersection detection was "Bentley-Ottmann sweep line,
+   O((n+k) log n)"; `validate()` ran the O(V²) pairwise scan, and `sweep_line.cpp`
+   — a genuine Shamos–Hoey sweep over a hand-written AVL status structure — had no
+   production caller at all. Three things were wrong at once: the algorithm name,
+   the complexity, and which code ran. `validate()` now dispatches to the sweep at
+   `kSweepThresholdVertices`, outer ring and holes alike; the pairwise version stays
+   as the oracle and as the faster path below the threshold. The threshold is read
+   off a measurement (§12 of `make bench`: 0.89× at 48 vertices, 1.04–1.11× at 64) rather
+   than guessed, and both branches are asserted to give identical verdicts on rings
+   either side of it. It is Shamos–Hoey, not Bentley–Ottmann — existence, not
+   enumeration — and that name is now right in all six places it appeared.
+
+4. **The timing wheel claimed unconditional O(1) and could not cancel.**
+   `advance()` steps tick by tick, because that is what makes the rounds comparison
+   correct, so a jump of D ticks walks D slots. Amortised over the timers it is
+   O(1) each; per call it is not, and "O(1) amortised" in a complexity table hid the
+   one thing worth knowing about the structure. The claim is now
+   `advance O(Δticks + fired + held)`, with the reason spelled out. Cancellation was
+   lazy — leave the entry, ignore it when it fires — which made `pending()` count
+   timers nobody was waiting on and let the wheel's memory track *total* alerts
+   raised rather than live ones, the same unbounded-growth-under-churn failure the
+   hash table's tombstone policy exists to prevent, one module over. `cancel()` now
+   removes the entry, and `EscalationTracker::acknowledge()` uses it.
+
+5. **Polygon hole validation had no stated policy for boundary contact.** A hole
+   flush against the outer ring, or touching another hole at a single vertex, was
+   rejected by the implementation but by nothing that said so. Contact pinches the
+   region to zero width, and "is the pinch point inside?" has no answer the two
+   containment implementations could agree on — so refusal is right, and it is now
+   documented in `polygon.hpp` and `GEOMETRY_EDGE_CASES.md` alongside the
+   *opposite* convention for containment (a point on a boundary is inside), with
+   the reason the two rules differ. Both are now tested, including the near-miss
+   that must still be accepted.
+
+**Documentation.** The code is the source of truth, so every claim that had
+drifted was corrected against it, not the other way round: `DESIGN_DEFENSE.md`
+still described the binary heap as an unbuilt stub and "~15 modules" as designed
+rather than implemented; `DEPLOYMENT.md` said `sync/` was a stub and that 28 test
+files gated the deploy; `slides.html` reported 233 checks across 12 files and "23
+modules built, ~13 stubbed"; `PRESENTATION.md` called the sanitizers advisory when
+they gate. Benchmark figures were regenerated and re-quoted from this run, with the
+R-tree's headline given as a 230–250× band because that is how much it actually
+moves between runs.
+
+**Impact:** 691 → **765 assertions across 39 files**, 0 failures. Whole suite clean
+under UBSan; ASan remains CI-only because an empty `int main(){}` linked with it
+still hangs on macOS 26 / Apple clang 17 (verified again this pass, not assumed).
+`make check`, `make test`, `make ubsan`, `make determinism`, `make bench` and
+`make dashboard` all pass. Three new benchmark sections — self-intersection
+crossover, interval-tree churn, node snapping — and the deterministic-replay test
+now compares the exported dashboard HTML and the serialised index blob **byte for
+byte**, with SHA-256 digests, rather than only the event stream. CI gained a
+Make/CMake source-set equality check and now gates the deploy on the macOS build
+as well.
+
 ### 2026-09-04 — Correctness and invariant hardening (tier 4)
 
 **What:** A deeper audit than tiers 1–3, which had checked what the project

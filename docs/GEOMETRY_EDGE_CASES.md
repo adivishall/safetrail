@@ -45,6 +45,22 @@ disjoint sub-regions strictly inside the shell; when they are not, containment i
 arbitrary in exactly the way a self-intersecting ring makes it arbitrary. See
 `Polygon::Validity` and `tests/geo/polygon_holes_test.cpp`.
 
+**Boundary contact is refused, and that is the opposite of rule 1 on purpose.**
+A hole that merely *touches* the shell — flush along an edge, or at a single
+vertex — is rejected (`HoleCrossesOuter`), and so are two holes that touch each
+other (`HolesOverlap`). Contact pinches the region to zero width at that point,
+and "is the pinch point inside?" has no right answer for the two containment
+implementations to agree on; the fix on the operator's side is to draw the hole a
+millimetre clear, which is not a hardship.
+
+That is deliberately stricter than rule 1, where a point ON a boundary counts as
+inside. The two rules answer different questions. Validation asks whether the
+GEOMETRY is well defined, and refusing an ambiguous shape is the whole job.
+Containment asks where a GPS fix falls in geometry already known to be well
+defined, and there the boundary case must resolve one way — "inside" being the
+safe direction for a hazard zone. Stating both here because a reader who meets
+them in separate files will otherwise read them as an inconsistency.
+
 Metrics are region metrics, not ring metrics: area subtracts holes, the centroid
 is the region's — otherwise a ring-shaped zone's label sits in the hole, i.e.
 outside itself — and the perimeter includes hole boundaries, because crossing one
@@ -52,8 +68,17 @@ takes you out of the zone.
 
 **6. Self-intersecting polygons.**
 Genuinely undefined — "inside" has no meaning for a figure-eight. Do not paper
-over it. Reject at authoring time with Bentley–Ottmann
-(`geo/sweep_line.hpp`, Gap 10) and never let one into `ZoneStore`.
+over it. Reject at authoring time (`Polygon::validate()`, Gap 10) and never let one
+into `ZoneStore`.
+
+Detection is **Shamos–Hoey**, O(V log V), over a hand-written AVL status structure
+(`geo/sweep_line.hpp`) — not Bentley–Ottmann. The distinction is worth keeping
+straight: Bentley–Ottmann *enumerates* all k intersection points in
+O((V+k) log V); Shamos–Hoey answers *does one exist* and stops at the first, with
+no k term at all. A validity gate only ever needs the second question, so paying
+for the first would be paying for an answer nobody reads. The O(V²) pairwise scan
+is kept beside it as the oracle and is what runs on rings below 56 vertices, where
+it is genuinely faster — `make bench` §12 measures the crossover.
 
 **7. Antimeridian crossing (±180° longitude).**
 Not relevant for Northeast India, and worth splitting into what IS handled and

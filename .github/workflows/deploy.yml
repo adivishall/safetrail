@@ -15,7 +15,11 @@
 #   determinism  GATE. The README calls determinism non-negotiable; this runs the
 #                same seed twice and diffs the output byte for byte.
 #   cmake        GATE. Cheap, and it is the check that catches the two build
-#                systems drifting apart.
+#                systems drifting apart -- both that they compile, and that they
+#                are looking at the same files.
+#   macos        GATE. The README says the project builds with nothing but a
+#                compiler on macOS and Linux. A claim that is only checked on one
+#                of them is a claim about one of them, so libc++ gates too.
 #   benchmarks   INFORMATIONAL. Timings on shared CI runners are noisy, so gating
 #                on them would produce flaky failures that teach people to ignore
 #                red builds. They still run, and their CSVs are uploaded.
@@ -78,6 +82,23 @@ jobs:
       - name: ctest
         run: ctest --test-dir build-cmake --output-on-failure
 
+      # Both build systems discover sources by globbing the same patterns, so
+      # drift should be impossible by construction. "Should be" is the phrase that
+      # precedes every drift, and this repo has drifted before -- the Makefile
+      # once carried a hand-written list that fell behind the tree. Two lines to
+      # turn a structural argument into a checked fact.
+      - name: Make and CMake see the same source set
+        run: |
+          make manifest CXX=g++ | sed -n 's|^  src/|src/|p' | sort > /tmp/make_src.txt
+          cmake -B build-cmake -S . 2>/dev/null | grep -q 'source files'
+          find src -name '*.cpp' | sort > /tmp/tree_src.txt
+          diff -u /tmp/tree_src.txt /tmp/make_src.txt
+          echo "make sees $(wc -l < /tmp/make_src.txt) sources, matching the tree"
+          make manifest CXX=g++ | sed -n 's|^  tests/|tests/|p' | sort > /tmp/make_tests.txt
+          find tests -name '*_test.cpp' | sort > /tmp/tree_tests.txt
+          diff -u /tmp/tree_tests.txt /tmp/make_tests.txt
+          echo "make sees $(wc -l < /tmp/make_tests.txt) test files, matching the tree"
+
   # macOS as well as Linux: the project claims to build easily on both, and
   # libc++ vs libstdc++ is where portability assumptions surface.
   macos:
@@ -89,7 +110,7 @@ jobs:
 
   # ── Artifact generation ─────────────────────────────────────────────────────
   build:
-    needs: [test, sanitize, cmake]
+    needs: [test, sanitize, cmake, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

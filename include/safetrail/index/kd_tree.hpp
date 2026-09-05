@@ -8,13 +8,33 @@
 // k-d tree answers NN in O(log n) average by splitting the plane on alternating
 // axes and pruning the half it cannot improve on.
 //
-// Metric. Points are WGS84 lat/lon, but degrees are not isotropic -- a degree of
+// ── Metric, and why it is exposed ────────────────────────────────────────────
+//
+// Points are WGS84 lat/lon, but degrees are not isotropic -- a degree of
 // longitude is shorter than a degree of latitude away from the equator. We scale
-// longitude by cos(mean latitude) so the working space is locally metric (a
-// scaled-planar approximation, the same flat-earth tangent-plane trade the rest
-// of the engine makes; see geo/point.hpp). Distances are therefore comparable and
-// the NN result matches a great-circle nearest to well under GPS noise across a
-// district. The scale is captured at build time from the data centroid.
+// longitude by cos(mean latitude), so the working space is the local tangent
+// plane: the SAME linearisation, on the same Earth model, that
+// geo/projection.hpp documents and measures an error budget for. The anchor
+// latitude is captured at build time from the data centroid.
+//
+// distance_m() exposes that metric, and that is not a convenience accessor -- it
+// is what makes a brute-force oracle possible. A linear scan written against
+// geo::distance_m (haversine) is NOT an oracle for this tree: it answers a
+// slightly different question, and on any large point set some query has two
+// candidates whose plane distance and great-circle distance rank differently. A
+// scan using this function is an exact oracle, so a disagreement is a bug in the
+// SEARCH -- which is the thing that can actually be wrong -- rather than a
+// restatement of the modelling approximation. graph::RoadGraph::
+// nearest_node_linear() scans with it for exactly that reason, and section 14 of
+// `make bench` asserts the two agree on every probe.
+//
+// The approximation itself is bounded and measured: over a district (points
+// within ~25 km of the anchor) the plane and the great circle disagree by a few
+// tens of metres in ABSOLUTE distance, but they only disagree about WHICH point
+// is nearest when two candidates are within that of each other -- far inside GPS
+// noise, and a tie a dispatcher has no reason to care about. See
+// tests/graph/road_graph_io_test.cpp, which measures the disagreement rate and
+// the error when it happens rather than asserting it away.
 //
 // Hand-written: no std::set / std::map. Nodes live in one flat vector (indices,
 // not pointers -- cache-friendly and trivially serialisable); build uses
@@ -72,6 +92,18 @@ class KdTree {
 
   size_t size() const { return items_.size(); }
 
+  // The tree's own metric, in metres: the local tangent plane anchored at the
+  // build-time centroid latitude. This is the function `nearest()` minimises, so
+  // it is the one an oracle must use. Before the tree is built the scale is 1.0
+  // and this degrades to an unscaled plane -- correct for an empty tree, which
+  // has no nearest anything.
+  double distance_m(const geo::LatLon& a, const geo::LatLon& b) const {
+    return std::sqrt(dist2(a, b)) * kMetersPerDegLat;
+  }
+  // The longitude scale in force, exposed for diagnostics and for tests that want
+  // to reproduce the metric without holding a tree.
+  double lon_scale() const { return lon_scale_; }
+
   // Single nearest neighbour. Returns false if the tree is empty.
   // Ties resolve to the lowest id.
   bool nearest(const geo::LatLon& q, Id& out_id) const {
@@ -96,6 +128,10 @@ class KdTree {
 
  private:
   static constexpr double kDeg2Rad = 3.14159265358979323846 / 180.0;
+  // Must be the same Earth model as geo::distance_m and geo::LocalPlane: a mean
+  // sphere of radius 6371008.8 m. Mixing models across files is a 2.8 m
+  // discrepancy over a 750 m segment for no reason -- see geo/projection.cpp.
+  static constexpr double kMetersPerDegLat = 6371008.8 * kDeg2Rad;
 
   struct Node { int32_t item; int32_t left = -1, right = -1; uint8_t axis = 0; };
   struct Cand { double d2; int32_t node; };

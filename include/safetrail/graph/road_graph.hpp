@@ -64,19 +64,34 @@ class RoadGraph {
   // Snap a free position to the closest junction.
   //
   // Backed by the k-d tree (index/kd_tree.hpp), built lazily on first use and
-  // invalidated by add_node. O(log V) expected per query instead of the O(V)
-  // scan this used to do -- which mattered: building the dispatch cost matrix
-  // snaps every responder and every incident, and the simulator re-snaps each
-  // time it dispatches. The linear scan is kept as nearest_node_linear() and the
-  // two are asserted equal on randomised input in tests/graph/shortest_path_test.
+  // invalidated by add_node. O(log V) expected per query instead of the O(V) scan
+  // this used to do -- which mattered: building the dispatch cost matrix snaps
+  // every responder and every incident, and the simulator re-snaps each time it
+  // dispatches. Section 14 of `make bench` measures it: 10x at 64 junctions,
+  // ~480x at 10,000.
   //
-  // Ties: when two junctions are equidistant the k-d tree and the scan can pick
-  // different ones, so both break ties on the lower NodeId. Determinism here is
-  // load-bearing -- a different snap changes the whole dispatch plan.
+  // ── What "closest" means here ─────────────────────────────────────────────
+  //
+  // Closest in the k-d tree's metric -- the local tangent plane anchored at the
+  // graph's centroid latitude, which is the same linearisation geo/projection.hpp
+  // documents and budgets. NOT haversine. The distinction is invisible almost
+  // always and is stated because it once was not: nearest_node_linear() scanned
+  // with geo::distance_m, so on a 4096-node grid the "oracle" and the tree
+  // disagreed on a handful of the 2000 probes -- two junctions that the plane and
+  // the great circle rank differently, both of them right about their own
+  // question. Both now use the tree's metric, so they agree node-for-node, and
+  // the modelling difference is measured in its own right rather than showing up
+  // as a phantom search bug. tests/graph/road_graph_io_test.cpp holds both.
+  //
+  // Ties: when two junctions are equidistant, the tree and the scan both break on
+  // the lower NodeId. Determinism here is load-bearing -- a different snap
+  // changes the whole dispatch plan, and the golden replay is compared byte for
+  // byte.
   NodeId nearest_node(geo::LatLon p) const;
 
   // The O(V) reference. Kept permanently as the correctness oracle, in the same
-  // spirit as BruteForceIndex.
+  // spirit as BruteForceIndex. Uses the k-d tree's metric -- see the note above
+  // for why an oracle that used a different one is not an oracle.
   NodeId nearest_node_linear(geo::LatLon p) const;
 
   // ── file I/O ──────────────────────────────────────────────────────────────

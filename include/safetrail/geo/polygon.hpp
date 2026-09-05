@@ -20,6 +20,37 @@ using Ring = std::vector<LatLon>;
 // two containment implementations to drift apart.
 double ring_signed_area(const Ring& r);
 
+// ── Ring self-intersection ────────────────────────────────────────────────────
+//
+// Two implementations of one predicate, both kept on purpose.
+//
+//   ring_self_intersects_pairwise   every non-adjacent edge pair, O(V^2). The
+//                                   reference. Simple enough to be obviously
+//                                   right, which is what makes it useful as the
+//                                   oracle the sweep is checked against.
+//   ring_self_intersects_sweep      Shamos-Hoey sweep line over a hand-written
+//                                   AVL status structure, O(V log V). See
+//                                   sweep_line.hpp.
+//   ring_self_intersects            what Polygon::validate() calls: the sweep at
+//                                   or above kSweepThresholdVertices, the
+//                                   pairwise scan below it.
+//
+// The threshold is measured, not assumed. Section 12 of `make bench` times both
+// on simple rings from 8 to 2048 vertices; on the reference machine the sweep is
+// 0.89x at 48 vertices and 1.11x at 64, so the crossover is around 56 and the
+// constant sits there. Below it the sweep loses on constants -- it sorts 2V
+// events and builds a balanced tree in order to skip a few dozen orientation
+// tests. Above it the gap widens: 1.6x at 128 vertices, 8.9x at 2048, which is
+// the range a simplified OSM district boundary actually lives in.
+//
+// The exact value is not load-bearing for correctness -- both branches return the
+// same verdict, which the tests assert on rings either side of it -- so it can be
+// retuned from a new measurement without anything else having to change.
+constexpr size_t kSweepThresholdVertices = 56;
+
+bool ring_self_intersects_pairwise(const Ring& r);
+bool ring_self_intersects(const Ring& r);
+
 class Polygon {
  public:
   Polygon() = default;
@@ -74,7 +105,36 @@ class Polygon {
   // Operators are police and tourism staff, not GIS analysts. They will draw
   // self-intersecting shapes, and ray casting on a self-intersecting polygon
   // returns arbitrary results — so this is a correctness gate, not a nicety.
-  // Detection is Bentley-Ottmann sweep line, O((n+k) log n). See sweep_line.hpp.
+  //
+  // Self-intersection detection is Shamos–Hoey, O(V log V), on any ring with at
+  // least kSweepThresholdVertices vertices, and the O(V^2) pairwise scan below
+  // that. (It is Shamos–Hoey, not Bentley–Ottmann: this answers EXISTENCE, which
+  // is all a validity gate needs, and does it in O(V log V) with no dependence on
+  // the number of crossings. Bentley–Ottmann enumerates all k of them in
+  // O((V+k) log V) and we do not need them.) Holes go through the same predicate
+  // as the outer ring.
+  //
+  // Boundary-touching policy, stated once because it is a real decision and the
+  // functions have to agree on it:
+  //
+  //   WITHIN a ring   touching counts as self-intersection. A ring that grazes
+  //                   itself at a non-adjacent vertex makes ray casting's parity
+  //                   rule ill-defined at that point, so it is refused. Edges
+  //                   that share a vertex because they are consecutive are of
+  //                   course exempt.
+  //   HOLE vs OUTER   touching is REFUSED (HoleCrossesOuter). A hole tangent to
+  //                   the outer boundary pinches the region to zero width there;
+  //                   whether the pinch point is inside is genuinely ambiguous,
+  //                   and both containment implementations would have to agree on
+  //                   an answer that has no right one. Draw the hole a
+  //                   millimetre in and the question disappears.
+  //   HOLE vs HOLE    touching is REFUSED (HolesOverlap), for the same reason.
+  //   A POINT on a boundary   is INSIDE. This is the opposite convention and it
+  //                   is deliberate: containment is asked about GPS fixes, where
+  //                   the boundary case must resolve one way and "inside" is the
+  //                   safe direction for a hazard zone. Validation is about the
+  //                   geometry being well defined; containment is about a point
+  //                   in already-valid geometry. See docs/GEOMETRY_EDGE_CASES.md.
   //
   // Holes are validated to the same standard as the outer ring, and then for the
   // three ways a hole can be geometrically incoherent: outside the outer ring,

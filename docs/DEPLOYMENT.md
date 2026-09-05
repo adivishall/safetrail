@@ -32,9 +32,18 @@ checkout → make test  →  make bench  →  make dashboard  →  publish to Pa
              (gate)      (artifact)     (real OSM data)     (_site/index.html)
 ```
 
-The deploy is **gated on the test suite** — all 28 test files must pass or nothing
-publishes. The benchmark CSVs are uploaded as a downloadable artifact on every
-run. The generated `dashboard.html` becomes the live site.
+Four things gate the deploy, and one deliberately does not:
+
+| Gate | What it runs |
+|---|---|
+| tests | `make check` + `make test` — all 39 test files, on Linux/g++ and again on macOS/clang++ |
+| sanitizers | `make asan` — the WHOLE suite under ASan + UBSan with `-fno-sanitize-recover`, so UB aborts instead of printing and continuing |
+| determinism | `make determinism` — same seed twice, output diffed byte for byte |
+| cmake | configure, build and `ctest` on the same tree, which is what catches the two build systems drifting |
+| *benchmarks* | *informational only.* Timings on shared CI runners are noisy; gating on them produces flaky failures that teach people to ignore red builds. The CSVs are uploaded as an artifact on every run. |
+
+If any of the four gates fails, nothing publishes. The generated `dashboard.html`
+becomes the live site.
 
 **Result:** the dashboard is live at
 `https://adivishall.github.io/safetrail/` after the first successful run.
@@ -102,10 +111,16 @@ serialised spatial index shipped to it (GAP 6), and reconciling events when it
 next reaches a network (Lamport sync, GAP 6). No server is in the loop at the
 moment safety actually depends on it.
 
-That path is not built yet — `sync/` is still a stub — but the architecture is
-deliberately shaped for it: no module in the evaluation path allocates, blocks on
-I/O, or assumes a network. The engine that runs in the demo is the engine that
-would run on the device.
+The reconciliation half of that path is built: `sync/lamport.hpp` is the
+happened-before clock and the offline event queue, tested end to end in
+`tests/sync/offline_scenario_test.cpp`, and the serialised index the device would
+carry is `index/geohash.hpp` (44 bytes per zone, explicitly little-endian, with a
+deserialiser that refuses malformed input rather than loading a prefix). What is
+NOT built is the packaging: an Android NDK build, a device GPS source, a transport.
+Those are integration work, not algorithms, and the architecture is deliberately
+shaped for them — no module in the evaluation path allocates, blocks on I/O, or
+assumes a network. The engine that runs in the demo is the engine that would run
+on the device.
 
 ---
 
@@ -126,7 +141,8 @@ would run on the device.
 ```
 dashboard   →  GitHub Pages (CI, automatic) or any static host — it's one file
 engine      →  git clone && make, or release binaries
-field use   →  on-device library, no cloud (by design; sync layer still a stub)
+field use   →  on-device library, no cloud (by design; engine + sync built,
+               device packaging is not)
 ```
 
 The absence of a server to deploy is the feature, not a gap.

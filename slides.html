@@ -113,7 +113,7 @@
       <b>9</b><span>Ethereum for tamper-proofing → <span class="pu">Merkle log</span>, offline, no chain</span>
     </div>
     <p class="dim" style="margin-top:1.4em">Research + citations in GAP_ANALYSIS.md.
-       Three more are designed, not yet built — marked honestly.</p>
+       All ten are built and tested — nothing on this slide is a plan.</p>
   </section>
 
   <section class="slide">
@@ -165,7 +165,7 @@
     <ul>
       <li><b class="pu">Persistent quadtree</b> — nodes are immutable; a change copies
           one path and <i>shares</i> the rest by reference count. Whole history for a
-          fraction of the cost: <span class="num">13× sharing</span> across 5,000
+          fraction of the cost: <span class="num">13.0× sharing</span> across 5,000
           versions. Answers "what were the rules at 14:32?"</li>
       <li><b class="pu">Rollback union-find</b> — groups split as well as merge, so we
           must <i>undo</i> unions → can't use path compression. Union-by-rank alone:
@@ -194,26 +194,36 @@
   <section class="slide">
     <h3>09 · Results — measured, not claimed</h3>
     <table>
-      <tr><td>Spatial index speedup (100k zones)</td><td class="num">32.7× / 32.5×</td></tr>
-      <tr><td>Candidate pruning (real run)</td><td class="num">181×</td></tr>
-      <tr><td>Hysteresis false-alert removal</td><td class="num">91.2%</td><td class="dim">realistic drift</td></tr>
-      <tr><td>Persistent index sharing (5k versions)</td><td class="num">13×</td></tr>
+      <tr><td>Spatial index speedup (100k zones)</td><td class="num">32.7× / 233×</td><td class="dim">quadtree / R-tree, vs our brute force</td></tr>
+      <tr><td>R-tree: STR packing vs insertion</td><td class="num">6.1×</td><td class="dim">same data, same query code</td></tr>
+      <tr><td>Hysteresis false-alert removal</td><td class="num">92.9%</td><td class="dim">realistic drift (ρ=0.9)</td></tr>
+      <tr><td>Persistent index sharing (5k versions)</td><td class="num">13.0×</td></tr>
+      <tr><td>A* vs Dijkstra work</td><td class="num">77.7% fewer</td><td class="dim">nodes expanded, 1024-node grid</td></tr>
+      <tr><td>Hungarian vs greedy dispatch</td><td class="num">15.7% saved</td><td class="dim">40 responders, 200 layouts</td></tr>
+      <tr><td>Node snapping: k-d tree vs scan</td><td class="num">45.9×</td><td class="dim">10,000 junctions</td></tr>
       <tr><td>Index equivalence</td><td class="num">0 mismatches</td><td class="dim">18,000 queries</td></tr>
       <tr><td>Ray casting vs winding number</td><td class="num">0 disagreements</td><td class="dim">100k points</td></tr>
-      <tr><td>Unit tests</td><td class="num">233 checks</td><td class="dim">12 files, all pass</td></tr>
+      <tr><td>Unit tests</td><td class="num">765 assertions</td><td class="dim">39 files, all pass</td></tr>
     </table>
   </section>
 
   <section class="slide">
     <h3>09 · The most interesting result</h3>
-    <p class="big">We predicted a ~29,000× speedup. Measurement brought it to
-       <span class="num">33×</span> — and explaining <i>why</i> is worth more than
-       the big number.</p>
+    <p class="big">We predicted a ~29,000× speedup. The quadtree gave
+       <span class="num">33×</span> — and explaining <i>why</i> was worth more
+       than the big number.</p>
     <p>At 100k dense zones, ~99 genuinely overlap each query. Those are <b>correct
        answers</b> — no index can return fewer results than exist. The ceiling is
        output size, exactly as <code>O(log n + k)</code> predicts.</p>
-    <p class="dim">Stating that honestly is the point. Three real bugs were caught
-       only by the measurements — one by looking at the visualisation.</p>
+    <p>Then the same reasoning said where the remaining headroom was: not in the
+       query, in the <b>tree</b>. Bulk-loading the R-tree with Sort-Tile-Recursive
+       packing instead of repeated insertion made its tiles overlap less, so fewer
+       branches get entered — <span class="num">233×</span> on identical data with
+       identical query code. Same asymptotics, better constant, and the constant
+       was the whole story.</p>
+    <p class="dim">Four real bugs were caught only by the measurements — one by
+       looking at the visualisation, and one by a benchmark that compared a
+       structure against its own oracle and found they disagreed.</p>
   </section>
 
   <section class="slide">
@@ -222,8 +232,10 @@
       <li><b>Worst case:</b> quadtree/R-tree are O(n) worst case (they partition
           space, not data). The <span class="gr">AVL interval tree</span> is the one
           with a guaranteed O(log n).</li>
-      <li><b>Scope:</b> 23 modules built, ~13 designed-but-stubbed. Marked ◻/✅
-          throughout — never a stub claimed as done.</li>
+      <li><b>Scope:</b> every structure and algorithm in the inventory is built,
+          tested and cross-checked against a brute-force oracle. The only headers
+          with no implementation are the server ones, and that is a decision —
+          the engine emits one HTML file, so there is nothing to serve.</li>
       <li><b>The tourists are simulated.</b> Real geography, simulated people, on purpose.</li>
       <li><b>The dashboard is a deterministic replay</b>, not a live server.</li>
     </ul>
@@ -233,7 +245,7 @@
 
   <section class="slide">
     <h3>11 · Live demo</h3>
-    <pre>make test      # 233 checks pass — proves it works
+    <pre>make test      # 765 assertions across 39 files
 make demo      # events stream over real geography
 make bench     # the speedup + correctness numbers
 make dashboard # open dashboard.html — scrub the timeline</pre>

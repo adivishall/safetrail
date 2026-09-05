@@ -88,6 +88,66 @@ int main() {
                                     std::to_string(poly_agree) + "/" +
                                     std::to_string(poly_trials) + ")");
 
+  // ── The equivalence that now carries weight ────────────────────────────────
+  //
+  // validate() dispatches to the sweep at kSweepThresholdVertices and to the
+  // pairwise scan below it, so the two must agree on BOTH sides of that line --
+  // otherwise the same polygon is valid or invalid depending on how many vertices
+  // it happens to have. Rings are built with enough spread to produce a healthy
+  // mix of verdicts; the counts are asserted so a change that made every ring
+  // trivially simple (or trivially crossed) could not pass silently.
+  {
+    const size_t sizes[] = {8, 16, kSweepThresholdVertices - 1,
+                            kSweepThresholdVertices, kSweepThresholdVertices + 1,
+                            64, 200, 500};
+    for (size_t n : sizes) {
+      int agree_n = 0, crossed = 0;
+      const int trials_n = 120;
+      for (int trial = 0; trial < trials_n; ++trial) {
+        Ring r;
+        for (size_t i = 0; i < n; ++i)
+          r.push_back({rng.range(25.0, 26.0), rng.range(91.0, 92.0)});
+        const bool sweep_says = ring_self_intersects_sweep(r);
+        const bool pair_says = ring_self_intersects_pairwise(r);
+        if (sweep_says == pair_says) ++agree_n;
+        if (pair_says) ++crossed;
+        // ...and the dispatcher must return that same verdict whichever branch
+        // it picks for this size.
+        if (ring_self_intersects(r) != pair_says) agree_n = -1;
+      }
+      t::ok(agree_n == trials_n,
+            "sweep == pairwise == dispatch on " + std::to_string(n) +
+                "-vertex rings (" + std::to_string(agree_n) + "/" +
+                std::to_string(trials_n) + ")");
+      t::ok(crossed > 0, "random " + std::to_string(n) +
+                             "-vertex rings do self-intersect, so the test has teeth");
+    }
+  }
+
+  // A simple ring stays simple at any size -- the case where a sweep bug that
+  // reports spurious crossings would otherwise hide behind random data that
+  // genuinely crosses. A convex polygon on a circle is simple by construction.
+  {
+    for (size_t n : {8u, 33u, 129u, 1025u}) {
+      Ring r;
+      for (size_t i = 0; i < n; ++i) {
+        const double a = 6.283185307179586 * double(i) / double(n);
+        r.push_back({25.5 + 0.3 * std::sin(a), 91.5 + 0.3 * std::cos(a)});
+      }
+      t::ok(!ring_self_intersects_sweep(r),
+            "a convex " + std::to_string(n) + "-gon is simple (sweep)");
+      t::ok(!ring_self_intersects_pairwise(r),
+            "a convex " + std::to_string(n) + "-gon is simple (pairwise)");
+      // Now break it: swap two vertices far apart, which must introduce a crossing.
+      std::swap(r[1], r[n / 2]);
+      t::ok(ring_self_intersects_sweep(r),
+            "swapping two vertices of the " + std::to_string(n) +
+                "-gon creates a crossing (sweep)");
+      t::ok(ring_self_intersects_pairwise(r),
+            "...and the pairwise oracle agrees");
+    }
+  }
+
   // A clean convex square is not self-intersecting; a bowtie is.
   {
     Polygon square(Ring{{25.0, 91.0}, {25.0, 91.1}, {25.1, 91.1}, {25.1, 91.0}});

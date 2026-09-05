@@ -174,16 +174,88 @@ int main() {
   }
 
   // ── nearest_node: k-d tree vs the O(V) oracle ──────────────────────────────
+  //
+  // At several sizes, not one. This test used to run a single 40x40 grid and
+  // passed while the tree and the scan were minimising DIFFERENT distances -- the
+  // tree on the local tangent plane, the scan on haversine. At 1600 junctions no
+  // query happened to fall where the two rank a pair differently; at 4096 several
+  // did, and a benchmark found what the test did not. Both now use the tree's
+  // metric (see road_graph.hpp), and the sweep over sizes is what keeps a
+  // rare-at-small-n disagreement from hiding again.
+  {
+    sim::Rng rng(31337);
+    for (int side : {8, 20, 40, 64, 100}) {
+      RoadGraph big = RoadGraph::grid({25.50, 91.80, 25.62, 91.96}, side, side, 99);
+      size_t mismatched = 0;
+      for (int i = 0; i < 3000; ++i) {
+        const geo::LatLon q{rng.range(25.48, 25.64), rng.range(91.78, 91.98)};
+        if (big.nearest_node(q) != big.nearest_node_linear(q)) ++mismatched;
+      }
+      t::ok(mismatched == 0,
+            "k-d tree == linear scan on 3000 queries over " +
+                std::to_string(big.node_count()) + " junctions");
+    }
+  }
+
+  // ── ...and what the tangent plane actually costs, measured ─────────────────
+  //
+  // The test above proves the SEARCH is right. It says nothing about the metric,
+  // and pretending the two questions are one is what hid the bug. So measure the
+  // modelling difference directly: how often does the plane's nearest junction
+  // differ from the great circle's, and when it does, how much further is it?
+  //
+  // No threshold is asserted on the RATE -- it depends on junction density and
+  // would be a number pretending to be a law. What is asserted is the thing that
+  // matters operationally: when they differ, the two candidates are within a
+  // couple of metres of each other, i.e. inside GPS noise, so the choice cannot
+  // change a dispatch outcome in any way a dispatcher could observe.
+  {
+    // This exact configuration -- 64x64, graph seed 7, probe seed 0x5AAA over the
+    // benchmark's box -- is the one that exhibits a disagreement, and it is
+    // pinned rather than randomised so the case cannot quietly stop being
+    // exercised. It is also how the bug was found: section 14 of `make bench`
+    // runs it and reported "same node: NO".
+    const geo::Bbox area{25.50, 91.83, 25.62, 91.95};
+    RoadGraph g = RoadGraph::grid(area, 64, 64, 7);
+    sim::Rng rng(0x5AAA);
+    size_t differ = 0;
+    double worst_extra_m = 0.0;
+    const int probes = 4000;
+    for (int i = 0; i < probes; ++i) {
+      const geo::LatLon q{rng.range(area.min_lat, area.max_lat),
+                          rng.range(area.min_lon, area.max_lon)};
+      const NodeId plane = g.nearest_node(q);
+      // The haversine nearest, computed here rather than in the graph: it is not
+      // the question the engine asks, so it does not belong in the API.
+      NodeId hav = kNoNode;
+      double best = 1e300;
+      for (size_t k = 0; k < g.node_count(); ++k) {
+        const double d = geo::distance_m(q, g.pos(NodeId(k)));
+        if (d < best) { best = d; hav = NodeId(k); }
+      }
+      if (plane != hav) {
+        ++differ;
+        worst_extra_m = std::fmax(worst_extra_m,
+                                  geo::distance_m(q, g.pos(plane)) - best);
+      }
+    }
+    // The case must actually occur, or the bound below is vacuous and the test is
+    // theatre.
+    t::ok(differ > 0,
+          "the plane and the great circle do pick different junctions sometimes (" +
+              std::to_string(differ) + "/" + std::to_string(probes) + ")");
+    // ...and when they do, the difference is millimetres. THAT is the claim worth
+    // making: the metric choice cannot change a dispatch outcome, so an oracle
+    // built on the tree's own metric loses nothing operationally while gaining
+    // the ability to detect a real search bug.
+    t::ok(worst_extra_m < 1.0,
+          "and the plane's choice is at most " + std::to_string(worst_extra_m) +
+              " m further -- four orders of magnitude inside GPS noise");
+  }
+
   {
     RoadGraph big = RoadGraph::grid({25.50, 91.80, 25.62, 91.96}, 40, 40, 99);
     sim::Rng rng(31337);
-    size_t mismatched = 0;
-    for (int i = 0; i < 3000; ++i) {
-      const geo::LatLon q{rng.range(25.48, 25.64), rng.range(91.78, 91.98)};
-      if (big.nearest_node(q) != big.nearest_node_linear(q)) ++mismatched;
-    }
-    t::ok(mismatched == 0,
-          "the k-d tree agrees with the linear scan on 3000 random queries");
 
     // Deterministic across repeated calls (the index is built lazily on first use).
     RoadGraph fresh = RoadGraph::grid({25.50, 91.80, 25.62, 91.96}, 40, 40, 99);

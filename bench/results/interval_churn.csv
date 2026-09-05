@@ -1,0 +1,4 @@
+live,height_fresh,height_churned,stab_fresh_us,stab_churned_us,delete_us,avl_bound
+1000,12,12,0.0126,0.0126,0.1220,14.36
+10000,16,16,0.3188,0.2539,0.1749,19.14
+50000,19,19,2.5584,2.4640,0.2243,22.49

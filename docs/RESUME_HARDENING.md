@@ -8,12 +8,21 @@ The flaws are grouped by how badly they would hurt under interview questioning:
 **Tier 1** = credibility killers (a reviewer catches these first), **Tier 2** =
 substance/rigor, **Tier 3** = positioning for a resume, **Tier 4** =
 correctness and invariant hardening (what an examiner finds when they stop reading
-the docs and start reading the code).
+the docs and start reading the code), **Tier 5** = claim–code alignment (what is
+left once the invariants hold: complexity claims that are true in general but not
+for this project's data, a module built and never called, a reference
+implementation that answers a different question from the thing it references).
 
-**Tier 4 is not a victory lap.** It records a later, deeper audit that found real
-defects Tiers 1–3 had not looked for — including one in the project's flagship
-structure. Nothing in Tiers 1–3 was wrong about what it fixed; it was simply
-looking at claims rather than at invariants.
+**Tiers 4 and 5 are not victory laps.** Each records a later, deeper audit that
+found real defects the earlier ones had not looked for — tier 4 in the project's
+flagship structure, tier 5 in a complexity claim and in a brute-force oracle that
+had been quietly invalid for as long as it existed. Nothing in the earlier tiers
+was wrong about what it fixed; each was simply looking at a different layer.
+
+**How to read this file.** Every tier's table is a dated record of what was true
+*then*. The current-state numbers are the ones in the most recent tier and in
+`README.md`; earlier figures ("285 assertions across 28 files") are history, not
+claims, and are left in place because the point of the ledger is the trajectory.
 
 ---
 
@@ -208,6 +217,43 @@ so no ASan binary of any kind runs on such a host. ASan is therefore authoritati
 in CI (Linux/g++, where it works) and `make ubsan` exists so macOS developers have
 a sanitizer they can actually run locally. Saying so is better than quietly
 shipping a sanitizer target nobody on the team can execute.
+
+---
+
+## Tier 5 — Claim–code alignment  ·  status: ✅ done
+
+Tier 4 audited behaviour against claims. This pass re-audited the tree tier 4 left
+behind, hunting the specific residue a large correctness pass tends to leave: a
+complexity claim that holds for typical data but not for *ours*, a module built and
+never wired to a caller, an oracle that is not an oracle, and prose describing the
+project as it was two tiers ago.
+
+| # | Flaw | Before | After |
+|---|---|---|---|
+| 1 | **Interval-tree deletion was O(n) on exactly this project's data** | The BST key was the interval's `low` alone. Intervals sharing a start time — every zone whose closure begins at midnight — formed a block of equal keys with no internal order, rotations scattered it to both sides, and `remove()` had to search the right subtree and then the left. The header and the complexity table both said O(log n). | Total order `(low, high, value, seq)`, `seq` a per-insert counter so no two live nodes tie. Removal compares on the `(low, high, value)` triple, which is monotone in that order, so matching nodes form one contiguous in-order run and a single descent lands in it. The structural audit checks the composite order, not `low` — which is what would have caught the original. Benchmarked: **0.12–0.22 µs per delete at 1k–50k live entries** with a tenth of the entries sharing each endpoint. |
+| 2 | **The k-d tree's brute-force oracle minimised a different distance** | `nearest_node_linear()` scanned with haversine; the k-d tree minimises its own tangent-plane metric. A disagreement therefore meant either a search bug or nothing at all. The test ran one 40×40 grid and passed; a new benchmark at 64×64 reported *same node: **NO***. | Both use the tree's metric, so they agree node-for-node and a mismatch is a real bug. The modelling difference is measured on its own instead: plane and great circle pick different junctions on **1 probe in 4,000**, and the plane's is **2 mm** further. The test pins the exact configuration that exhibits it and asserts the case occurs, so the bound cannot go vacuous. |
+| 3 | **The sweep line was built, tested, and called by nothing** | `polygon.hpp` claimed "Bentley-Ottmann sweep line, O((n+k) log n)"; `validate()` ran the O(V²) pairwise scan; `sweep_line.cpp` had no production caller. Wrong algorithm name, wrong complexity, wrong code running — three claims failing at once. | `validate()` dispatches to the Shamos–Hoey sweep at `kSweepThresholdVertices = 56`, outer ring and holes alike. Threshold read off a measurement (§12 of `make bench`: 0.89× at 48 vertices, 1.04–1.11× at 64), not guessed. The pairwise version stays as the oracle and as the faster path below the threshold, and the two are asserted to give identical verdicts on rings either side of it. **1.6× at 128 vertices, ~9× at 2048 (8.9–9.1 across runs).** Name corrected in all six places: existence, not enumeration. |
+| 4 | **Timing wheel claimed unconditional O(1) and could not cancel** | `advance()` steps tick by tick — it must, or the rounds comparison is wrong — so a jump of D ticks walks D slots. "O(1) amortised" in the table hid the only surprising thing about the structure. Cancellation was lazy, so `pending()` counted timers nobody awaited and the wheel's memory tracked *total* alerts raised, not live ones. | Claim is now `schedule O(1) · cancel O(b) · advance O(Δticks + fired + held)`, with the reason spelled out in the header and the worst-case table. `cancel()` removes the entry; `EscalationTracker::acknowledge()` uses it, and `tracked()` became a true count. |
+| 5 | **Hole validation had no stated boundary-contact policy** | A hole flush against the outer ring, or touching another hole at a vertex, was rejected by the code and by nothing that said so — while containment uses the *opposite* convention (a point on a boundary is inside). Read in separate files, that is an inconsistency. | Both rules documented together, with why they differ: validation refuses ambiguous geometry, containment resolves a point in geometry already known to be good. Tested — including the near-miss that must still be accepted, so the rule is not just "reject everything". |
+| 6 | **Determinism was asserted on the event stream, not on what ships** | The golden test compared event sequences. The deliverables — the exported dashboard HTML, the serialised index blob — were never compared. | Both compared **byte for byte** across two runs, plus SHA-256 digests (the project's own implementation) so a failure is one line rather than a megabyte of diff. Blob round-trip is asserted byte-stable too, which is stronger than "loads without error". |
+| 7 | **Stale prose across six documents** | `DESIGN_DEFENSE.md` called the binary heap an unbuilt stub and "~15 modules" designed-not-built; `DEPLOYMENT.md` said `sync/` was a stub and 28 test files gated the deploy; `slides.html` reported 233 checks across 12 files and "23 modules built, ~13 stubbed"; `PRESENTATION.md` called the sanitizers advisory when they gate; `adaptive_sampler.hpp` cited a `SpatialIndex::nearest()` removed in tier 4. | All corrected against the code, which is the source of truth. Benchmark figures requoted from a fresh run, with the R-tree headline given as a **230–250× band** because that is how much it moves between runs — a single-figure claim there would be false precision. |
+| 8 | **CI could not detect Make/CMake source-set drift, and macOS did not gate** | Both build systems glob the same patterns, so drift "should be" impossible — the phrase that precedes every drift, and this repo has drifted before. The macOS job ran but nothing depended on it, while the README claims the project builds on both platforms. | An explicit CI step diffs each build system's discovered source and test lists against the tree. `macos` joined `test`, `sanitize` and `cmake` as a deploy gate. |
+
+**Measured after Tier 5:** **765 assertions across 39 files**, 0 failures.
+`make check`, `make test`, `make ubsan`, `make determinism`, `make bench` and
+`make dashboard` all pass on a clean tree. Three new benchmark sections
+(self-intersection crossover, interval-tree churn, node snapping). The ASan
+situation was re-verified rather than carried forward: an empty `int main(){}`
+linked with `-fsanitize=address` still hangs on macOS 26 / Apple clang 17, so ASan
+stays CI-only and `make ubsan` stays the local path.
+
+**The interview-usable line from this tier**, because it is the one that shows
+judgment rather than effort: *a brute-force oracle that answers a slightly
+different question is not an oracle*. Two structures agreed on every test and
+disagreed the moment a benchmark ran them on a larger input — not because the fast
+one was wrong, but because the reference was minimising a different metric. The fix
+was to make them share a metric and then measure the modelling difference
+separately, so one number stopped standing for two questions.
 
 ---
 

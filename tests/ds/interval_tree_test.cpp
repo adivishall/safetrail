@@ -125,6 +125,53 @@ int main() {
     t::ok(d.size() == 0, "all six gone");
   }
 
+  // ── Massive endpoint multiplicity: the case the ordering key exists for ────
+  //
+  // Every zone whose closure starts at midnight shares a low endpoint, so a block
+  // of equal keys is the normal shape here, not a corner case. When the BST key
+  // was `low` alone that block had no internal order, rotations scattered it, and
+  // remove() had to search the right subtree and then the left -- O(n) in a
+  // structure sold as O(log n). With the total order (low, high, value, seq) the
+  // block is ordered, so removal is one descent.
+  {
+    IntervalTree<int> d;
+    const int n = 2000;
+    for (int i = 0; i < n; ++i) d.insert(1000, 1000 + i + 1, i);   // one shared low
+    t::ok(d.size() == size_t(n), "2000 intervals sharing one low endpoint");
+    t::ok(d.check_invariants(), "the block is a valid ordered tree, not a bag");
+    t::ok(d.balanced(), "and balanced: height is logarithmic, not linear");
+    // Remove in an order unrelated to insertion, so a descent that only works
+    // for the ascending case fails here.
+    safetrail::sim::Rng r(0xD0D0);
+    std::vector<int> order((size_t(n)));
+    for (int i = 0; i < n; ++i) order[size_t(i)] = i;
+    for (int i = n - 1; i > 0; --i) std::swap(order[size_t(i)], order[r.below(uint32_t(i + 1))]);
+    size_t misses = 0;
+    for (int i : order) if (!d.remove(1000, 1000 + i + 1, i)) ++misses;
+    t::ok(misses == 0, "every one of the 2000 is found by a single-path descent");
+    t::ok(d.size() == 0, "and the tree drains completely");
+    t::ok(d.check_invariants(), "invariants hold at the end");
+  }
+
+  // Entries that are identical in every observable field. They are
+  // indistinguishable to a caller, so removing "one of them" n times must remove
+  // exactly n -- the `seq` tie-break is what keeps them individually addressable
+  // inside the tree while the public key stays the triple.
+  {
+    IntervalTree<int> d;
+    for (int i = 0; i < 50; ++i) d.insert(7, 9, 3);
+    t::ok(d.size() == 50, "50 entries identical in (low, high, value)");
+    t::ok(d.check_invariants(), "exact duplicates form a valid ordered run");
+    std::vector<int> hits;
+    d.stabbing(8, hits);
+    t::ok(hits.size() == 50, "a stab returns all 50");
+    for (int i = 0; i < 50; ++i) {
+      t::ok(d.remove(7, 9, 3), "removing identical entry " + std::to_string(i));
+    }
+    t::ok(!d.remove(7, 9, 3), "the 51st removal reports false");
+    t::ok(d.size() == 0 && d.check_invariants(), "drained and valid");
+  }
+
   // Deletions that force rotations at several levels: insert in ascending order
   // (which is the worst case for an unbalanced BST) and delete from one end.
   {

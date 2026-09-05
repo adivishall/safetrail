@@ -1,10 +1,19 @@
 #pragma once
 // Sweep-line segment-intersection detection (Shamos–Hoey).  [GAP 10]
 //
-// Polygon::validate() answers "does this ring self-intersect?" by testing every
-// pair of edges -- O(n^2). That is fine once per zone at authoring time, but for
-// bulk validation of an imported boundary set it is the bottleneck. This is the
-// sweep-line upgrade.
+// Polygon::validate() used to answer "does this ring self-intersect?" by testing
+// every pair of edges -- O(V^2). This is the sweep-line replacement, and it is
+// wired in: validate() dispatches to it for any ring at or above
+// geo::kSweepThresholdVertices and keeps the pairwise version below that, where
+// V^2 is a handful of comparisons and the sweep's event sort and tree
+// construction cost more than they save. See src/geo/polygon.cpp for the measured
+// crossover. The pairwise version is not merely legacy -- it stays as the
+// correctness oracle, in the same spirit as BruteForceIndex.
+//
+// Why it matters here rather than being a nicety: a simplified OSM district
+// boundary runs to several hundred vertices, the zone editor re-validates on
+// every vertex drag, and validation is a correctness gate that runs before a
+// polygon is allowed into the index.
 //
 // A vertical line sweeps left to right. Segments enter the active set at their
 // left endpoint and leave at their right; the active set is kept ordered by the
@@ -43,8 +52,15 @@ struct Segment { LatLon a, b; };
 // edges, which legitimately share a vertex -- matching Polygon::validate()'s rule.
 bool any_intersection(const std::vector<Segment>& segs, bool ring_adjacency = false);
 
-// Self-intersection of a polygon's outer ring, via the sweep. Returns the same
-// verdict as Polygon::validate()'s SelfIntersecting check, faster.
+// Self-intersection of a single closed ring, via the sweep. This is the entry
+// point Polygon::validate() calls for large rings -- outer ring and holes alike,
+// which is why it takes a Ring rather than a Polygon. Verdict is identical to the
+// O(V^2) pairwise reference (geo::ring_self_intersects_pairwise); the two are
+// asserted equal on randomised rings in tests/geo/sweep_line_test.cpp, at sizes
+// on both sides of the dispatch threshold.
+bool ring_self_intersects_sweep(const Ring& r);
+
+// Self-intersection of a polygon's outer ring. Thin wrapper over the above.
 bool polygon_self_intersects(const Polygon& poly);
 
 }  // namespace safetrail::geo

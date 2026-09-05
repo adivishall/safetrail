@@ -164,6 +164,88 @@ int main() {
     t::ok(p.validate() == V::HoleZeroArea, "a degenerate zero-area hole is rejected");
   }
 
+  {
+    // Hole TOUCHING the outer boundary, sharing an edge. Policy: refused. The
+    // tangent point pinches the region to zero width, and neither containment
+    // implementation has a defensible answer there -- see the policy note in
+    // geo/polygon.hpp. This is the case a vertex-only test waves through.
+    Polygon p(square(0, 0, 1.0));
+    p.add_hole({{-0.5, 0.5}, {-0.5, 1.0}, {0.5, 1.0}, {0.5, 0.5}});   // right edge on x=1
+    t::ok(p.validate() == V::HoleCrossesOuter,
+          "a hole flush against the outer boundary is rejected");
+  }
+  {
+    // Touching at a single vertex only -- the weakest form of contact, and the
+    // one an edge-crossing test can most easily miss. Same policy, same verdict.
+    Polygon p(square(0, 0, 1.0));
+    p.add_hole({{1.0, 0.0}, {0.5, 0.4}, {0.5, -0.4}});   // apex ON the north edge
+    t::ok(p.validate() == V::HoleCrossesOuter,
+          "a hole touching the outer boundary at one vertex is rejected");
+  }
+  {
+    // Two holes touching each other at a vertex: same policy.
+    Polygon p(square(0, 0, 2.0));
+    p.add_hole({{0.0, 0.0}, {0.0, 0.5}, {0.5, 0.5}});
+    p.add_hole({{0.0, 0.0}, {0.0, -0.5}, {-0.5, -0.5}});
+    t::ok(p.validate() == V::HolesOverlap, "two holes meeting at a vertex are rejected");
+  }
+  {
+    // ...and the near-miss must be accepted, or the policy is just "reject
+    // everything". Pull the second hole 1e-6 deg (~11 cm) clear.
+    Polygon p(square(0, 0, 2.0));
+    p.add_hole({{0.0, 0.0}, {0.0, 0.5}, {0.5, 0.5}});
+    p.add_hole({{-1e-6, -1e-6}, {-1e-6, -0.5}, {-0.5, -0.5}});
+    t::ok(p.validate() == V::Ok, "two holes that come close but do not touch are accepted");
+  }
+
+  // ── a CONCAVE outer ring with a legitimate hole ────────────────────────────
+  //
+  // The positive counterpart to the C-with-a-bar case above: the same awkward
+  // outer ring, with a hole that really is inside it. If the edge-crossing test
+  // were the naive "any contact at all", this would be rejected and the rule
+  // would be useless on exactly the shapes it was written for.
+  {
+    Ring c = {{-2, -2}, {-2, 2}, {-1, 2}, {-1, -1}, {1, -1}, {1, 2}, {2, 2}, {2, -2}};
+    Polygon p(c);
+    p.add_hole(square(-1.5, 0.0, 0.3));      // inside the southern arm of the C
+    t::ok(p.validate() == V::Ok, "a concave outer ring with a hole inside it is valid");
+    t::ok(!contains(p, {-1.5, 0.0}), "the hole is a hole");
+    t::ok(contains(p, {-1.7, 1.5}), "and the rest of the arm is still inside");
+    // The hole must be subtracted from the region area, concavity or not.
+    const double outer_area = std::fabs(p.outer_signed_area());
+    t::near(std::fabs(p.signed_area()), outer_area - 0.36, 1e-9,
+            "the hole is subtracted from a concave outer ring too");
+  }
+
+  // ── a hole big enough to go through the sweep line ─────────────────────────
+  //
+  // validate() dispatches self-intersection detection to Shamos-Hoey at
+  // kSweepThresholdVertices. Holes go through the same predicate as the outer
+  // ring, so a hole above that size must be judged by the sweep and reach the
+  // same verdict the pairwise scan would.
+  {
+    const size_t n = kSweepThresholdVertices * 4;   // comfortably over the threshold
+    Ring big;
+    for (size_t i = 0; i < n; ++i) {
+      const double a = 6.283185307179586 * double(i) / double(n);
+      big.push_back({0.4 * std::sin(a), 0.4 * std::cos(a)});
+    }
+    Polygon good(square(0, 0, 1.0));
+    good.add_hole(big);
+    t::ok(good.validate() == V::Ok, "a 224-vertex circular hole is valid");
+    t::ok(!ring_self_intersects(big) && !ring_self_intersects_pairwise(big),
+          "both self-intersection implementations agree it is simple");
+
+    Ring broken = big;
+    std::swap(broken[1], broken[n / 2]);      // introduce a crossing
+    Polygon bad(square(0, 0, 1.0));
+    bad.add_hole(broken);
+    t::ok(bad.validate() == V::HoleSelfIntersecting,
+          "a large self-intersecting hole is caught by the sweep");
+    t::ok(ring_self_intersects_pairwise(broken),
+          "and the O(V^2) oracle agrees, so the dispatch did not change the answer");
+  }
+
   // Two disjoint holes side by side are fine -- the rejections above must not be
   // over-eager.
   {

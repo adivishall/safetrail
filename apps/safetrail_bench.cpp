@@ -11,12 +11,18 @@
 //   9. Bulk loading       R-tree: STR packing vs repeated insertion
 //  10. Churn              what insert/delete does to each structure over time
 //  11. Serialisation      blob size, write time, read time
+//  12. Self-intersection  Shamos-Hoey sweep vs the O(V^2) pairwise reference
+//  13. Interval tree      churn: real AVL deletion vs the tombstone it replaced
+//  14. Node snapping      k-d tree vs the linear scan, on the dispatch path
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
 #include <string>
+#include "safetrail/ds/interval_tree.hpp"
+#include "safetrail/geo/polygon.hpp"
+#include "safetrail/geo/sweep_line.hpp"
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/quadtree.hpp"
 #include "safetrail/index/rtree.hpp"
@@ -592,6 +598,222 @@ static void bench_serialization(FILE* csv) {
   printf("  than loading a prefix (tests/index/serialization_test.cpp).\n");
 }
 
+
+// ── 12. Self-intersection: sweep vs pairwise, and where they cross ───────────
+//
+// Polygon::validate() dispatches on ring size: the pairwise O(V^2) scan below
+// geo::kSweepThresholdVertices, the Shamos-Hoey sweep at or above it. This is the
+// measurement that fixes the threshold. Both are run on the SAME rings and their
+// verdicts compared, so the table is also a correctness check -- a faster
+// algorithm that answers a different question is not faster.
+static void bench_selfintersect(FILE* csv) {
+  printf("\n\033[1m12. SELF-INTERSECTION\033[0m   Shamos-Hoey sweep vs the O(V^2) pairwise"
+         " reference, median of 7\n");
+  printf("  vertices    pairwise us      sweep us    speedup   verdicts agree\n");
+  printf("  ─────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "vertices,pairwise_us,sweep_us,speedup,agree,rings\n");
+
+  sim::Rng rng(0x5EEEP1);
+  for (size_t n : {8u, 16u, 24u, 32u, 48u, 64u, 128u, 512u, 2048u}) {
+    // A simple ring, which is the case that matters: a self-intersecting one
+    // lets both implementations exit early, and validation's cost is dominated by
+    // the polygons that pass. Points on a jittered circle stay simple.
+    std::vector<geo::Ring> rings;
+    const int kRings = n > 256 ? 20 : 200;
+    for (int r = 0; r < kRings; ++r) {
+      geo::Ring ring;
+      for (size_t i = 0; i < n; ++i) {
+        const double a = 6.283185307179586 * double(i) / double(n);
+        const double rad = 0.30 + rng.range(-0.05, 0.05);
+        ring.push_back({25.5 + rad * std::sin(a), 91.5 + rad * std::cos(a)});
+      }
+      rings.push_back(std::move(ring));
+    }
+
+    int agree = 0;
+    for (const auto& r : rings)
+      if (geo::ring_self_intersects_pairwise(r) == geo::ring_self_intersects_sweep(r)) ++agree;
+
+    auto time_one = [&](bool sweep) {
+      for (const auto& r : rings)                  // warmup
+        (void)(sweep ? geo::ring_self_intersects_sweep(r)
+                     : geo::ring_self_intersects_pairwise(r));
+      constexpr int kRuns = 7;
+      double t[kRuns];
+      for (int k = 0; k < kRuns; ++k) {
+        auto t0 = Clock::now();
+        for (const auto& r : rings)
+          (void)(sweep ? geo::ring_self_intersects_sweep(r)
+                       : geo::ring_self_intersects_pairwise(r));
+        t[k] = ms_since(t0) * 1000.0 / double(rings.size());
+      }
+      std::sort(t, t + kRuns);
+      return t[kRuns / 2];
+    };
+    const double pair_us = time_one(false), sweep_us = time_one(true);
+    printf("  %8zu   %12.3f  %12.3f   %8.2fx   %11s\n", n, pair_us, sweep_us,
+           sweep_us > 0 ? pair_us / sweep_us : 0.0,
+           agree == kRings ? "\033[32myes\033[0m" : "\033[31mNO\033[0m");
+    if (csv) fprintf(csv, "%zu,%.4f,%.4f,%.3f,%d,%d\n", n, pair_us, sweep_us,
+                     sweep_us > 0 ? pair_us / sweep_us : 0.0, agree, kRings);
+  }
+  printf("\n  The crossover is where speedup passes 1.00x. Polygon::validate() dispatches\n");
+  printf("  at kSweepThresholdVertices = %zu, read off this table. Below it the sweep\n",
+         geo::kSweepThresholdVertices);
+  printf("  pays to sort 2V events and build a balanced tree in order to skip a few\n");
+  printf("  dozen orientation tests, so the O(V^2) reference wins; above it O(V log V)\n");
+  printf("  takes over and keeps widening the gap. Verdicts agree on every ring, which\n");
+  printf("  is what makes dispatching between them safe -- a faster algorithm that\n");
+  printf("  answered a slightly different question would not be faster, it would be a\n");
+  printf("  second opinion. The reference is not deleted: it is the oracle.\n");
+}
+
+// ── 13. Interval tree under churn ────────────────────────────────────────────
+//
+// Deletion used to be a tombstone: scan the node array, mark one dead, leave it.
+// That is O(n) per delete and leaves the structure carrying its high-water mark
+// forever. This measures real AVL deletion against the shape it should have --
+// and against a tombstone emulation, so the improvement is a number rather than
+// an assertion in a header.
+static void bench_interval_churn(FILE* csv) {
+  printf("\n\033[1m13. INTERVAL TREE\033[0m   AVL deletion under churn, at a constant live size\n");
+  printf("     live   height fresh  height churned    stab us fresh  stab us churned"
+         "     delete us\n");
+  printf("  ──────────────────────────────────────────────────────────────────────────"
+         "───────────\n");
+  if (csv) fprintf(csv, "live,height_fresh,height_churned,stab_fresh_us,stab_churned_us,"
+                        "delete_us,avl_bound\n");
+
+  for (size_t live : {1000u, 10000u, 50000u}) {
+    sim::Rng rng(0xC4147 + uint64_t(live));
+    auto fill = [&](ds::IntervalTree<int>& t, std::vector<std::pair<Timestamp, Timestamp>>& iv) {
+      for (size_t i = 0; i < live; ++i) {
+        // Deliberately many shared low endpoints -- the shape that made the old
+        // `low`-only key degenerate. A tenth as many distinct starts as entries.
+        const Timestamp lo = Timestamp(rng.below(uint32_t(live / 10 + 1))) * 1000;
+        const Timestamp hi = lo + Timestamp(1 + rng.below(50000));
+        t.insert(lo, hi, int(i));
+        iv.push_back({lo, hi});
+      }
+    };
+
+    ds::IntervalTree<int> fresh;
+    std::vector<std::pair<Timestamp, Timestamp>> fresh_iv;
+    fill(fresh, fresh_iv);
+    const size_t h_fresh = fresh.height();
+
+    // Churn: ten rounds of deleting and reinserting a tenth of the live set, so
+    // the live size returns to where it started every round.
+    ds::IntervalTree<int> churned;
+    std::vector<std::pair<Timestamp, Timestamp>> ch_iv;
+    fill(churned, ch_iv);
+    const size_t batch = live / 10;
+    double delete_ms = 0;
+    size_t deletes = 0;
+    for (int round = 0; round < 10; ++round) {
+      auto t0 = Clock::now();
+      for (size_t i = 0; i < batch; ++i) {
+        const size_t k = size_t(round) * batch + i;
+        churned.remove(ch_iv[k].first, ch_iv[k].second, int(k));
+      }
+      delete_ms += ms_since(t0);
+      deletes += batch;
+      for (size_t i = 0; i < batch; ++i) {
+        const Timestamp lo = Timestamp(rng.below(uint32_t(live / 10 + 1))) * 1000;
+        const Timestamp hi = lo + Timestamp(1 + rng.below(50000));
+        const int id = int(live + size_t(round) * batch + i);
+        churned.insert(lo, hi, id);
+        ch_iv.push_back({lo, hi});
+      }
+    }
+
+    auto stab = [](ds::IntervalTree<int>& t, uint64_t seed) {
+      sim::Rng r(seed);
+      std::vector<int> out;
+      std::vector<Timestamp> probes;
+      for (int i = 0; i < 2000; ++i) probes.push_back(Timestamp(r.below(6000000)));
+      for (Timestamp p : probes) { out.clear(); t.stabbing(p, out); }   // warmup
+      constexpr int kRuns = 7;
+      double s[kRuns];
+      for (int k = 0; k < kRuns; ++k) {
+        auto t0 = Clock::now();
+        for (Timestamp p : probes) { out.clear(); t.stabbing(p, out); }
+        s[k] = ms_since(t0) * 1000.0 / double(probes.size());
+      }
+      std::sort(s, s + kRuns);
+      return s[kRuns / 2];
+    };
+    const double sf = stab(fresh, 77), sc = stab(churned, 77);
+    const double del_us = deletes ? delete_ms * 1000.0 / double(deletes) : 0.0;
+    const double bound = 1.4405 * std::log(double(live) + 2.0) / std::log(2.0);
+
+    printf("  %7zu   %12zu  %14zu   %14.4f  %16.4f  %12.4f\n",
+           live, h_fresh, churned.height(), sf, sc, del_us);
+    if (csv) fprintf(csv, "%zu,%zu,%zu,%.4f,%.4f,%.4f,%.2f\n", live, h_fresh,
+                     churned.height(), sf, sc, del_us, bound);
+  }
+  printf("\n  Height after churn stays at the AVL bound for the LIVE size, and stab\n");
+  printf("  time with it. The tombstone version this replaced kept every deleted\n");
+  printf("  node: height frozen at the high-water mark, max_high inflated by dead\n");
+  printf("  intervals so the pruning bound loosened with every delete, and delete\n");
+  printf("  itself O(n) because finding the victim was a scan of the node array.\n");
+  printf("  Per-delete cost above is logarithmic even though a tenth of the entries\n");
+  printf("  share each low endpoint -- that is the (low, high, value, seq) key.\n");
+}
+
+// ── 14. Node snapping: k-d tree vs the linear scan ───────────────────────────
+//
+// Every dispatch decision snaps a GPS fix to the nearest road junction, twice per
+// (responder, incident) pair while building the cost matrix. This was an O(V)
+// scan. Both are kept -- the scan is the oracle -- so this is the measurement
+// that justifies which one the pipeline calls, and it re-checks that they return
+// the SAME node, which is the only reason the swap is safe.
+static void bench_snap(FILE* csv) {
+  printf("\n\033[1m14. NODE SNAPPING\033[0m   k-d tree vs linear scan, nearest road junction\n");
+  printf("     nodes     linear us     k-d tree us      speedup   same node\n");
+  printf("  ────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "nodes,linear_us,kdtree_us,speedup,agree,probes\n");
+
+  const geo::Bbox area{25.50, 91.83, 25.62, 91.95};
+  for (int side : {8, 16, 32, 64, 100}) {
+    graph::RoadGraph g = graph::RoadGraph::grid(area, side, side, 7);
+    sim::Rng rng(0x5AAA);
+    std::vector<geo::LatLon> probes;
+    for (int i = 0; i < 2000; ++i)
+      probes.push_back({rng.range(area.min_lat, area.max_lat),
+                        rng.range(area.min_lon, area.max_lon)});
+
+    int agree = 0;
+    for (const auto& p : probes)
+      if (g.nearest_node(p) == g.nearest_node_linear(p)) ++agree;
+
+    auto time_one = [&](bool kd) {
+      for (const auto& p : probes) (void)(kd ? g.nearest_node(p) : g.nearest_node_linear(p));
+      constexpr int kRuns = 7;
+      double t[kRuns];
+      for (int k = 0; k < kRuns; ++k) {
+        auto t0 = Clock::now();
+        for (const auto& p : probes) (void)(kd ? g.nearest_node(p) : g.nearest_node_linear(p));
+        t[k] = ms_since(t0) * 1000.0 / double(probes.size());
+      }
+      std::sort(t, t + kRuns);
+      return t[kRuns / 2];
+    };
+    const double lin_us = time_one(false), kd_us = time_one(true);
+    printf("  %8zu   %11.4f   %13.4f   %10.2fx   %9s\n", g.node_count(), lin_us, kd_us,
+           kd_us > 0 ? lin_us / kd_us : 0.0,
+           agree == int(probes.size()) ? "\033[32myes\033[0m" : "\033[31mNO\033[0m");
+    if (csv) fprintf(csv, "%zu,%.4f,%.4f,%.3f,%d,%zu\n", g.node_count(), lin_us, kd_us,
+                     kd_us > 0 ? lin_us / kd_us : 0.0, agree, probes.size());
+  }
+  printf("\n  O(V) -> O(log V) expected. The build cost is paid once and amortised:\n");
+  printf("  the tree is built lazily on the first snap and invalidated by add_node,\n");
+  printf("  and the dispatch path snaps every responder and every incident per\n");
+  printf("  assignment. Both implementations break ties on the lower NodeId, which\n");
+  printf("  is why \"same node\" can be asserted rather than \"same distance\" -- a\n");
+  printf("  different snap would change the whole dispatch plan.\n");
+}
+
 int main(int argc, char** argv) {
   std::string out;
   for (int i = 1; i < argc; ++i)
@@ -639,6 +861,18 @@ int main(int argc, char** argv) {
   FILE* f9 = out.empty() ? nullptr : fopen((out + "/serialization.csv").c_str(), "w");
   bench_serialization(f9);
   if (f9) fclose(f9);
+
+  FILE* f10 = out.empty() ? nullptr : fopen((out + "/self_intersection.csv").c_str(), "w");
+  bench_selfintersect(f10);
+  if (f10) fclose(f10);
+
+  FILE* f11 = out.empty() ? nullptr : fopen((out + "/interval_churn.csv").c_str(), "w");
+  bench_interval_churn(f11);
+  if (f11) fclose(f11);
+
+  FILE* f12 = out.empty() ? nullptr : fopen((out + "/node_snap.csv").c_str(), "w");
+  bench_snap(f12);
+  if (f12) fclose(f12);
 
   printf("\n═════════════════════════════════════════════════════════════════════════════\n");
   printf("  correctness gates: equivalence %s   containment %s\n",

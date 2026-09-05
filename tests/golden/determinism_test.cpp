@@ -20,7 +20,13 @@
 #include <string>
 #include <vector>
 
+#include <fstream>
+#include <sstream>
+
 #include "safetrail/alert/correlator.hpp"
+#include "safetrail/evidence/merkle_log.hpp"
+#include "safetrail/index/geohash.hpp"
+#include "safetrail/viz/html_export.hpp"
 #include "safetrail/dispatch/assigner.hpp"
 #include "safetrail/graph/astar.hpp"
 #include "safetrail/graph/bipartite_match.hpp"
@@ -31,6 +37,19 @@
 #include "safetrail/sim/simulator.hpp"
 
 using namespace safetrail;
+
+namespace {
+std::string read_file(const std::string& path) {
+  std::ifstream f(path, std::ios::binary);
+  std::stringstream ss;
+  ss << f.rdbuf();
+  return ss.str();
+}
+std::string digest(const std::string& bytes) {
+  return evidence::to_hex(
+      evidence::sha256(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()));
+}
+}  // namespace
 
 int main() {
   // ── the whole simulation, twice ────────────────────────────────────────────
@@ -288,6 +307,79 @@ int main() {
     }
     t::ok(diff == 0,
           "a quadtree built in reverse order answers every query with the same SET");
+  }
+
+  // ── The artifacts, byte for byte ───────────────────────────────────────────
+  //
+  // The event stream matching is necessary but not sufficient. What the project
+  // actually SHIPS is a self-contained HTML replay and a serialised index blob,
+  // and either could be nondeterministic on its own -- an unordered walk over a
+  // hash table while writing, a float formatted from a value that differs in its
+  // last bit, an iteration over a std::vector filled in nondeterministic order.
+  // So compare the deliverables themselves, byte for byte, and their SHA-256
+  // digests (the project's own implementation) so a failure reports one line
+  // instead of a megabyte of diff.
+  {
+    auto produce = [](const char* out_path) {
+      sim::SimConfig cfg;
+      cfg.tourists = 30;
+      cfg.groups = 4;
+      cfg.duration_ms = 600000;
+      cfg.tick_ms = 1000;
+      cfg.seed = 20260905;
+      cfg.roads_path.clear();
+      sim::Simulator s(cfg);
+      std::string err;
+      if (!s.load_zones("data/zones/shillong_osm.geojson", &err)) return std::string();
+      s.spawn_tourists();
+      viz::TraceRecorder rec;
+      while (!s.done()) { s.step(); rec.capture(s); }
+      if (!rec.write_html(s, out_path)) return std::string();
+      return read_file(out_path);
+    };
+
+    const std::string a = produce("build/det_replay_a.html");
+    const std::string b = produce("build/det_replay_b.html");
+    t::ok(!a.empty(), "the replay export produced a file");
+    t::ok(a.size() > 100000, "and it is the whole dashboard, not a stub (" +
+                                 std::to_string(a.size()) + " bytes)");
+    t::ok(a == b, "two runs of the same seed export a BYTE-IDENTICAL replay");
+    t::ok(digest(a) == digest(b),
+          "and identical SHA-256 digests: " + digest(a).substr(0, 16));
+  }
+
+  // The serialised spatial index -- the offline artefact (GAP 6). Same data must
+  // give the same bytes, and reloading those bytes must give the same bytes
+  // again, or the format is not a stable representation of the index.
+  {
+    auto blob = [](uint64_t seed) {
+      index::Geohash g;
+      std::vector<std::pair<ZoneId, geo::Bbox>> items;
+      uint64_t x = seed;
+      auto nxt = [&x] { x ^= x << 13; x ^= x >> 7; x ^= x << 17; return x; };
+      for (int i = 0; i < 2000; ++i) {
+        const double lat = 25.0 + double(nxt() % 100000) / 100000.0;
+        const double lon = 91.0 + double(nxt() % 100000) / 100000.0;
+        items.push_back({ZoneId(i), geo::Bbox{lat, lon, lat + 0.001, lon + 0.001}});
+      }
+      g.build(items);
+      std::vector<uint8_t> out;
+      g.serialize(out);
+      return std::string(out.begin(), out.end());
+    };
+    const std::string s1 = blob(12345), s2 = blob(12345);
+    t::ok(!s1.empty() && s1 == s2, "the same zone set serialises to identical bytes");
+    t::ok(digest(s1) == digest(s2), "identical digests: " + digest(s1).substr(0, 16));
+
+    // Round-trip stability: load and re-serialise must reproduce the input
+    // exactly, which is stronger than "loads without error".
+    index::Geohash reloaded;
+    std::vector<uint8_t> in(s1.begin(), s1.end());
+    t::ok(reloaded.deserialize(in), "the blob reloads");
+    std::vector<uint8_t> again;
+    reloaded.serialize(again);
+    t::ok(std::string(again.begin(), again.end()) == s1,
+          "and re-serialising reproduces the same bytes");
   }
 
   return t::report("golden/determinism");

@@ -368,9 +368,10 @@ right, only the counting was wrong.
 > persistent structure — the things the course is about.
 
 **"Why hand-write a heap but not use one from the STL?"**
-> The binary heap is currently a designed stub (◻) — the alert triage path that
-> would use it isn't built yet. When it is, it'll be hand-written for the same
-> reason as the rest. We didn't substitute `std::priority_queue` for it.
+> Same rule as the rest: it is one of the structures being graded. It is built
+> (`ds/priority_queue.hpp`), it is what Dijkstra's and A*'s frontiers run on and
+> what alert triage orders by, and it is tested against a sorted-vector oracle.
+> `std::priority_queue` appears nowhere in the tree.
 
 ---
 
@@ -380,14 +381,25 @@ Stating these first reads as rigor, not weakness:
 
 - **Quadtree/R-tree have no worst-case guarantee** (O(n) on clustered data). The
   interval tree does (AVL).
-- **~15 modules are designed stubs**, not built — routing, dispatch, offline sync,
-  Merkle log. Marked ◻ throughout.
+- **Three headers carry no implementation and are not going to** —
+  `server/http_api.hpp`, `server/ws_stream.hpp` and `apps/safetrail_server.cpp`.
+  That is a decision, not a gap: the engine is in-process and emits one
+  self-contained HTML file, so there is nothing to serve. `docs/DATA_STRUCTURES.md`
+  lists them, and the rest of what was once marked "designed" — routing, dispatch,
+  offline sync, the Merkle log — is built and tested. Nothing in the inventory is
+  a stub any more.
 - **The predictive path uses straight-line extrapolation**, which is fiction
   beyond a few minutes in hill terrain — capped at a 5-minute horizon for that
   reason.
 - **The tourists are simulated.** Real geography, simulated people.
-- **The self-intersection check is O(V²)**, not the O((n+k) log n) Bentley–Ottmann
-  sweep line (which is a ◻ upgrade). Fine at authoring time, once per zone.
+- **Two spatial approximations we accept on purpose.** Planar predicates
+  (orientation, segment crossing) are computed in degree space, which is correct
+  because they are affine-invariant; DISTANCES never are — they go through
+  haversine or the local tangent plane, and `geo/projection.hpp` carries the
+  measured error budget. Nearest-neighbour is answered in that plane rather than
+  on the great circle, and the two disagree about which junction is nearest on
+  roughly 1 probe in 4000 — by about **2 millimetres**. Measured, not asserted:
+  `tests/graph/road_graph_io_test.cpp`.
 
 ---
 

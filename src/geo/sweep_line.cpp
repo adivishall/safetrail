@@ -202,14 +202,17 @@ bool any_intersection(const std::vector<Segment>& segs, bool ring_adjacency) {
   return sweep(segs, ring_adjacency);
 }
 
-bool polygon_self_intersects(const Polygon& poly) {
-  const Ring& r = poly.outer();
+bool ring_self_intersects_sweep(const Ring& r) {
   const size_t n = r.size();
-  if (n < 3) return false;
+  if (n < 4) return false;                 // a triangle cannot self-intersect
   std::vector<Segment> segs;
   segs.reserve(n);
   for (size_t i = 0; i < n; ++i) segs.push_back({r[i], r[(i + 1) % n]});
   return sweep(segs, /*ring_adjacency=*/true);
+}
+
+bool polygon_self_intersects(const Polygon& poly) {
+  return ring_self_intersects_sweep(poly.outer());
 }
 
 }  // namespace safetrail::geo
