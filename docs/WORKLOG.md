@@ -51,10 +51,22 @@ arithmetic differs. `make determinism` and the golden tests compare two runs of 
 *same binary*, so they were valid tests; they simply did not test what the comment
 implied. Both now say what holds.
 
-**Impact:** the dashboard published at the live URL is now byte-identical to one
-built from a clean checkout on a different OS and compiler, which is the property
-the replay harness was always claimed to have. Suite green, 769 assertions, 0
-failures.
+**How far it goes, measured after deploying.** The published dashboard against a
+local build: 1,553,101 bytes, **173 differing, all in the dispatch section** (the
+greedy/optimal totals and the responder -> incident lines). The evaluation core is
+byte-identical -- same events, same Merkle root, same alerts, flaps, anomalies,
+incidents, index statistics. Dispatch survives because it argmins over accumulated
+haversine path costs, and haversine calls `asin`/`sin`/`cos`, whose last-ulp
+results differ between Apple's libm and glibc. Contraction was the fixable half;
+this half would mean shipping our own transcendental functions, which is not a
+trade worth making for a course project. Documented in README rather than papered
+over, and explicit tie-breaks do not help -- the values genuinely differ, so the
+tie-break never fires.
+
+**Impact:** the evaluation half of the dashboard published at the live URL is now
+byte-identical to one built from a clean checkout on a different OS and compiler,
+which is the property the replay harness was always claimed to have. Suite green,
+769 assertions, 0 failures.
 
 ### 2026-09-05 — Closing the last gaps between claim and code (tier 5)
 

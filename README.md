@@ -219,6 +219,20 @@ g++ -O2). One last bit in a distance flips an inside/outside test and every late
 event diverges. With it off, a local build and the one CI publishes agree exactly
 -- 81,202 events, Merkle root `59736c1b...`, on both.
 
+**Where that stops, stated precisely.** Comparing the published dashboard against a
+local build byte for byte: 1,553,101 bytes, of which **173 differ, all of them in
+the dispatch section** -- the greedy/optimal travel totals and the responder ->
+incident lines. The evaluation core is identical: same events, same Merkle root,
+same alerts, flaps, anomalies, incidents and index statistics. Dispatch differs
+because it takes an argmin over accumulated haversine path costs, and haversine
+calls `asin`/`sin`/`cos`, whose last-ulp results are not identical between Apple's
+libm and glibc. `-ffp-contract=off` fixes contraction; it cannot make two libm
+implementations agree. One last-ulp difference flips one argmin, a different
+responder is chosen, and the totals move by ~3%. Closing that would mean shipping
+our own transcendental functions, which is not a trade worth making here -- so it
+is documented instead. Explicit tie-breaks do not help: the values genuinely
+differ, so the tie-break never fires.
+
 **Ground truth before optimisation.** Scenarios have known expected outcomes.
 "It runs" is not a result; "33x faster with byte-identical output" is.
 
