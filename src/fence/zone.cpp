@@ -65,7 +65,8 @@ bool ZoneStore::load_geojson(const std::string& path, std::string* error) {
   if (!util::Json::parse_file(path, root, error)) return false;
   const util::Json* feats = root.find("features");
   if (!feats || feats->type != util::Json::Type::Array) {
-    if (error) *error = "no features array"; return false;
+    if (error) *error = "no features array";
+    return false;
   }
   for (const util::Json& f : feats->arr) {
     const util::Json* geom = f.find("geometry");

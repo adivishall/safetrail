@@ -61,7 +61,7 @@ manager, no internet.
 ```bash
 git clone https://github.com/adivishall/safetrail
 cd safetrail
-make test        # 765 assertions across 39 files, all pass
+make test        # 769 assertions across 39 files, all pass
 make demo        # run the simulation, watch the event stream
 make bench       # the measurements — this is the money shot
 make dashboard   # writes dashboard.html, open it in any browser
@@ -233,7 +233,7 @@ actually has. The ceiling is output size, not the tree. That's exactly what
 | Index equivalence | 18,000 queries — quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | **Scenario-dependent.** A scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1 compression); a scattered run still compresses ~9:1. The ratio reflects how clustered the incident is, not a fixed number — we report both |
-| Unit tests | **765 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass |
+| Unit tests | **769 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass |
 
 ### Three bugs the measurements caught
 
@@ -380,5 +380,5 @@ Whichever it is:
 We built the geofencing engine everyone else imports, and fixed eleven things that
 importing it makes impossible. Hand-written quadtree, R-tree, persistent quadtree,
 rollback union-find, interval tree, plus real computational geometry. It runs,
-there's a dashboard, 765 assertions across 39 files pass, and the index is 33-240× faster than brute force
+there's a dashboard, 769 assertions across 39 files pass, and the index is 33-240× faster than brute force
 with provably identical output.

@@ -116,7 +116,7 @@ adaptive sampling [GAP 7]: 28,800 fixes -> 257, 99% battery saved at 100% near-z
 alert correlation [GAP 5]: scenario-dependent — a clustered incident compresses
                            ~450:1, a scattered run ~9:1 (see the caveat below)
 determinism:             same seed, two runs, byte-identical output (`make determinism`)
-unit tests:              765 assertions across 39 files, each fast structure vs a brute-force
+unit tests:              769 assertions across 39 files, each fast structure vs a brute-force
                          oracle; whole suite clean under UBSan locally, ASan+UBSan in CI
 ```
 

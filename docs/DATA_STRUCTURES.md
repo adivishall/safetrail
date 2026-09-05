@@ -87,7 +87,7 @@ three-valued containment, signed distance, predictive crossing, STR bulk loading
 spatio-temporal clustering, hysteresis, adaptive sampling, Dijkstra, A*, Kuhn's
 matching, Hungarian assignment, Lamport reconciliation, polygon-nesting
 resolution, QR digital ID verification) **+ SHA-256** implemented from scratch and
-checked against NIST vectors. Every one is exercised by the test suite (**765 assertions across 39 files**), and every fast structure is checked against a
+checked against NIST vectors. Every one is exercised by the test suite (**769 assertions across 39 files**), and every fast structure is checked against a
 brute-force oracle.
 
 **Nothing in this inventory is `◻ designed`.** Every row above is implemented and
@@ -465,7 +465,7 @@ to test on.
 | Adaptive sampling (GAP 7) | 28,800 continuous fixes → 257 adaptive, **99.1% battery saved at 100% near-zone recall** |
 | Alert correlation (GAP 5) | **Scenario-dependent** — a scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1); a scattered run compresses ~9:1. Both reported; the ratio is a property of incident clustering, not a fixed law |
 | Determinism | same seed, two runs: byte-identical event streams, parent trees, dispatch plans and k-d tree answers (`tests/golden/determinism_test.cpp`, `make determinism`) |
-| Unit tests | **765 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass; the whole suite is clean under UBSan locally and under ASan+UBSan in CI |
+| Unit tests | **769 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass; the whole suite is clean under UBSan locally and under ASan+UBSan in CI |
 
 ## Measurements to produce
 

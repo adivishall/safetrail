@@ -17,6 +17,29 @@ int main() {
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         "sha256(\"abc\") matches NIST vector");
 
+  // ── The empty input, which is a value this code depends on ─────────────────
+  //
+  // RFC 6962 §2.1 defines MTH({}) = SHA256(), so the root of an empty log IS the
+  // empty-input digest -- it is not an edge case to be tolerated, it is part of
+  // the specification. It is also how a null pointer reaches sha256(), which was
+  // undefined behaviour (`data + 0` and `memcpy(dst, nullptr, 0)` are both UB on
+  // a null pointer even at length zero). It worked on every machine anyone ran
+  // it on until a gating UBSan build said otherwise. Pinning the VALUE, not just
+  // the absence of a crash, is what makes the fix checkable.
+  {
+    const std::string empty_digest =
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    t::ok(to_hex(sha256(nullptr, 0)) == empty_digest,
+          "sha256 of the empty input, via a null pointer, matches the NIST vector");
+    const uint8_t nothing = 0;
+    t::ok(to_hex(sha256(&nothing, 0)) == empty_digest,
+          "...and via a valid pointer with zero length, identically");
+    MerkleLog empty;
+    t::ok(empty.size() == 0, "an empty log has no entries");
+    t::ok(to_hex(empty.root()) == empty_digest,
+          "MTH({}) = SHA256() -- the empty log's root is the empty digest (RFC 6962)");
+  }
+
   MerkleLog log;
   std::vector<std::string> ids;
   for (int i = 0; i < 13; ++i) ids.push_back("TID-" + std::to_string(1000 + i));

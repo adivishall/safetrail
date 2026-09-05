@@ -52,7 +52,15 @@ Hash sha256(const uint8_t* data, size_t len) {
   // final block(s) with padding
   uint8_t tail[128];
   size_t rem = len - full*64;
-  std::memcpy(tail, data + full*64, rem);
+  // Guarded, and not merely to keep a sanitizer quiet. SHA-256 of the EMPTY
+  // input is a real value the code depends on -- RFC 6962 defines the Merkle
+  // root of an empty log as exactly this -- and MerkleLog::root() reaches it via
+  // sha256(nullptr, 0). Both `data + full*64` and `memcpy(dst, nullptr, 0)` are
+  // undefined behaviour on a null pointer even though the length is zero:
+  // memcpy's second parameter is declared nonnull, and pointer arithmetic on a
+  // null pointer is UB regardless of the offset. It happens to work everywhere,
+  // which is precisely why it survived until a gating UBSan build on g++ said so.
+  if (rem) std::memcpy(tail, data + full*64, rem);
   tail[rem] = 0x80;
   size_t padlen = (rem < 56) ? 64 : 128;
   std::memset(tail + rem + 1, 0, padlen - rem - 1 - 8);

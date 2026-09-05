@@ -92,7 +92,21 @@ they gate. Benchmark figures were regenerated and re-quoted from this run, with 
 R-tree's headline given as a 230–250× band because that is how much it actually
 moves between runs.
 
-**Impact:** 691 → **765 assertions across 39 files**, 0 failures. Whole suite clean
+**Caught by CI, after the push.** Turning the sanitizer gate on for `main` for the
+first time immediately paid for itself: `sha256(nullptr, 0)` — reached by
+`MerkleLog::root()` on an empty log, because RFC 6962 *defines* MTH({}) as
+SHA256() — did `data + 0` and `memcpy(dst, nullptr, 0)`. Both are undefined on a
+null pointer even at length zero, and both work on every machine anyone had run
+them on. Fixed at the source, with the empty-input digest now pinned to its NIST
+value rather than merely not crashing.
+
+The honest follow-on: **`make ubsan` locally is weaker than the CI job, not just
+narrower.** Apple clang's `-fsanitize=undefined` does not flag that memcpy at all;
+g++'s does. Verified with a four-line reproducer rather than inferred, and now
+said out loud in the Makefile — a green local sanitizer run is not a promise that
+CI will be green.
+
+**Impact:** 691 → **769 assertions across 39 files**, 0 failures. Whole suite clean
 under UBSan; ASan remains CI-only because an empty `int main(){}` linked with it
 still hangs on macOS 26 / Apple clang 17 (verified again this pass, not assumed).
 `make check`, `make test`, `make ubsan`, `make determinism`, `make bench` and

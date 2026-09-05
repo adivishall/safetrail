@@ -106,6 +106,16 @@ determinism: $(BUILD)/safetrail_headless
 # is to keep ASan authoritative in CI (Linux/g++, where it works) while leaving
 # macOS developers a sanitizer they can actually run locally. Silently dropping
 # sanitizer coverage on one platform would be worse than saying this out loud.
+#
+# And `make ubsan` is genuinely weaker than the CI job, not merely narrower, so
+# a green local run is not a promise that CI will be green. Measured, not assumed:
+# `memcpy(dst, (const char*)nullptr + 0, 0)` -- undefined because memcpy's source
+# is declared nonnull and null-pointer arithmetic is UB at any offset -- passes
+# clean under Apple clang's -fsanitize=undefined (with or without ,nullability)
+# and is caught by g++'s. A real instance of exactly that lived in
+# src/evidence/sha256.cpp, reached by the RFC 6962 empty-log root, until CI found
+# it. So: run `make ubsan` before pushing, and expect CI to be the one that has
+# the last word.
 SAN_KIND  ?= address,undefined
 SAN_DIR   ?= $(BUILD)/asan
 # -fno-sanitize-recover makes UB abort rather than print-and-continue: a

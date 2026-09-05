@@ -184,7 +184,7 @@ library); the data is **simulated**. State those three before quoting a figure.
 | Index equivalence (correctness) | 18,000 queries, **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, **0 disagreements** |
 | Merkle tamper detection | forged entries + rewritten history **rejected** |
-| Unit tests | **765 assertions across 39 files**, each vs a brute-force oracle, all pass |
+| Unit tests | **769 assertions across 39 files**, each vs a brute-force oracle, all pass |
 
 **The most interesting result:** our design doc predicted a ~29,000× speedup.
 Measurement brought it down to 33×, and *explaining why* is worth more than the big
@@ -218,7 +218,7 @@ from a sales pitch. Full prep for hard questions: docs/DESIGN_DEFENSE.md.*
 ## 11. Live demo (do this) 
 
 ```bash
-make test        # 765 assertions across 39 files pass — each vs a brute-force oracle
+make test        # 769 assertions across 39 files pass — each vs a brute-force oracle
 make demo        # watch events stream over real geography
 make bench       # the speedup + correctness numbers
 make dashboard   # open dashboard.html — animated map, scrub the timeline
