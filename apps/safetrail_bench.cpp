@@ -100,7 +100,7 @@ static void bench_scaling(FILE* csv) {
                         "brute_min_us,quad_min_us,rtree_min_us,brute_spread_pct,"
                         "quad_spread_pct,rtree_spread_pct\n");
 
-  for (size_t n : {10u, 100u, 1000u, 5000u, 20000u, 50000u, 100000u}) {
+  for (size_t n : {10u, 100u, 1000u, 5000u, 10000u, 20000u, 50000u, 100000u}) {
     Corpus c = make_corpus(n, 2000, 99);
     index::BruteForceIndex bf; bf.build(c.boxes);
     index::Quadtree qt;        qt.build(c.boxes);
