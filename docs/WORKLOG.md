@@ -6,6 +6,32 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-12 — Dashboard: index-mode switch + persistent-index visualization
+
+**What:** Added two visualizations to the generated dashboard, both driven by real
+engine data (no mock-ups):
+
+- An **index-mode switch** on the existing overlay button that cycles
+  **off → brute force → quadtree → R-tree**. Brute force draws every zone's box with
+  an "all N zones tested (O(n))" caption; quadtree draws its disjoint grid; R-tree
+  draws its overlapping envelopes. To feed the R-tree mode, added
+  `RTree::collect_node_boxes()` (mirroring the quadtree's) and built an R-tree over
+  the same zone set in the exporter.
+- A **persistent-index panel** showing a window of consecutive versions as mini
+  node-cell maps. Cells shared with the previous version (by pointer identity) are
+  dimmed; the freshly-copied root-to-leaf path is highlighted, with a "+N new / M
+  shared" caption. Added `VersionedIndex::viz_versions()`, a read-only walk that
+  flags each node shared vs new. In the `make dashboard` run this shows +14 new /
+  115 shared per mutation — path copying made literally visible.
+
+**Why:** The professor-facing ask was to *see* the data structures at work. The
+comparison and the persistence were previously only in `make bench` numbers.
+
+**Impact:** Additive only — new read-only methods and export fields; the evaluation
+core and all existing behaviour are unchanged. `make test`, `make check`,
+`make ubsan`, `make determinism`, and `make dashboard` all pass; the dashboard was
+verified in a browser with no console errors.
+
 ### 2026-09-12 — Redesign around five core data structures for the course viva
 
 **What:** Reorganised the project's *narrative* (not its code) so the data

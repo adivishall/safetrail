@@ -87,22 +87,29 @@ OpenStreetMap geography: those are actual reservoirs and Wards Lake. The tourist
 simulated, on purpose, because the simulator knows their true position — that's the
 ground truth we test against."*
 
-**Do:** click the **`index overlay`** button.
+**Do:** click the **`index:`** button to cycle through the three modes —
+**brute force → quadtree → R-tree.**
 
-**Say:** *"Those boxes are the real quadtree cells — not a drawing, the actual
-subdivision the query walks. Where zones cluster, the tree subdivides finely; empty
-space stays coarse. This overlay once showed me the tree was rooted at the whole
-planet, wasting 11 levels of depth — fixing it more than doubled performance. That's
-the argument for visualising a data structure early."*
+**Say:** *"This is the whole project in one control. Brute force: no structure —
+every one of 438 zones tested per query, that's the O(n) baseline. Quadtree: a
+disjoint grid that partitions space — where zones cluster it subdivides finely.
+R-tree: tight envelopes that partition items, and you can see them overlap — that's
+the structural difference. Same data, same queries, three ways to organise the
+search. This quadtree overlay once showed me the tree was rooted at the whole
+planet, wasting 11 levels of depth — fixing it more than doubled performance."*
 
-**Do:** drag the **timeline scrubber** past ~00:45.
+**Do:** drag the **timeline scrubber** past ~00:45, then look at the
+**persistent index [GAP 3]** panel on the right.
 
 **Say:** *"Zones activate and lapse over time — that's the interval tree answering
-'which zones are in force right now?'. And the history panel here is the persistent
-quadtree: I can ask what the map looked like at any past version, for incident
-investigation, without replaying anything."*
+'which zones are in force right now?'. And this panel is the persistent quadtree:
+each little map is one version. The dim cells are shared with the previous version;
+the highlighted ones are the single path this version had to copy — +14 new nodes,
+115 shared. That's path copying: keep the whole history for the cost of one path,
+not a full copy. Querying any past version is just a different root pointer."*
 
-**Point at:** the stats panel — `candidates/query`, `index versions`, `node sharing`.
+**Point at:** the "+14 new / 115 shared" captions, and the stats panel —
+`candidates/query`, `index versions`, `node sharing`.
 
 **Answers:** *"Show me the data structure actually doing something,"* and *"How do you
 handle zones that change over time / historical queries?"*

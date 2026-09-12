@@ -152,9 +152,12 @@ make dashboard   # writes dashboard.html — open it, no server needed
 
 `make dashboard` produces a single self-contained HTML file (zero network
 requests): an animated map over **real OpenStreetMap geography** around Shillong,
-Meghalaya, a timeline scrubber, and a **toggle that draws the real quadtree cells**
-over the data — the overlay that once made a performance bug visible and doubled
-throughput. Full step-by-step in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
+Meghalaya, a timeline scrubber, an **index-mode switch** that draws the real cells
+of all three indexes (**brute force → quadtree → R-tree**, so you can see the
+quadtree's disjoint grid vs the R-tree's overlapping envelopes on the same data),
+and a **persistent-index panel** showing consecutive versions with the copied path
+highlighted and shared subtrees dimmed — path copying made visible. Full
+step-by-step in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
 
 ```bash
 make determinism # same seed twice, assert byte-identical output

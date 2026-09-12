@@ -152,9 +152,11 @@ make bench       # the three-index comparison + the k ceiling
 make dashboard   # open dashboard.html — the quadtree drawn over real geography
 ```
 
-On the dashboard: toggle the **index overlay** (real quadtree cells), and **scrub the
-timeline** to watch zones activate (interval tree) and query the history (persistent
-index). Step-by-step: [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+On the dashboard: cycle the **index switch** (brute force → quadtree → R-tree, each
+drawn as real cells over the same data), **scrub the timeline** to watch zones
+activate (interval tree), and read the **persistent-index panel** — consecutive
+versions with the copied path highlighted and shared subtrees dimmed (path copying
+made visible). Step-by-step: [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
 
 ---
 
