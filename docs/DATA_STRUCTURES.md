@@ -3,6 +3,63 @@
 Every structure in the project, why it is here, and its complexity target. This is
 the document to hand an examiner who asks "what did you actually implement?"
 
+> **All measured numbers in this document are authoritative in
+> [RESULTS.md](RESULTS.md).** If a figure here disagrees with RESULTS.md, that file
+> wins. The numbers below are kept for context and rounded to bands.
+
+---
+
+## The five core data structures
+
+The project is built around **five** structures. These get the strongest
+documentation and the head-to-head demonstration; everything else is an extension
+(clearly labelled further down, and mapped to course concepts in
+[COURSE_MAPPING.md](COURSE_MAPPING.md)).
+
+| # | Structure | Header | Problem it solves | Key operation | Complexity |
+|---|---|---|---|---|---|
+| 1 | **Brute force** | `index/brute_force.hpp` | baseline + correctness oracle | scan all zones | `O(n)` |
+| 2 | **Quadtree** | `index/quadtree.hpp` | spatial search | range query | `O(log n + k)` avg |
+| 3 | **R-tree** | `index/rtree.hpp` | spatial search (compared) | range query | `O(log n + k)` avg |
+| 4 | **Interval tree** | `ds/interval_tree.hpp` | temporal filtering | overlap (stab) | `O(log n + k)` **guaranteed** |
+| 5 | **Persistent quadtree** | `index/versioned_index.hpp` | historical spatial state | query a version | `O(log n + k)` avg |
+
+**1. Brute force** is the correctness oracle. It is `O(n)` — correct but slow — and
+it is **never deleted**: every fast index is asserted to return exactly its results,
+and it is the denominator of every speedup. Its slowness *is* the motivation for
+the other four. See "Why the naive baseline is permanent" below.
+
+**2. Quadtree** is the primary spatial index. It recursively subdivides *space* into
+four quadrants; a query descends only the quadrants that can overlap it. Average
+`O(log n + k)`; worst case `O(n)` because it partitions space, not data (clustered
+hazards are the bad case). Doubling root expansion handles inserts outside the
+current extent; subtree collapse on delete keeps it from freezing at its
+high-water shape. It is the structure the dashboard *draws*, and the one that
+path-copies for the persistent index.
+
+**3. R-tree** is the second spatial index, kept specifically for the comparison. It
+partitions *items* into tight bounding rectangles (so nothing is forced upward by a
+split it straddles), at the cost of overlapping envelopes (so a query may descend
+several branches). Its STR bulk-loading build produces a 33% smaller tree and
+~6× faster queries than repeated insertion on the same data — the cleanest
+"the structure, not the machine" result in the project.
+
+**4. Interval tree** adds the *temporal* dimension: hazard zones turn on and off, and
+a static spatial index cannot answer "which zones are in force at time `t`?" This
+AVL-balanced tree stabs the overlapping validity windows in **guaranteed**
+`O(log n + k)` — the only structure on the query path with a real worst-case bound.
+
+**5. Persistent quadtree** is the advanced structure: a path-copying quadtree that
+retains every historical version by sharing untouched subtrees across versions
+(13× cheaper than full copies at 5,001 versions). It answers *"what was the
+zone configuration at 14:32?"* for incident investigation, with past queries as
+cheap as present ones.
+
+The rest of this document is the **full inventory**, including the extension
+structures; the five above are the graded core.
+
+---
+
 **Ground rule:** the *data structures* are hand-written. No `std::unordered_map`,
 `std::set`, `std::map`, `std::priority_queue`, no Boost.Geometry, no PostGIS —
 those are the things the course is about, so they are ours. Permitted: `std::vector`
@@ -52,10 +109,15 @@ completed work. Do not read a `◻` row as delivered.
 
 ---
 
-## Added by the gap analysis
+## Extensions (Level 4) — added by the gap analysis
 
-These have no counterpart in any existing implementation of `SIH25002`. Each
-traces to a documented gap — see [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
+**These are extensions, not the core five.** Each supports the core geofencing
+problem and traces to a documented gap in existing systems — see
+[GAP_ANALYSIS.md](GAP_ANALYSIS.md) — but none is required to understand or defend
+the five core structures. Two rows are the exception: the **persistent quadtree**
+and its **versioned validity history** *are* core structure #5, listed here because
+they were added by the same analysis; the interval tree (core #4) lives in the core
+table above.
 
 | Status | Structure / Algorithm | Header | Complexity | Gap |
 |---|---|---|---|---|
@@ -87,7 +149,7 @@ three-valued containment, signed distance, predictive crossing, STR bulk loading
 spatio-temporal clustering, hysteresis, adaptive sampling, Dijkstra, A*, Kuhn's
 matching, Hungarian assignment, Lamport reconciliation, polygon-nesting
 resolution, QR digital ID verification) **+ SHA-256** implemented from scratch and
-checked against NIST vectors. Every one is exercised by the test suite (**769 assertions across 39 files**), and every fast structure is checked against a
+checked against NIST vectors. Every one is exercised by the test suite (**≈770 assertion sites across 39 files (11,616 checks executed at runtime; see [RESULTS.md](RESULTS.md))**), and every fast structure is checked against a
 brute-force oracle.
 
 **Nothing in this inventory is `◻ designed`.** Every row above is implemented and
@@ -226,9 +288,10 @@ also carries the best run and the run-to-run spread. A representative run:
 | 100 | 0.09 us | 0.04 us | 0.05 us | 2.3x | 1.9x | 0.10 | ±74% |
 | 1,000 | 1.84 us | 0.09 us | 0.09 us | 21.3x | 20.3x | 0.97 | ±66% |
 | 5,000 | 11.23 us | 0.32 us | 0.16 us | 35.0x | 72.0x | 4.90 | ±71% |
-| 20,000 | 47.81 us | 1.44 us | 0.40 us | 33.3x | 119.5x | 19.86 | ±21% |
+| 10,000 | 22.86 us | 0.64 us | 0.30 us | 35.6x | 76.0x | 9.81 | ±40% |
+| 20,000 | 49.26 us | 1.35 us | 0.40 us | 36.6x | 122.5x | 19.86 | ±52% |
 | 50,000 | 118.77 us | 3.66 us | 0.66 us | 32.4x | 179.1x | 49.37 | ±10% |
-| 100,000 | 242.40 us | 7.28 us | 0.98 us | **33.3x** | **246.8x** | 98.78 | ±5% |
+| 100,000 | 243.68 us | 6.95 us | 1.00 us | **~35x** | **~244x** | 98.78 | ±9% |
 
 Brute force is visibly linear. **Read the small-n rows with the spread in mind** —
 at 10–1,000 zones the times are sub-microsecond and dominated by noise
@@ -238,19 +301,18 @@ external library — there is no third-party baseline here by design.
 
 **The R-tree column changed by a factor of seven in this pass, and the reason is
 the most interesting result in the file.** It used to be built by repeated
-insertion and tied with the quadtree at ~33x. `build()` now uses STR bulk packing
-(section 9), and the same tree answering the same queries went from 6.4 us to
-0.98 us. Nothing about the query algorithm changed — only the shape of the tree it
-walks.
+insertion and tied with the quadtree at ~35x. `build()` now uses STR bulk packing
+(section 9), and the same tree answering the same queries dropped to ~1 us.
+Nothing about the query algorithm changed — only the shape of the tree it walks.
 
 ### Bulk loading: STR vs repeated insertion
 
 | zones | insert build | STR build | insert nodes | STR nodes | insert us/query | STR us/query | query gain |
 |---|---|---|---|---|---|---|---|
-| 1,000 | 0.2 ms | 0.1 ms | 214 | 155 | 0.17 us | 0.09 us | 1.98x |
-| 10,000 | 2.2 ms | 1.4 ms | 2,133 | 1,456 | 1.28 us | 0.30 us | 4.29x |
-| 50,000 | 13.0 ms | 7.7 ms | 10,684 | 7,259 | 4.34 us | 0.68 us | 6.40x |
-| 100,000 | 28.2 ms | 16.5 ms | 21,368 | 14,383 | 6.42 us | 0.99 us | **6.47x** |
+| 1,000 | 0.2 ms | 0.1 ms | 214 | 155 | 0.16 us | 0.09 us | 1.81x |
+| 10,000 | 2.1 ms | 1.3 ms | 2,133 | 1,456 | 1.29 us | 0.25 us | 5.20x |
+| 50,000 | 12.8 ms | 7.7 ms | 10,684 | 7,259 | 4.19 us | 0.70 us | 6.00x |
+| 100,000 | 27.8 ms | 17.0 ms | 21,368 | 14,383 | 5.98 us | 0.97 us | **6.17x** |
 
 Both are O(n log n). What differs is tree *quality*. Inserting one item at a time
 makes every ChooseSubtree decision blind to the items still to come, so early
@@ -261,12 +323,13 @@ latitude, and cuts those into leaves: a near-square tiling with far less overlap
 It also builds *faster* (fewer node splits) and produces a **33% smaller tree**.
 
 This is the clearest "the structure, not the machine" result in the project: same
-data, same queries, same hardware, 6.5x from how the tree was assembled.
+data, same queries, same hardware, ~6x from how the tree was assembled.
 
 ### Quadtree vs R-tree
 
-With both built by insertion they tied at ~33x. With STR the R-tree pulls decisively
-ahead — 246.8x vs 33.3x at 100k zones.
+With both built by insertion they tied at ~35x. With STR the R-tree pulls decisively
+ahead — ~244x vs ~35x at 100k zones (the R-tree figure is the most volatile in the
+project; it sits in a ~240–260x band run to run — see [RESULTS.md](RESULTS.md)).
 
 The structural reason is worth stating, because it is the whole point of building
 both. The **quadtree partitions space** on fixed subdivisions, so an item
@@ -465,7 +528,7 @@ to test on.
 | Adaptive sampling (GAP 7) | 28,800 continuous fixes → 257 adaptive, **99.1% battery saved at 100% near-zone recall** |
 | Alert correlation (GAP 5) | **Scenario-dependent** — a scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1); a scattered run compresses ~9:1. Both reported; the ratio is a property of incident clustering, not a fixed law |
 | Determinism | same seed, two runs: byte-identical event streams, parent trees, dispatch plans and k-d tree answers (`tests/golden/determinism_test.cpp`, `make determinism`) |
-| Unit tests | **769 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass; the whole suite is clean under UBSan locally and under ASan+UBSan in CI |
+| Unit tests | **≈770 assertion sites across 39 files (11,616 checks executed at runtime; see [RESULTS.md](RESULTS.md))**, every fast structure vs a brute-force oracle, all pass; the whole suite is clean under UBSan locally and under ASan+UBSan in CI |
 
 ## Measurements to produce
 
