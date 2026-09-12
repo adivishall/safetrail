@@ -161,6 +161,35 @@ class VersionedIndex {
   // the number of CHANGES, not with versions x zones.
   size_t validity_records() const;
 
+  // ── Structural-sharing visualization ────────────────────────────────────────
+  //
+  // For the dashboard's persistent-index panel: a few consecutive versions'
+  // quadtrees, flattened, each node tagged `shared` (this exact Node object is
+  // reused from the previous version by refcount) or new (freshly allocated on
+  // this version's copied root-to-leaf path). Drawing the shared nodes dimmed and
+  // the new ones highlighted makes path copying literally visible -- a mutation
+  // lights up one path and shares everything else. A validity-only change lights
+  // up nothing: it shares the whole tree and appends one record.
+  struct VizNode {
+    geo::Bbox region;
+    uint8_t   depth = 0;
+    bool      leaf = true;
+    bool      shared = false;   // reused from the previous version (pointer identity)
+    int       items = 0;        // zones stored directly at this node
+    int       kids[4] = {-1, -1, -1, -1};   // indices into VizVersion::nodes, or -1
+  };
+  struct VizVersion {
+    VersionId version = 0;
+    Timestamp at = 0;
+    std::vector<VizNode> nodes;   // nodes[0] is the root; empty if the version is empty
+    size_t new_nodes = 0;         // freshly allocated this version (the copied path)
+    size_t shared_nodes = 0;      // reused from the previous version by refcount
+  };
+  // Up to `max_versions` CONSECUTIVE versions, chosen from mid-history where the
+  // tree has real structure. `shared` on the first returned version is always
+  // false (there is no previous version in the window to share from).
+  std::vector<VizVersion> viz_versions(size_t max_versions) const;
+
  private:
   std::vector<std::shared_ptr<const Node>> roots_;
   std::vector<Timestamp> version_times_;

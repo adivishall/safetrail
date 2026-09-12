@@ -194,8 +194,8 @@
   <section class="slide">
     <h3>09 · Results — measured, not claimed</h3>
     <table>
-      <tr><td>Spatial index speedup (100k zones)</td><td class="num">32.7× / 233×</td><td class="dim">quadtree / R-tree, vs our brute force</td></tr>
-      <tr><td>R-tree: STR packing vs insertion</td><td class="num">6.1×</td><td class="dim">same data, same query code</td></tr>
+      <tr><td>Spatial index speedup (100k zones)</td><td class="num">~35× / ~240×</td><td class="dim">quadtree / R-tree, vs our brute force</td></tr>
+      <tr><td>R-tree: STR packing vs insertion</td><td class="num">~6×</td><td class="dim">same data, same query code</td></tr>
       <tr><td>Hysteresis false-alert removal</td><td class="num">92.9%</td><td class="dim">realistic drift (ρ=0.9)</td></tr>
       <tr><td>Persistent index sharing (5k versions)</td><td class="num">13.0×</td></tr>
       <tr><td>A* vs Dijkstra work</td><td class="num">77.7% fewer</td><td class="dim">nodes expanded, 1024-node grid</td></tr>
@@ -203,14 +203,14 @@
       <tr><td>Node snapping: k-d tree vs scan</td><td class="num">45.9×</td><td class="dim">10,000 junctions</td></tr>
       <tr><td>Index equivalence</td><td class="num">0 mismatches</td><td class="dim">18,000 queries</td></tr>
       <tr><td>Ray casting vs winding number</td><td class="num">0 disagreements</td><td class="dim">100k points</td></tr>
-      <tr><td>Unit tests</td><td class="num">769 assertions</td><td class="dim">39 files, all pass</td></tr>
+      <tr><td>Unit tests</td><td class="num">~770 assertions</td><td class="dim">39 files, all pass</td></tr>
     </table>
   </section>
 
   <section class="slide">
     <h3>09 · The most interesting result</h3>
     <p class="big">We predicted a ~29,000× speedup. The quadtree gave
-       <span class="num">33×</span> — and explaining <i>why</i> was worth more
+       <span class="num">~35×</span> — and explaining <i>why</i> was worth more
        than the big number.</p>
     <p>At 100k dense zones, ~99 genuinely overlap each query. Those are <b>correct
        answers</b> — no index can return fewer results than exist. The ceiling is
@@ -218,7 +218,7 @@
     <p>Then the same reasoning said where the remaining headroom was: not in the
        query, in the <b>tree</b>. Bulk-loading the R-tree with Sort-Tile-Recursive
        packing instead of repeated insertion made its tiles overlap less, so fewer
-       branches get entered — <span class="num">233×</span> on identical data with
+       branches get entered — <span class="num">~240×</span> on identical data with
        identical query code. Same asymptotics, better constant, and the constant
        was the whole story.</p>
     <p class="dim">Four real bugs were caught only by the measurements — one by
@@ -245,7 +245,7 @@
 
   <section class="slide">
     <h3>11 · Live demo</h3>
-    <pre>make test      # 769 assertions across 39 files
+    <pre>make test      # ~770 assertions across 39 files
 make demo      # events stream over real geography
 make bench     # the speedup + correctness numbers
 make dashboard # open dashboard.html — scrub the timeline</pre>

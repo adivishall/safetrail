@@ -351,4 +351,17 @@ IndexStats RTree::stats() const {
 }
 void RTree::reset_counters() { st_.queries = 0; st_.candidates_returned = 0; }
 
+// Depth-first walk collecting every node's envelope. Leaf and internal nodes
+// alike: the overlay draws all of them so the overlap between sibling envelopes
+// (the R-tree's defining trait) is visible.
+static void collect_boxes(const RTree::Node* n, std::vector<geo::Bbox>& out) {
+  if (!n) return;
+  out.push_back(n->box);
+  if (!n->leaf)
+    for (const auto& k : n->kids) collect_boxes(k.get(), out);
+}
+void RTree::collect_node_boxes(std::vector<geo::Bbox>& out) const {
+  collect_boxes(root_.get(), out);
+}
+
 }  // namespace safetrail::index
