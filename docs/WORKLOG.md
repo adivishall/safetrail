@@ -6,6 +6,46 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-12 — Redesign around five core data structures for the course viva
+
+**What:** Reorganised the project's *narrative* (not its code) so the data
+structures are unmistakably the deliverable. Concretely:
+
+- Declared **five core structures** — brute force, quadtree, R-tree, interval tree,
+  persistent quadtree — and gave them top billing everywhere. Everything else is now
+  labelled a **Level-4 extension**.
+- **Rewrote `README.md`** to lead with the problem, the five structures, a
+  data-structures table, the one-query hot path, and the brute-force-vs-quadtree-vs-
+  R-tree experiment. Added a "60-second explanation" and "five questions this project
+  answers". The eleven-gaps research narrative moved to an Extensions section at the
+  bottom.
+- **Added `docs/RESULTS.md`** as the *single source of truth* for every measured
+  number. All other docs now defer to it. Numbers were re-measured with a fresh
+  `make bench`; no figure was invented or hand-edited away from measurement.
+- **Added `docs/VIVA.md`** (the 20 examiner questions, answered from the code),
+  **`docs/COURSE_MAPPING.md`** (each module → syllabus concept, CORE vs EXTENSION),
+  and **`docs/DEMO_SCRIPT.md`** (a literal 5-minute demo script).
+- **Simplified `docs/PRESENTATION.md`** to 10 core slides + an appendix, and
+  reorganised `docs/DATA_STRUCTURES.md` (five-core section first) and
+  `docs/ARCHITECTURE.md` (canonical linear pipeline up top).
+- **Added a real 10,000-zone row** to the scaling benchmark
+  (`apps/safetrail_bench.cpp`) so the README's size ladder (1k/10k/100k) is fully
+  measured rather than interpolated, and a dependency-free **chart generator**
+  (`tools/plot_scaling.py` → `bench/plots/index_scaling.svg`).
+- **Audited claims for consistency:** reconciled the headline speedups (~35×
+  quadtree, ~240–260× R-tree band) and clarified the test-count claim (≈770
+  assertion *sites*; 11,616 checks *executed* at runtime).
+
+**Why:** The implementation was strong but had become too broad to explain or defend
+— the story led with tourism-application features and an eleven-gap research
+narrative, burying the actual graded work. The goal was coherence and defensibility,
+not more features.
+
+**Impact:** No core implementation changed except the one-line addition of a 10k
+benchmark row. `make test`, `make bench`, `make determinism`, `make check`,
+`make dashboard`, and `make cmake-build` all still pass. A reader can now answer
+"what is this project?" in one sentence and defend the five structures from the docs.
+
 ### 2026-09-05 — Make the determinism claim true for the program, not one build of it
 
 **What:** Added `-ffp-contract=off` to both build systems, and corrected the two

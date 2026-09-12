@@ -61,7 +61,7 @@ manager, no internet.
 ```bash
 git clone https://github.com/adivishall/safetrail
 cd safetrail
-make test        # 769 assertions across 39 files, all pass
+make test        # 39 test files, ~770 assertions, all pass
 make demo        # run the simulation, watch the event stream
 make bench       # the measurements — this is the money shot
 make dashboard   # writes dashboard.html, open it in any browser
@@ -202,13 +202,13 @@ on **simulated** data. State those three caveats before quoting the number.
 
 | | time per query (median of 7) | speedup |
 |---|---|---|
-| Brute force | ~230 µs | baseline |
-| Quadtree | ~7.3 µs | **~33×** |
-| R-tree (STR bulk build) | ~1.0 µs | **~240×** |
+| Brute force | ~244 µs | baseline |
+| Quadtree | ~7.0 µs | **~35×** |
+| R-tree (STR bulk build) | ~1.0 µs | **~240–260×** |
 
-Quadtree and R-tree converge at 100k; which one leads is within the ±5% spread,
+All numbers are authoritative in [docs/RESULTS.md](docs/RESULTS.md).
 The R-tree pulled ahead once `build()` switched from repeated insertion to STR
-bulk packing — same data, same query code, 6.5× faster queries and a 33% smaller
+bulk packing — same data, same query code, ~6× faster queries and a 33% smaller
 tree purely from how it was assembled.
 
 ### The most interesting thing in the project
@@ -228,12 +228,12 @@ actually has. The ceiling is output size, not the tree. That's exactly what
 
 | Result | Measured |
 |---|---|
-| Hysteresis filter (GAP 8) | **91.2%** removed under realistic drift, 92.3% under white noise — both models, same seed |
+| Hysteresis filter (GAP 8) | **92.9%** removed under realistic drift, 94.0% under white noise — both models, same seed |
 | Persistent index (GAP 3) | **13.0×** node sharing at 5,001 versions; querying the past costs the same as the present |
 | Index equivalence | 18,000 queries — quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Alert correlation (GAP 5) | **Scenario-dependent.** A scripted cohort on one hazard collapses to a single incident of ~33 people (~450:1 compression); a scattered run still compresses ~9:1. The ratio reflects how clustered the incident is, not a fixed number — we report both |
-| Unit tests | **769 assertions across 39 files**, every fast structure vs a brute-force oracle, all pass |
+| Unit tests | **≈770 assertion sites across 39 files (11,616 checks executed)**, every fast structure vs a brute-force oracle, all pass |
 
 ### Three bugs the measurements caught
 
@@ -380,5 +380,5 @@ Whichever it is:
 We built the geofencing engine everyone else imports, and fixed eleven things that
 importing it makes impossible. Hand-written quadtree, R-tree, persistent quadtree,
 rollback union-find, interval tree, plus real computational geometry. It runs,
-there's a dashboard, 769 assertions across 39 files pass, and the index is 33-240× faster than brute force
+there's a dashboard, ~770 assertions across 39 files pass, and the index is ~35-240× faster than brute force
 with provably identical output.
