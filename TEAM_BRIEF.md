@@ -214,7 +214,7 @@ tree purely from how it was assembled.
 ### The most interesting thing in the project
 
 Our design doc originally predicted **~29,000×**. Measurement brought that down to
-33×, and understanding *why* is worth more marks than the big number would have
+**~35×**, and understanding *why* is worth more marks than the big number would have
 been.
 
 At 100,000 zones in ~40 km², **98.78 zones genuinely intersect each query box**.
@@ -245,8 +245,8 @@ Worth knowing, because they're the kind that ship silently:
 2. **The quadtree wasted 11 levels of depth.** It was rooted at the whole planet,
    so its cells were kilometres across where the zones actually are. **The
    dashboard's index overlay is what revealed it** — the subdivision lines were
-   visibly enormous. Fixing it took 100k performance from 14.1× to 32.7×, from a
-   five-line change.
+   visibly enormous. Fixing it roughly doubled 100k throughput (a 2.3× jump in the
+   run that caught it), from a five-line change.
 3. **`validate()` misdiagnosed every bowtie.** It checked zero-area before
    self-intersection, and a bowtie's two lobes cancel to exactly zero area.
 

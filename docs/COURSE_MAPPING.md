@@ -19,6 +19,18 @@ exercise?"* — the answer is "most of them, and here is exactly where."
 | **3 — Core algorithms** | Ray casting · Winding number · Segment intersection · State transitions | `geo/`, `fence/` |
 | **4 — Extensions** | Groups · Prediction · Offline · Merkle · Routing · Dispatch · Jurisdiction · … | everything else |
 
+## The five core structures → concepts (at a glance)
+
+| Core structure | Concepts it demonstrates |
+|---|---|
+| **Brute force** | baseline · complexity analysis (O(n)) · correctness oracle |
+| **Quadtree** | trees · recursion · spatial indexing · average vs worst case |
+| **R-tree** | balanced-by-construction · bulk loading (STR) · indexing |
+| **Interval tree** | balanced (AVL) trees · augmented BST · guaranteed bounds |
+| **Persistent quadtree** | persistence · structural sharing · immutability |
+
+This same five-row map is shown live in the dashboard's "course concepts" panel.
+
 ---
 
 ## Concept → implementation

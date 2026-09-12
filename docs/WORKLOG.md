@@ -6,6 +6,32 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-12 — Professor-level final review pass
+
+**What:** A strict end-to-end review before merge. (1) Audited every primary doc for
+numeric/terminology contradictions and reconciled the stragglers to
+[RESULTS.md](RESULTS.md): the "brought it down to 33×" and "32.7×" narrative
+numbers → ~35×; a stray "6.5×" STR figure → ~6×; DATA_STRUCTURES hysteresis
+white-noise 93.9% → 94.0% (the measured value); the 14.1×→32.7× root-fit anecdote
+re-framed as historical so it no longer reads as a competing current headline.
+(2) Added a **main-experiment panel** to the dashboard — the brute-force vs
+quadtree vs R-tree table (dataset size, latency, speedup, candidates) sourced from
+`bench/results/index_scaling.csv` (the same file RESULTS.md uses), plus a live
+equivalence pass over the run's own zones reporting real query count and mismatch
+count (3,000 queries, 0 mismatches). (3) Added a "why the index works" panel and a
+"course concepts demonstrated" panel (five core structures → concepts), and
+reframed the persistent-index panel around "same query, different historical
+version" (Wards Lake in force: no at 00:20, yes at 00:30). (4) Added
+[PROFESSOR_REVIEW.md](PROFESSOR_REVIEW.md) and a five-core→concepts table to
+COURSE_MAPPING.md.
+
+**Why:** Final defensibility pass — one source of truth for every number, the main
+experiment visible in the demo itself, and the examiner's likely questions answered
+in writing.
+
+**Impact:** Docs + additive read-only dashboard export only; no engine behaviour
+changed. All gates pass; dashboard verified in a browser with no console errors.
+
 ### 2026-09-12 — Dashboard: index-mode switch + persistent-index visualization
 
 **What:** Added two visualizations to the generated dashboard, both driven by real

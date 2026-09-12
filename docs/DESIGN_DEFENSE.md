@@ -16,7 +16,7 @@ built" table in [DATA_STRUCTURES.md](DATA_STRUCTURES.md)) — protect it.
 If you internalise nothing else, internalise these. They are the "smart" parts,
 and they are what will be probed.
 
-### 1. Why the speedup ceiling is ~33×, not thousands
+### 1. Why the speedup ceiling is ~35×, not thousands
 
 > The index turns an O(n) scan into O(log n + **k**), where k is the number of
 > zones the query actually overlaps. At 100,000 dense zones, ~99 of them genuinely
@@ -134,7 +134,7 @@ envelopes overlap more than necessary. **STR** (Sort-Tile-Recursive) knows the
 whole set: sort by centre longitude, cut into ⌈√P⌉ vertical slices, sort each
 slice by centre latitude, cut into leaves of M — a near-square tiling. Then repeat
 over those leaves to build the level above. Both are O(n log n); STR produces a
-33% smaller tree and **6.5× faster queries** on the same data with the same query
+33% smaller tree and **~6× faster queries** on the same data with the same query
 code. That is the cleanest "the structure, not the machine" result in the project.
 
 ### k-d tree

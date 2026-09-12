@@ -376,9 +376,10 @@ shipped invisibly. Radius is now derived from uncertainty + `speed x horizon`.
 (-90..90, -180..180), so with `max_depth = 12` its cells were still kilometres
 across where the zones actually were. **The dashboard's index overlay is what
 revealed this** — the subdivision lines were visibly enormous. Fitting the root to
-the data extent took 100k-zone performance from 14.1x to 32.7x, a 2.3x improvement
-from a five-line change. This is the strongest argument in the project for building
-the visualisation early.
+the data extent took 100k-zone performance from 14.1x to 32.7x in the run that
+caught it — a 2.3x improvement from a five-line change (the current headline is
+~35x; see [RESULTS.md](RESULTS.md)). This is the strongest argument in the project
+for building the visualisation early.
 
 **3. `validate()` misdiagnosed every bowtie.** It checked zero-area before
 self-intersection, and a bowtie's two lobes cancel to exactly zero signed area, so
@@ -519,7 +520,7 @@ to test on.
 
 | Result | Measured |
 |---|---|
-| Hysteresis A/B (GAP 8) | **92.9% of false transitions removed under realistic correlated drift** (rho=0.9), 93.9% under white noise — measured under BOTH models, same seed |
+| Hysteresis A/B (GAP 8) | **92.9% of false transitions removed under realistic correlated drift** (rho=0.9), 94.0% under white noise — measured under BOTH models, same seed (see [RESULTS.md](RESULTS.md)) |
 | Index equivalence | 18,000 queries x 3 densities, quadtree and R-tree both **0 mismatches** vs brute force |
 | Ray casting vs winding number | 100,000 points, 200 polygons, **0 disagreements** |
 | Index churn | quadtree, R-tree and geohash all agree with brute force at 20 checkpoints across 400 randomised insert/delete operations |

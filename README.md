@@ -293,6 +293,7 @@ data/  tools/           real OSM zones, road graph; data-prep + plotting scripts
 | [docs/RESULTS.md](docs/RESULTS.md) | ★ Single source of truth for every measured number |
 | [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) | ★ The five core structures first, then extensions; invariants, complexity, worst cases |
 | [docs/VIVA.md](docs/VIVA.md) | ★ 20 viva questions answered from the actual implementation |
+| [docs/PROFESSOR_REVIEW.md](docs/PROFESSOR_REVIEW.md) | ★ Examiner's-eye assessment: likely questions, the hardest one, the weakest area |
 | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | ★ A literal 5-minute demo script — command, screen, what to say |
 | [docs/PRESENTATION.md](docs/PRESENTATION.md) | ★ 10-slide walkthrough for your guide |
 | [docs/COURSE_MAPPING.md](docs/COURSE_MAPPING.md) | Which DS concept each module demonstrates; CORE vs EXTENSIONS |
