@@ -50,6 +50,13 @@ class RTree final : public SpatialIndex {
   IndexStats stats() const override;
   void reset_counters() override;
 
+  // Every node's bounding envelope, for the diagnostics overlay. Mirrors
+  // Quadtree::collect_node_boxes so the dashboard can draw either index's cells
+  // from the same code path. These are the tight item envelopes the R-tree
+  // partitions into -- overlapping, unlike the quadtree's disjoint grid, which is
+  // exactly the structural difference the overlay is there to show.
+  void collect_node_boxes(std::vector<geo::Bbox>& out) const;
+
   struct Node;
 
  private:

@@ -16,7 +16,7 @@ built" table in [DATA_STRUCTURES.md](DATA_STRUCTURES.md)) — protect it.
 If you internalise nothing else, internalise these. They are the "smart" parts,
 and they are what will be probed.
 
-### 1. Why the speedup ceiling is ~33×, not thousands
+### 1. Why the speedup ceiling is ~35×, not thousands
 
 > The index turns an O(n) scan into O(log n + **k**), where k is the number of
 > zones the query actually overlaps. At 100,000 dense zones, ~99 of them genuinely
@@ -134,7 +134,7 @@ envelopes overlap more than necessary. **STR** (Sort-Tile-Recursive) knows the
 whole set: sort by centre longitude, cut into ⌈√P⌉ vertical slices, sort each
 slice by centre latitude, cut into leaves of M — a near-square tiling. Then repeat
 over those leaves to build the level above. Both are O(n log n); STR produces a
-33% smaller tree and **6.5× faster queries** on the same data with the same query
+33% smaller tree and **~6× faster queries** on the same data with the same query
 code. That is the cleanest "the structure, not the machine" result in the project.
 
 ### k-d tree
@@ -337,8 +337,9 @@ right, only the counting was wrong.
 > We model both. The error is an **AR(1) process** (`correlation` = 0.9 by
 > default), so consecutive fixes are temporally correlated — smooth drift, like a
 > real receiver — not independent white noise. The hysteresis benchmark reports
-> against *both* regimes: 92.3% of false transitions removed under white noise,
-> **91.2% under realistic correlated drift**. The filter is robust to the honest,
+> against *both* regimes: 94.0% of false transitions removed under white noise,
+> **92.9% under realistic correlated drift** (see [RESULTS.md](RESULTS.md)). The
+> filter is robust to the honest,
 > harder case, not just the flattering one.
 
 **"The dashboard — is it live?"**

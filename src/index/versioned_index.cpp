@@ -281,4 +281,63 @@ VersionedIndex::ShareStats VersionedIndex::share_stats() const {
   return s;
 }
 
+// ── viz_versions: flatten a small window of versions with shared/new flags ─────
+// A sorted std::vector of pointers stands in for a set here deliberately: the
+// windowed trees are small, and the project's hand-written-structures rule is
+// about the graded engine, not read-only export tooling -- so this uses only
+// std::sort / std::binary_search (algorithms), no std::set/unordered_set.
+static void collect_ptrs(const VersionedIndex::Node* n,
+                         std::vector<const void*>& out) {
+  if (!n) return;
+  out.push_back(n);
+  for (int i = 0; i < 4; ++i) collect_ptrs(n->kids[i].get(), out);
+}
+
+static int flatten_viz(const VersionedIndex::Node* n,
+                       const std::vector<const void*>& prev_sorted,
+                       VersionedIndex::VizVersion& vv) {
+  if (!n) return -1;
+  const int idx = int(vv.nodes.size());
+  vv.nodes.emplace_back();                    // reserve this node's slot first
+  int kids[4] = {-1, -1, -1, -1};
+  for (int i = 0; i < 4; ++i)                 // recurse (may grow vv.nodes)
+    kids[i] = flatten_viz(n->kids[i].get(), prev_sorted, vv);
+  VersionedIndex::VizNode node;              // fill AFTER recursion, assign by index
+  node.region = n->region;
+  node.depth  = n->depth;
+  node.leaf   = n->leaf();
+  node.items  = int(n->items.size());
+  node.shared = std::binary_search(prev_sorted.begin(), prev_sorted.end(),
+                                   static_cast<const void*>(n));
+  for (int i = 0; i < 4; ++i) node.kids[i] = kids[i];
+  vv.nodes[idx] = node;
+  if (node.shared) ++vv.shared_nodes; else ++vv.new_nodes;
+  return idx;
+}
+
+std::vector<VersionedIndex::VizVersion>
+VersionedIndex::viz_versions(size_t max_versions) const {
+  std::vector<VizVersion> out;
+  const size_t vc = roots_.size();
+  if (vc == 0 || max_versions == 0) return out;
+  const size_t count = std::min(max_versions, vc);
+  // A mid-history, consecutive window: mid-history so the tree has real
+  // structure, consecutive so "shared vs the previous version" is meaningful.
+  const size_t start = (vc > count) ? (vc - count) / 2 : 0;
+  for (size_t k = 0; k < count; ++k) {
+    const size_t v = start + k;
+    VizVersion vv;
+    vv.version = VersionId(v);
+    vv.at = version_times_[v];
+    std::vector<const void*> prev;
+    if (k > 0) {                              // first in the window has no predecessor here
+      collect_ptrs(roots_[v - 1].get(), prev);
+      std::sort(prev.begin(), prev.end());
+    }
+    flatten_viz(roots_[v].get(), prev, vv);
+    out.push_back(std::move(vv));
+  }
+  return out;
+}
+
 }  // namespace safetrail::index

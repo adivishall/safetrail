@@ -1,9 +1,36 @@
 # Architecture
 
-Start with [GAP_ANALYSIS.md](GAP_ANALYSIS.md) — it explains why this is not a
-straight implementation of `SIH25002`.
-[ARCHITECTURE_BASELINE.md](ARCHITECTURE_BASELINE.md) has the original design this
-was extended from.
+## The pipeline (this is the whole project)
+
+One tourist fix flows through a straight line of stages; the data structures live in
+the middle three. Read left to right:
+
+```
+   Input          Zone Store      Spatial Index     Temporal Filter
+  (tourist  ─────►  polygons  ─────►  Quadtree   ─────► Interval tree
+   fixes)           + validity        / R-tree          "active at t?"
+                                    (candidates)      (active candidates)
+                                                             │
+                                                             ▼
+                        Event  ◄─── State Machine  ◄─── Geometry
+                   (Entered/Exited/    (diff vs           (ray casting → 3-valued;
+                    Uncertain)          previous)          winding cross-checks
+                                                           it in tests)
+                        │
+                        └──►  EXTENSIONS (built on the event stream, not the core):
+                              groups · alerts · dispatch · evidence · offline
+                        └──►  one self-contained dashboard.html
+```
+
+**CORE** is the top line plus geometry and the state machine — the five structures
+([DATA_STRUCTURES.md](DATA_STRUCTURES.md)) and the point-in-polygon algorithms.
+**EXTENSIONS** hang off the event stream and are never on the critical path of
+answering "is this tourist in a hazard zone?". The diagram below expands the same
+thing into layers; do not read it as thirty co-equal modules — the middle three
+stages are the project.
+
+For *why* the extensions exist, see [GAP_ANALYSIS.md](GAP_ANALYSIS.md);
+[ARCHITECTURE_BASELINE.md](ARCHITECTURE_BASELINE.md) has the original design.
 
 ## Layers
 

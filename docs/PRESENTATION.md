@@ -1,277 +1,209 @@
-# safetrail — Project Presentation
+# SafeTrail — Presentation
 
-A complete walkthrough for the review, ordered as you would present it. Each
-section is roughly one talking point / slide. Speaker notes are in *italics*.
-Every number here is measured and reproducible (`make bench`, `make test`).
+Ten core slides, ordered as you would present them, plus an optional appendix.
+Speaker notes are in *italics*. Every number is authoritative in
+[RESULTS.md](RESULTS.md) and reproducible with `make bench` / `make test`.
 
 **Repository:** https://github.com/adivishall/safetrail
-**Live dashboard:** https://adivishall.github.io/safetrail/
-**Course:** Data Structures · **Origin:** SIH 2025, problem statement `SIH25002`
+**Course:** Data Structures · **One question:** *how much faster can custom spatial
+data structures make repeated geofencing queries without changing the answer?*
 
 ---
 
-## 1. The problem (1 slide)
+## Slide 1 — The problem
 
-Tourist safety in remote Northeast India — Meghalaya, difficult terrain, patchy
-mobile coverage, tourists who don't know the local hazards (landslide slopes,
-restricted border zones, deep-water lakeshores). The task: know in real time when
-someone enters a dangerous area, and respond.
+Tourists move through terrain with hazards — landslide slopes, deep-water
+lakeshores, restricted zones. We need to know, **repeatedly and in real time**,
+whether each tourist is inside, outside, or uncertain relative to many hazard
+**polygons**, and when they **cross a boundary**.
 
-*This is Smart India Hackathon problem statement SIH25002, from the Ministry of
-Development of North Eastern Region. We took the problem, not the expected
-solution.*
-
----
-
-## 2. The one idea that defines the project (1 slide)
-
-> **Every existing implementation hands the hard part to a database. We wrote that
-> engine ourselves.**
-
-We researched two public implementations before writing any code — *SafeVoyage*
-(GitHub) and *STSMIRS* (a published paper). Both converge on the same shape:
-
-| The hard part | What they use | What we did |
-|---|---|---|
-| "Is this point inside this zone?" | PostGIS `ST_Contains` | **Hand-wrote the geometry** |
-| "Which zones are near here?" | PostGIS GiST tree | **Hand-wrote the spatial index** |
-| Tamper-proof records | Ethereum smart contract | **Hand-wrote a Merkle log** |
-
-*This single decision is what makes it a data-structures project instead of a web
-app — and, as the next slide shows, it also fixes real problems that delegating to
-a server-side database makes impossible.*
+*This is a geometry-and-search problem at its heart. Everything else is built on
+answering it fast and correctly.*
 
 ---
 
-## 3. Why that decision matters — the eleven gaps (1–2 slides)
+## Slide 2 — The naive solution, and why it fails
 
-Delegating containment to a cloud database fails in exactly the terrain this
-problem targets. Building the engine ourselves let us close eleven documented
-gaps — all eleven are now built:
-
-| # | The gap | What we do |
-|---|---|---|
-| 1 | GPS treated as an exact point | Answer **Inside / Outside / Uncertain** — GPS is ±4 m open sky, ±35 m in hills |
-| 2 | Alerts fire on entry (too late) | **Predict** the crossing: "4 minutes from the border zone" |
-| 3 | Zones are static; risk isn't | Zones turn on/off; we can **rewind** to "the rules at 14:32" |
-| 4 | Tourists tracked individually | They travel in **groups**; a straggler 400 m behind is the incident |
-| 5 | One landslide → forty alert cards | **Correlate** them into one incident |
-| 6 | "Offline-first" that only queues | **Serialise the index** for local eval; reconcile with **Lamport clocks** |
-| 7 | Continuous GPS = 8–12% battery/hr | **Sample by proximity** to danger |
-| 8 | GPS drift makes fences fire constantly | **Hysteresis filter** — removes ~93% of false alerts |
-| 9 | Ethereum for a tamper-proof log | **Merkle log**, offline-verifiable, no chain |
-| 10 | No validation on hand-drawn zones | Reject self-intersections — pairwise + **Shamos–Hoey sweep-line** |
-| 11 | No owner across district lines | Resolve **jurisdiction** from nested boundaries |
-
-*Full research with citations is in docs/GAP_ANALYSIS.md.*
-
----
-
-## 4. How it works — the plain version (1 slide)
-
-Every second, for each tourist:
-
-1. **Narrow down** — which zones are even near this person? A tree answers without
-   checking all of them (like a book's index vs reading every page).
-2. **Check precisely** — are they actually inside? Real polygon geometry.
-3. **Report only changes** — "entered" / "exited", never "still inside" repeated
-   forever. That's the difference between a usable alert list and a scrolling wall.
-
-*Then: correlate related alerts into incidents, and check whether any group has
-split apart.*
-
----
-
-## 5. How it works — the technical version (1–2 slides)
-
-It all lives in one function, `Evaluator::evaluate()`. Eight steps per tourist:
+Check **every zone against every tourist, every tick**:
 
 ```
-1. usability gate     discard fixes too noisy to mean anything     O(1)
-2. spatial prune      100k zones → ~2 candidates             O(log n + k)  ← the point
-3. temporal filter    of those, which are in force now?            O(1)
-4. exact geometry     ray casting: Inside / Outside / Uncertain    O(k·V)
-5. hysteresis         real crossing, or GPS jitter?                O(1)
-6. transition diff    did state CHANGE? → emit an Event            O(k)
-7. prediction         heading toward a zone? → ETA                 O(k·V)
+200 tourists × 100,000 zones × 40 vertices = 800 million ops / tick
 ```
 
-**Step 2 is the whole performance story.** Without the index:
-`200 tourists × 100,000 zones × 40 vertices = 800 million operations per tick`.
-With it: ~27,000.
+That is `O(n)` per query — linear in the zone count, so cost grows without bound as
+zones are added. Measured: **~245 µs per query at 100,000 zones**.
 
-*The data flow: real OSM zones → validated ZoneStore → spatial + versioned index →
-simulator (movement + GPS noise) → evaluator → correlator + cohesion → dashboard.*
-
----
-
-## 6. The data structures we built (1–2 slides)
-
-**This is the graded core. All hand-written — no `std::map`, `std::set`,
-`std::priority_queue`, no Boost, no PostGIS.**
-
-| Structure | What it does here | Complexity |
-|---|---|---|
-| **Quadtree** | primary spatial index | query O(log n + k) avg |
-| **R-tree** | second index, the comparison | query O(log n + k) avg |
-| **Brute force** | correctness oracle + baseline | O(n) |
-| **AVL interval tree** | zone validity in time | O(log n + k) **guaranteed** |
-| **Circular buffer** | recent GPS history per tourist | O(1) |
-| **Persistent quadtree** | time-travel — query any past moment | O(depth) nodes/change |
-| **Rollback union-find** | group cohesion (splits + merges) | O(log n) find, O(1) undo |
-| **Merkle tree** (RFC 6962) | tamper-evident evidence log | proof O(log n) |
-
-Plus SHA-256 from scratch (checked against NIST vectors), ray casting, winding
-number, three-valued containment, and hysteresis.
-
-*Two of these are genuinely advanced: the persistent path-copying quadtree and the
-rollback union-find. If asked "which did you understand most deeply", pick one of
-those.*
+*We keep this — `BruteForceIndex` — forever, but not to run it: to test against it.
+Its slowness is the motivation for everything that follows.*
 
 ---
 
-## 7. The three showpiece structures (1 slide each, if time)
+## Slide 3 — Our approach
 
-**Persistent quadtree (time travel).** Nodes are immutable; a change copies only
-the O(depth) nodes on one path and *shares* every other subtree by reference count.
-So we keep the entire history for a fraction of the cost of full copies — measured
-at **13× sharing across 5,000 versions** — and querying the past is as cheap as the
-present. *This answers the investigation question: "what were the zone rules at the
-moment the accident happened?"*
+Three stages, each a data-structures problem:
 
-**Rollback union-find (groups).** Groups split as well as merge, so we need to
-*undo* unions — which means we can't use path compression (it makes unbounded,
-unrecordable writes). We keep union-by-rank alone: O(log n) finds, O(1) rollback.
-*The trade-off is the interesting analysis, not an oversight.*
+1. **Spatial pruning** — a tree returns only the handful of zones near the tourist.
+2. **Exact geometry** — point-in-polygon decides the answer for those few.
+3. **State-transition detection** — emit an event only when containment *changes*.
 
-**Merkle evidence log (tamper-proof).** Every event is committed to a Merkle root.
-An inclusion proof lets a responder verify any record offline against just the root
-— no network, no blockchain. Consistency proofs show the log was only ever appended
-to, never rewritten. *This is the property Ethereum was being used for, delivered in
-300 lines that are all ours.*
+> **Spatial index finds the candidates; geometry determines the actual answer.**
+
+*The whole architecture is that one sentence. Step 1 is where the speed comes from;
+step 2 is where the correctness comes from.*
 
 ---
 
-## 8. The data is real (1 slide)
+## Slide 4 — The quadtree (primary spatial index)
 
-- **Geography: real.** 38 zones fetched from **OpenStreetMap** via the Overpass API
-  — actual reservoirs, forests, and landmarks around Shillong, including **Wards
-  Lake** and **Sonapani Waterfall Cliff**, at their true coordinates.
-- **Tourists: simulated.** No real tracking data exists for this problem, and
-  simulation gives us **ground truth** — we know where each tourist truly was, so we
-  can *measure* whether the engine got the right answer.
-- **How it reaches the dashboard: it doesn't travel.** Zero network requests. The
-  engine serialises its output straight into one HTML file (99.3% data, 11.7 KB
-  viewer). Opens over `file://` with the network off.
+Recursively subdivides **space** into four quadrants. A query descends only the
+quadrants that can overlap it, skipping the rest.
 
-*Full provenance with verification commands: docs/DATA_PROVENANCE.md.*
+- Average **O(log n + k)**; worst case **O(n)** — it partitions space, not data, so
+  clustered hazards are the bad case (be honest about this).
+- Doubling **root expansion** for inserts outside the current extent; **subtree
+  collapse** on delete so it doesn't freeze at its high-water shape.
+- Measured **~35× faster** than brute force at 100k zones.
+
+*It's also the index we can draw — a fixed spatial subdivision — which is how I found
+a real bug (next-but-one slide).*
 
 ---
 
-## 9. Results — measured, not claimed (1–2 slides)
+## Slide 5 — The R-tree, and the comparison
 
-All from `make bench` / `make test`. Timings are the **median of 7 passes** on one
-machine; the speedup is a ratio to **our own brute force** (not an external
-library); the data is **simulated**. State those three before quoting a figure.
+A second spatial index with the **opposite** trade-off: it partitions **items** into
+tight bounding rectangles, so nothing is forced high by a split it straddles — but
+envelopes can overlap, so a query may descend several branches.
+
+The payoff is **STR bulk loading**: sort the whole set, tile it into near-square
+minimally-overlapping rectangles. Same data, same query code:
+
+| | quadtree | R-tree (insert) | R-tree (STR) |
+|---|---|---|---|
+| speedup @100k | ~35× | ~35× | **~240–260×** |
+| tree size | — | baseline | **33% smaller** |
+
+*This is the cleanest "the structure, not the machine" result: ~6× purely from how
+the tree was assembled. Building both indexes is what makes this visible.*
+
+---
+
+## Slide 6 — Exact geometry (the answer)
+
+The index only narrows candidates; **geometry decides**. Point-in-polygon by:
+
+- **Ray casting** — half-open crossing rule; handles concave polygons and holes.
+- **Winding number** — an *independent* second implementation that cross-checks ray
+  casting (100,000 points, **0 disagreements**).
+- **Three-valued containment** — Inside / Outside / **Uncertain**, because GPS is
+  ±4 m open sky, ±35 m in hills: resolve only when the whole uncertainty disc is on
+  one side.
+
+*Keeping two independent implementations caught a real bug — they disagreed on holes
+until it was fixed. That's exactly the job the second one is kept for.*
+
+---
+
+## Slide 7 — Time and history: interval tree + persistent quadtree
+
+Zones turn on and off, and we sometimes need the past.
+
+- **AVL interval tree** — "which zones are in force at time `t`?" in **guaranteed**
+  `O(log n + k)`. The only worst-case guarantee on the query path, because it
+  balances on *data*.
+- **Persistent quadtree** — "what was the map at 14:32?" A path-copying tree copies
+  only the `O(depth)` nodes on one path per change and **shares** the rest by
+  refcount: **13× cheaper than full copies** at 5,001 versions, and past queries cost
+  the same as present ones.
+
+*The persistent quadtree is the most advanced structure here — a proven sharing
+bound, a measured result, and no counterpart in existing implementations.*
+
+---
+
+## Slide 8 — Experimental results
+
+All from `make bench` / `make test`; ratios are to **our own brute force**; data is
+**simulated** (real geography). Full table: [RESULTS.md](RESULTS.md).
 
 | Result | Number |
 |---|---|
-| Spatial index speedup (100k zones) | **~33×** quadtree, **~240×** R-tree with STR bulk packing, vs brute force (median of 7; the R-tree figure moves 230–250× between runs, so it is quoted as a band, not a constant) |
-| Candidate pruning (real run) | 438 zones → ~2.4 per query, **~180×** |
-| Hysteresis false-alert removal | **~93% under realistic drift**, ~94% white noise (simulated GPS) |
-| Persistent index sharing (5,000 versions) | **13×** vs full copies |
-| Alert correlation (GAP 5) | **scenario-dependent**: ~450:1 on a clustered incident, ~9:1 scattered |
-| Index equivalence (correctness) | 18,000 queries, **0 mismatches** vs brute force |
-| Ray casting vs winding number | 100,000 points, **0 disagreements** |
-| Merkle tamper detection | forged entries + rewritten history **rejected** |
-| Unit tests | **769 assertions across 39 files**, each vs a brute-force oracle, all pass |
+| Quadtree speedup @100k | **~35×** |
+| R-tree speedup @100k (STR) | **~240–260×** |
+| Candidates/query @100k | 98.78 — identical across indexes |
+| Correctness | **18,000 queries, 0 mismatches** vs brute force |
+| STR bulk-load gain | ~6× from tree shape alone |
+| Persistent-index sharing | 13× @ 5,001 versions |
+| Ray casting vs winding | 100,000 points, 0 disagreements |
+| Tests | 39 files, ≈770 assertions, 0 failed |
 
-**The most interesting result:** our design doc predicted a ~29,000× speedup.
-Measurement brought it down to 33×, and *explaining why* is worth more than the big
-number: at 100k dense zones, ~99 genuinely overlap each query — those are correct
-answers, and no index can return fewer results than exist. The ceiling is output
-size, exactly as `O(log n + k)` predicts.
-
-*Stating that caveat honestly is the point. We also fixed three real bugs that only
-the measurements caught — including one found by looking at the visualisation.*
+**The headline insight:** we predicted ~29,000×, measured ~35×, and *explaining why*
+is the result — the speedup ceiling is output size `k`, not the tree. At 100k dense
+zones ~99 zones genuinely overlap each query, and no index can return fewer than
+exist.
 
 ---
 
-## 10. Honest engineering (1 slide) — say this before they ask
-
-- **Worst case:** the quadtree/R-tree are O(n) worst case (they partition space,
-  not data; clustered hazards are the bad case). The **AVL interval tree** is the
-  one with a guaranteed O(log n).
-- **Scope:** the whole data-structures inventory is built and tested; the only
-  stubs left are the serverless `server/` scaffolding (serverless by design). The
-  benchmark numbers are on **simulated** data, ratio to our own brute force.
-- **Results are scenario-dependent:** correlation and dispatch reflect a scripted
-  incident (~450:1 clustered vs ~9:1 scattered) — we report both.
-- **The tourists are simulated.** Real geography, simulated people, on purpose.
-- **The dashboard is a deterministic replay**, not a live server.
-
-*This slide is a strength, not a confession. It's what separates a graded project
-from a sales pitch. Full prep for hard questions: docs/DESIGN_DEFENSE.md.*
-
----
-
-## 11. Live demo (do this) 
+## Slide 9 — Live demo
 
 ```bash
-make test        # 769 assertions across 39 files pass — each vs a brute-force oracle
-make demo        # watch events stream over real geography
-make bench       # the speedup + correctness numbers
-make dashboard   # open dashboard.html — animated map, scrub the timeline
+make test        # correctness first: every index vs a brute-force oracle
+make bench       # the three-index comparison + the k ceiling
+make dashboard   # open dashboard.html — the quadtree drawn over real geography
 ```
 
-On the dashboard, three things to show:
-1. Dots moving over **real Shillong reservoirs**; zones light up on entry.
-2. Toggle **index overlay** — the actual quadtree cells (this is what made a bug
-   visible and doubled our performance).
-3. **Scrub the timeline** past 00:45 — Wards Lake and Love Jungle activate and
-   lapse. That's the persistent index answering "what were the rules then?".
-
-Or just open the **live URL** — it's the same file, deployed via CI to GitHub Pages.
+On the dashboard: cycle the **index switch** (brute force → quadtree → R-tree, each
+drawn as real cells over the same data), **scrub the timeline** to watch zones
+activate (interval tree), and read the **persistent-index panel** — consecutive
+versions with the copied path highlighted and shared subtrees dimmed (path copying
+made visible). Step-by-step: [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
 
 ---
 
-## 12. Engineering practices (1 slide, optional)
+## Slide 10 — Conclusion
 
-- **Every structure is unit-tested**, most cross-checked against a brute-force
-  oracle — that's how we caught our bugs.
-- **Determinism:** same seed → byte-identical output, which makes the replay and
-  every A/B comparison valid.
-- **CI on every push:** four independent gates, all of which must pass before
-  anything publishes — the full suite on g++ (39 files) and again on macOS/clang++,
-  the whole suite under **AddressSanitizer + UBSan** with `-fno-sanitize-recover`
-  (so UB aborts rather than printing and continuing), a byte-for-byte determinism
-  diff, and a CMake build + `ctest`. Benchmarks run but do **not** gate: timings on
-  shared runners are noisy, and a flaky red build teaches people to ignore red
-  builds. Then the dashboard is regenerated and published to Pages.
-- **No dependencies:** `git clone && make`, nothing else — no libraries, and cmake
-  is optional (`CMakeLists.txt` exists so CI can build the tree a second way, which
-  is what catches the two build systems drifting apart).
+Five hand-built structures — **brute force** (oracle), **quadtree** and **R-tree**
+(measured against each other), **interval tree** (time), **persistent quadtree**
+(history) — plus the point-in-polygon geometry that decides the answer.
+
+> Every optimisation is proven against brute force with zero mismatches, analysed
+> honestly including where it degrades, and measured on real geography. The data
+> structures are the deliverable; everything else exists to exercise and prove them.
+
+**Be honest about limits:** quadtree/R-tree are O(n) worst case; tourists are
+simulated; speedups are ratios to our own brute force. Stating that is the point.
 
 ---
 
-## 13. The one-sentence close
+## Appendix (optional — only if asked)
 
-> We built the geofencing engine that every competing team imports from PostGIS —
-> the quadtree, the R-tree, the persistent time-travel index, the containment
-> geometry, a tamper-evident Merkle log — by hand, analysed it honestly including
-> where it degrades, measured it against real OpenStreetMap geography, and shipped
-> it as a single self-contained dashboard anyone can open offline.
+### A1 — Extensions (Level 4)
 
----
+Substantial, tested work that supports the core but is not required to understand it:
+groups (rollback union-find), prediction, alert correlation (DSU), routing
+(Dijkstra/A*), dispatch (Hungarian), offline sync (Lamport + geohash serialisation),
+evidence (RFC 6962 Merkle log, SHA-256 from scratch), adaptive sampling, hysteresis,
+jurisdiction. See [COURSE_MAPPING.md](COURSE_MAPPING.md) and
+[GAP_ANALYSIS.md](GAP_ANALYSIS.md).
 
-## Appendix — where to find everything
+### A2 — Testing & determinism
+
+Every fast structure is checked against a brute-force oracle; the two containment
+algorithms cross-check each other; the whole suite runs under AddressSanitizer +
+UBSan in CI; and `make determinism` asserts byte-identical output for a fixed seed.
+
+### A3 — Architecture
+
+`Input → Zone Store → Spatial Index → Temporal Filter → Geometry → State Machine →
+Event`, with extensions hanging off the event stream. See
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+### A4 — Where to find everything
 
 | Question | Document |
 |---|---|
-| How does one run work, start to finish? | [WALKTHROUGH.md](WALKTHROUGH.md) |
-| Why these features? (research + citations) | [GAP_ANALYSIS.md](GAP_ANALYSIS.md) |
-| What structures, what complexity, what's built? | [DATA_STRUCTURES.md](DATA_STRUCTURES.md) |
-| Is the data real? How does it reach the page? | [DATA_PROVENANCE.md](DATA_PROVENANCE.md) |
-| Hard-question prep for the viva | [DESIGN_DEFENSE.md](DESIGN_DEFENSE.md) |
-| How is it deployed? | [DEPLOYMENT.md](DEPLOYMENT.md) |
-| Onboarding for a teammate | [../TEAM_BRIEF.md](../TEAM_BRIEF.md) |
+| Every measured number | [RESULTS.md](RESULTS.md) |
+| The five structures in depth | [DATA_STRUCTURES.md](DATA_STRUCTURES.md) |
+| Viva questions | [VIVA.md](VIVA.md) · [DESIGN_DEFENSE.md](DESIGN_DEFENSE.md) |
+| How to run the demo | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) |
+| Is the data real? | [DATA_PROVENANCE.md](DATA_PROVENANCE.md) |

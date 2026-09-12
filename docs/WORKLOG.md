@@ -6,6 +6,98 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-12 — Professor-level final review pass
+
+**What:** A strict end-to-end review before merge. (1) Audited every primary doc for
+numeric/terminology contradictions and reconciled the stragglers to
+[RESULTS.md](RESULTS.md): the "brought it down to 33×" and "32.7×" narrative
+numbers → ~35×; a stray "6.5×" STR figure → ~6×; DATA_STRUCTURES hysteresis
+white-noise 93.9% → 94.0% (the measured value); the 14.1×→32.7× root-fit anecdote
+re-framed as historical so it no longer reads as a competing current headline.
+(2) Added a **main-experiment panel** to the dashboard — the brute-force vs
+quadtree vs R-tree table (dataset size, latency, speedup, candidates) sourced from
+`bench/results/index_scaling.csv` (the same file RESULTS.md uses), plus a live
+equivalence pass over the run's own zones reporting real query count and mismatch
+count (3,000 queries, 0 mismatches). (3) Added a "why the index works" panel and a
+"course concepts demonstrated" panel (five core structures → concepts), and
+reframed the persistent-index panel around "same query, different historical
+version" (Wards Lake in force: no at 00:20, yes at 00:30). (4) Added
+[PROFESSOR_REVIEW.md](PROFESSOR_REVIEW.md) and a five-core→concepts table to
+COURSE_MAPPING.md.
+
+**Why:** Final defensibility pass — one source of truth for every number, the main
+experiment visible in the demo itself, and the examiner's likely questions answered
+in writing.
+
+**Impact:** Docs + additive read-only dashboard export only; no engine behaviour
+changed. All gates pass; dashboard verified in a browser with no console errors.
+
+### 2026-09-12 — Dashboard: index-mode switch + persistent-index visualization
+
+**What:** Added two visualizations to the generated dashboard, both driven by real
+engine data (no mock-ups):
+
+- An **index-mode switch** on the existing overlay button that cycles
+  **off → brute force → quadtree → R-tree**. Brute force draws every zone's box with
+  an "all N zones tested (O(n))" caption; quadtree draws its disjoint grid; R-tree
+  draws its overlapping envelopes. To feed the R-tree mode, added
+  `RTree::collect_node_boxes()` (mirroring the quadtree's) and built an R-tree over
+  the same zone set in the exporter.
+- A **persistent-index panel** showing a window of consecutive versions as mini
+  node-cell maps. Cells shared with the previous version (by pointer identity) are
+  dimmed; the freshly-copied root-to-leaf path is highlighted, with a "+N new / M
+  shared" caption. Added `VersionedIndex::viz_versions()`, a read-only walk that
+  flags each node shared vs new. In the `make dashboard` run this shows +14 new /
+  115 shared per mutation — path copying made literally visible.
+
+**Why:** The professor-facing ask was to *see* the data structures at work. The
+comparison and the persistence were previously only in `make bench` numbers.
+
+**Impact:** Additive only — new read-only methods and export fields; the evaluation
+core and all existing behaviour are unchanged. `make test`, `make check`,
+`make ubsan`, `make determinism`, and `make dashboard` all pass; the dashboard was
+verified in a browser with no console errors.
+
+### 2026-09-12 — Redesign around five core data structures for the course viva
+
+**What:** Reorganised the project's *narrative* (not its code) so the data
+structures are unmistakably the deliverable. Concretely:
+
+- Declared **five core structures** — brute force, quadtree, R-tree, interval tree,
+  persistent quadtree — and gave them top billing everywhere. Everything else is now
+  labelled a **Level-4 extension**.
+- **Rewrote `README.md`** to lead with the problem, the five structures, a
+  data-structures table, the one-query hot path, and the brute-force-vs-quadtree-vs-
+  R-tree experiment. Added a "60-second explanation" and "five questions this project
+  answers". The eleven-gaps research narrative moved to an Extensions section at the
+  bottom.
+- **Added `docs/RESULTS.md`** as the *single source of truth* for every measured
+  number. All other docs now defer to it. Numbers were re-measured with a fresh
+  `make bench`; no figure was invented or hand-edited away from measurement.
+- **Added `docs/VIVA.md`** (the 20 examiner questions, answered from the code),
+  **`docs/COURSE_MAPPING.md`** (each module → syllabus concept, CORE vs EXTENSION),
+  and **`docs/DEMO_SCRIPT.md`** (a literal 5-minute demo script).
+- **Simplified `docs/PRESENTATION.md`** to 10 core slides + an appendix, and
+  reorganised `docs/DATA_STRUCTURES.md` (five-core section first) and
+  `docs/ARCHITECTURE.md` (canonical linear pipeline up top).
+- **Added a real 10,000-zone row** to the scaling benchmark
+  (`apps/safetrail_bench.cpp`) so the README's size ladder (1k/10k/100k) is fully
+  measured rather than interpolated, and a dependency-free **chart generator**
+  (`tools/plot_scaling.py` → `bench/plots/index_scaling.svg`).
+- **Audited claims for consistency:** reconciled the headline speedups (~35×
+  quadtree, ~240–260× R-tree band) and clarified the test-count claim (≈770
+  assertion *sites*; 11,616 checks *executed* at runtime).
+
+**Why:** The implementation was strong but had become too broad to explain or defend
+— the story led with tourism-application features and an eleven-gap research
+narrative, burying the actual graded work. The goal was coherence and defensibility,
+not more features.
+
+**Impact:** No core implementation changed except the one-line addition of a 10k
+benchmark row. `make test`, `make bench`, `make determinism`, `make check`,
+`make dashboard`, and `make cmake-build` all still pass. A reader can now answer
+"what is this project?" in one sentence and defend the five structures from the docs.
+
 ### 2026-09-05 — Make the determinism claim true for the program, not one build of it
 
 **What:** Added `-ffp-contract=off` to both build systems, and corrected the two
