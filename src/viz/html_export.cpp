@@ -1,5 +1,7 @@
 #include "safetrail/viz/html_export.hpp"
 #include "safetrail/index/quadtree.hpp"
+#include "safetrail/index/rtree.hpp"
+#include "safetrail/index/versioned_index.hpp"
 #include "safetrail/alert/correlator.hpp"
 #include "safetrail/evidence/merkle_log.hpp"
 #include "safetrail/geo/haversine.hpp"
@@ -106,6 +108,7 @@ static const char* kShell = R"HTML(<!doctype html>
     <h2>rules in force <span id="asof" style="color:var(--b)"></span></h2>
     <div id="rules"></div>
     <h2>zone change log [GAP 3]</h2><div id="changes"></div>
+    <h2>persistent index [GAP 3]</h2><div id="versions"></div>
     <h2>evidence log [GAP 9]</h2><div id="evidence"></div>
     <h2>event stream</h2><div id="events"></div>
   </aside>
@@ -113,7 +116,7 @@ static const char* kShell = R"HTML(<!doctype html>
 <footer>
   <button id="play">pause</button>
   <input type="range" id="scrub" min="0" value="0">
-  <button id="qt">index overlay</button>
+  <button id="qt">index: off</button>
   <button id="acc">accuracy discs</button>
   <button id="disp">dispatch</button>
   <span style="color:var(--dim);font-size:10px">discs indicative, not to scale</span>
@@ -121,7 +124,15 @@ static const char* kShell = R"HTML(<!doctype html>
 <script>
 const D = __DATA__;
 const cv = document.getElementById('c'), cx = cv.getContext('2d');
-let frame = 0, playing = true, showQT = false, showAcc = false, showDisp = false, selected = -1;
+// idxMode: 0 off · 1 brute force · 2 quadtree · 3 R-tree. The switch the demo asks
+// for -- same data, same queries, three ways of organising the search.
+let frame = 0, playing = true, idxMode = 0, showAcc = false, showDisp = false, selected = -1;
+const IDX_NAMES = ['off', 'brute force', 'quadtree', 'r-tree'];
+// The cells the active index would draw. Brute force has none -- it scans every
+// zone -- which is the whole point of the comparison, so its overlay says so.
+function activeBoxes() {
+  return idxMode === 2 ? D.index_boxes : idxMode === 3 ? (D.rtree_boxes || []) : null;
+}
 const scrub = document.getElementById('scrub');
 scrub.max = D.frames.length - 1;
 
@@ -153,18 +164,33 @@ const ZC = {restricted:'#f85149', caution:'#d29922', safe:'#3fb950', advisory:'#
 function draw() {
   cx.fillStyle = '#0e1116'; cx.fillRect(0, 0, W, H);
 
-  if (showQT) {                       // real index node boxes, not an approximation
-    cx.strokeStyle = 'rgba(88,166,255,.20)'; cx.lineWidth = 0.6;
+  if (idxMode === 1) {                 // brute force: no structure -- every zone tested
+    cx.strokeStyle = 'rgba(248,81,73,.20)'; cx.lineWidth = 0.5;
+    for (const z of D.zones) {          // one faint box per zone = the whole scan
+      let n=1e9,s=-1e9,e=-1e9,w=1e9;
+      for (const p of z.ring){n=Math.min(n,p[0]);s=Math.max(s,p[0]);w=Math.min(w,p[1]);e=Math.max(e,p[1]);}
+      cx.strokeRect(X(w), Y(s), (e-w)*sc, (s-n)*sc);
+    }
+    cx.fillStyle = 'rgba(248,81,73,.95)'; cx.font = '12px ui-monospace';
+    cx.fillText('brute force: no spatial index — all ' + D.zones.length +
+                ' zones tested per query (O(n))', 14, 22);
+  } else if (idxMode === 2 || idxMode === 3) {   // real node boxes, not an approximation
+    const boxes = activeBoxes();
+    cx.strokeStyle = idxMode === 3 ? 'rgba(63,185,80,.28)' : 'rgba(88,166,255,.20)';
+    cx.lineWidth = 0.6;
     let drawn = 0;
-    for (const b of D.index_boxes) {
+    for (const b of boxes) {
       if (b[2] - b[0] > 20) continue;      // skip the root world box
       cx.strokeRect(X(b[1]), Y(b[2]), (b[3]-b[1])*sc, (b[2]-b[0])*sc);
       ++drawn;
     }
-    if (!drawn) {                          // be explicit rather than silently blank
-      cx.fillStyle = 'rgba(139,148,158,.9)'; cx.font = '12px ui-monospace';
+    cx.fillStyle = 'rgba(139,148,158,.95)'; cx.font = '12px ui-monospace';
+    if (!drawn)
       cx.fillText('index has a single node at this zone count - run with --synthetic to see subdivision', 14, 22);
-    }
+    else
+      cx.fillText(IDX_NAMES[idxMode] + ': ' + drawn + ' node cells' +
+                  (idxMode === 3 ? ' (envelopes overlap — it partitions items)'
+                                 : ' (disjoint grid — it partitions space)'), 14, 22);
   }
 
   // Synthetic zones first, as faint outlines -- they exist to give the index a
@@ -239,22 +265,29 @@ function draw() {
 
     // The spatial prune, made visible: the query neighbourhood around this tourist
     // (white dashed) and the index cells it actually touches (amber). Every other
-    // cell the tree skips -- that is the O(log n + k) story on screen.
+    // cell the tree skips -- that is the O(log n + k) story on screen. Reflects the
+    // active index; in brute-force mode there are no cells to skip -- it scans all.
     const qr = 0.006, ql = f.lat[selected], qo = f.lon[selected];
     const qb = [ql - qr, qo - qr, ql + qr, qo + qr];
+    const boxes = activeBoxes();
     let touched = 0;
-    cx.lineWidth = 0.9; cx.strokeStyle = 'rgba(210,153,34,.6)';
-    for (const b of D.index_boxes) {
-      if (b[2] - b[0] > 20) continue;                                  // skip world root
-      if (b[2] < qb[0] || b[0] > qb[2] || b[3] < qb[1] || b[1] > qb[3]) continue;
-      cx.strokeRect(X(b[1]), Y(b[2]), (b[3]-b[1])*sc, (b[2]-b[0])*sc);
-      ++touched;
+    if (boxes) {
+      cx.lineWidth = 0.9; cx.strokeStyle = 'rgba(210,153,34,.6)';
+      for (const b of boxes) {
+        if (b[2] - b[0] > 20) continue;                                // skip world root
+        if (b[2] < qb[0] || b[0] > qb[2] || b[3] < qb[1] || b[1] > qb[3]) continue;
+        cx.strokeRect(X(b[1]), Y(b[2]), (b[3]-b[1])*sc, (b[2]-b[0])*sc);
+        ++touched;
+      }
     }
     cx.setLineDash([5, 4]); cx.strokeStyle = 'rgba(255,255,255,.75)'; cx.lineWidth = 1.2;
     cx.strokeRect(X(qb[1]), Y(qb[2]), (qb[3]-qb[1])*sc, (qb[2]-qb[0])*sc);
     cx.setLineDash([]);
     cx.fillStyle = 'rgba(210,153,34,.9)'; cx.font = '11px ui-monospace';
-    if (touched) cx.fillText(touched + ' index cells touched', X(qb[1]), Y(qb[2]) - 6);
+    if (idxMode === 1)
+      cx.fillText('brute force: all ' + D.zones.length + ' zones tested', X(qb[1]), Y(qb[2]) - 6);
+    else if (boxes && touched)
+      cx.fillText(touched + ' ' + IDX_NAMES[idxMode] + ' cells touched', X(qb[1]), Y(qb[2]) - 6);
   }
 
   if (showDisp) {
@@ -488,18 +521,63 @@ function evidencePanel(){
   };
 }
 
+// ── GAP 3 made visible: path copying across consecutive versions ─────────────
+// Each version is a mini-map of the persistent quadtree's node cells. Cells the
+// version SHARES with the one before it (a refcount, no copy) are drawn dim; the
+// cells it freshly allocated -- the single root-to-leaf path a mutation copies --
+// are highlighted. So a geometry change lights up one branch and shares the rest,
+// and a validity-only change lights up nothing (it shares the whole tree).
+function versionsPanel() {
+  const el = document.getElementById('versions');
+  const vs = D.versions_viz || [];
+  if (!vs.length) { el.innerHTML = '<div class="m" style="color:var(--dim)">no version history</div>'; return; }
+  const w = 150, h = 116, span = 18;   // span: drop the world-root box
+  const mx = v => 4 + (v - B.w) / (B.e - B.w) * (w - 8);
+  const my = v => h - 4 - (v - B.s) / (B.n - B.s) * (h - 8);
+  const fmt = ms => { const s = Math.floor(ms/1000);
+    return String(Math.floor(s/3600)).padStart(2,'0')+':'+String(Math.floor(s/60)%60).padStart(2,'0'); };
+  let html = `<div class="m" style="color:var(--dim);margin-bottom:6px">` +
+    `${D.versions.toLocaleString()} versions · ${D.sharing.toFixed(1)}× structural sharing. ` +
+    `Highlighted = freshly copied this version; dim = shared from the previous one.</div>` +
+    `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
+  for (const v of vs) {
+    let cells = '';
+    for (const nd of v.nodes) {
+      const r = nd.r; if (!r || (r[2] - r[0]) > span) continue;   // skip world root
+      const x = mx(r[1]), y = my(r[2]), ww = (r[3]-r[1])/(B.e-B.w)*(w-8), hh = (r[2]-r[0])/(B.n-B.s)*(h-8);
+      const col = nd.sh ? 'rgba(139,148,158,.30)' : 'var(--b)';
+      const sw = nd.sh ? 0.5 : 1.1;
+      cells += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(ww,0.5).toFixed(1)}" height="${Math.max(hh,0.5).toFixed(1)}" fill="none" stroke="${col}" stroke-width="${sw}"/>`;
+    }
+    const note = v.new === 0 ? '<span style="color:var(--g)">+0 — whole tree shared</span>'
+                             : `<span style="color:var(--b)">+${v.new} new</span> / ${v.shared} shared`;
+    html += `<div style="background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px">
+      <svg width="${w}" height="${h}" style="display:block">
+        <rect x="0" y="0" width="${w}" height="${h}" fill="#0e1116"/>${cells}</svg>
+      <div class="m" style="font-size:10px;margin-top:3px">v${v.version} @ ${fmt(v.at)}<br>${note}</div>
+    </div>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
 function render() { draw(); panel(); trackPanel(); scrub.value = frame; }
 document.getElementById('play').onclick = e => {
   playing = !playing; e.target.textContent = playing ? 'pause' : 'play';
 };
-document.getElementById('qt').onclick = e => { showQT = !showQT; e.target.classList.toggle('on'); render(); };
+document.getElementById('qt').onclick = e => {
+  idxMode = (idxMode + 1) % 4;                     // off -> brute -> quadtree -> r-tree
+  e.target.textContent = 'index: ' + IDX_NAMES[idxMode];
+  e.target.classList.toggle('on', idxMode !== 0);
+  render();
+};
 document.getElementById('acc').onclick = e => { showAcc = !showAcc; e.target.classList.toggle('on'); render(); };
 document.getElementById('disp').onclick = e => { showDisp = !showDisp; e.target.classList.toggle('on'); render(); };
 scrub.oninput = () => { frame = +scrub.value; playing = false;
   document.getElementById('play').textContent = 'play'; render(); };
 addEventListener('resize', () => { resize(); render(); });
 resize(); render();
-incidentFeed(); evidencePanel();   // end-of-run summaries; render once
+incidentFeed(); evidencePanel(); versionsPanel();   // end-of-run summaries; render once
 setInterval(() => { if (playing) { frame = (frame + 1) % D.frames.length; render(); } }, 90);
 </script>
 )HTML";
@@ -540,6 +618,27 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
     std::vector<geo::Bbox> boxes;
     if (auto* qt = dynamic_cast<const index::Quadtree*>(&s.index()))
       qt->collect_node_boxes(boxes);
+    for (size_t i = 0; i < boxes.size(); ++i) {
+      if (i) d += ",";
+      d += "["; put_f(d, boxes[i].min_lat); d += ","; put_f(d, boxes[i].min_lon);
+      d += ","; put_f(d, boxes[i].max_lat); d += ","; put_f(d, boxes[i].max_lon); d += "]";
+    }
+  }
+
+  // R-tree node envelopes over the SAME zone set, so the overlay can switch
+  // between the two indexes and show the structural contrast: the quadtree's
+  // disjoint grid vs the R-tree's tight, overlapping item envelopes.
+  d += "],\"rtree_boxes\":[";
+  {
+    std::vector<std::pair<index::ZoneId, geo::Bbox>> items;
+    for (index::ZoneId id : s.zones().all_ids()) {
+      const auto* z = s.zones().get(id);
+      if (z) items.emplace_back(id, z->shape.bbox());
+    }
+    index::RTree rt;
+    rt.build(items);
+    std::vector<geo::Bbox> boxes;
+    rt.collect_node_boxes(boxes);
     for (size_t i = 0; i < boxes.size(); ++i) {
       if (i) d += ",";
       d += "["; put_f(d, boxes[i].min_lat); d += ","; put_f(d, boxes[i].min_lon);
@@ -600,6 +699,36 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
   d += "],\"versions\":" + std::to_string(s.versioned().version_count());
   d += ",\"sharing\":";
   put_f(d, s.versioned().share_stats().sharing_ratio(), 2);
+
+  // Persistent-index visualization: a small window of consecutive versions, each
+  // node flagged shared (reused from the previous version by refcount) or new
+  // (freshly allocated on this version's copied path). The viewer draws the
+  // shared nodes dimmed and the new ones highlighted -- path copying made visible.
+  d += ",\"versions_viz\":[";
+  {
+    const auto vv = s.versioned().viz_versions(4);
+    for (size_t vi = 0; vi < vv.size(); ++vi) {
+      if (vi) d += ",";
+      d += "{\"version\":" + std::to_string(vv[vi].version);
+      d += ",\"at\":" + std::to_string(vv[vi].at);
+      d += ",\"new\":" + std::to_string(vv[vi].new_nodes);
+      d += ",\"shared\":" + std::to_string(vv[vi].shared_nodes);
+      d += ",\"nodes\":[";
+      for (size_t ni = 0; ni < vv[vi].nodes.size(); ++ni) {
+        const auto& nd = vv[vi].nodes[ni];
+        if (ni) d += ",";
+        d += "{\"d\":" + std::to_string(int(nd.depth)) +
+             ",\"lf\":" + std::to_string(nd.leaf ? 1 : 0) +
+             ",\"sh\":" + std::to_string(nd.shared ? 1 : 0) +
+             ",\"it\":" + std::to_string(nd.items) + ",\"r\":[";
+        put_f(d, nd.region.min_lat); d += ","; put_f(d, nd.region.min_lon); d += ",";
+        put_f(d, nd.region.max_lat); d += ","; put_f(d, nd.region.max_lon);
+        d += "]}";
+      }
+      d += "]}";
+    }
+  }
+  d += "]";
   d += ",\"stats\":{\"zones\":" + std::to_string(s.zones().size()) +
        ",\"index\":\"" + s.index().name() + "\"" +
        ",\"avg_candidates\":"; put_f(d, ist.avg_candidates(), 2);
