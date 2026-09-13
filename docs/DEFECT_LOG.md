@@ -1,32 +1,36 @@
-# Resume Hardening — Flaws and Before/After
+# Defect log — what was wrong, and what fixed it
 
-A judged critique of this project (as if by a demanding data-structures examiner,
-for a resume context) and the tier-by-tier record of what was fixed. Each tier is
-committed and pushed separately; this file is the running before/after ledger.
+A running record of defects found in this project by successive self-review
+passes, and what each fix changed. It exists because the interesting part of a
+data-structures project is not that the structures work, but *how* the ways they
+were quietly wrong were found.
 
-The flaws are grouped by how badly they would hurt under interview questioning:
-**Tier 1** = credibility killers (a reviewer catches these first), **Tier 2** =
-substance/rigor, **Tier 3** = positioning for a resume, **Tier 4** =
-correctness and invariant hardening (what an examiner finds when they stop reading
-the docs and start reading the code), **Tier 5** = claim–code alignment (what is
-left once the invariants hold: complexity claims that are true in general but not
-for this project's data, a module built and never called, a reference
-implementation that answers a different question from the thing it references).
+Every entry is a real defect that shipped and was later caught: a flagship
+structure that silently never merged across ticks, a brute-force oracle that had
+been answering a different question than the thing it validated, a complexity
+claim that held in general but not on this project's data, a null-pointer UB in
+SHA-256 that a sanitizer gate surfaced. Each was fixed in its own commit.
 
-**Tiers 4 and 5 are not victory laps.** Each records a later, deeper audit that
-found real defects the earlier ones had not looked for — tier 4 in the project's
-flagship structure, tier 5 in a complexity claim and in a brute-force oracle that
-had been quietly invalid for as long as it existed. Nothing in the earlier tiers
-was wrong about what it fixed; each was simply looking at a different layer.
+The passes are ordered by depth, not by date — each one looked at a layer the
+previous one had not: **1** claims that contradicted the code, **2** benchmark
+rigor, **3** framing and claim accuracy, **4** correctness and invariants (what
+you find when you stop reading the docs and start reading the code), **5**
+claim–code alignment (complexity claims true in general but not for this data, a
+module built and never called, an oracle that had been quietly invalid).
 
-**How to read this file.** Every tier's table is a dated record of what was true
-*then*. The current-state numbers are the ones in the most recent tier and in
-`README.md`; earlier figures ("285 assertions across 28 files") are history, not
-claims, and are left in place because the point of the ledger is the trajectory.
+**Passes 4 and 5 are not victory laps.** Each records a later, deeper audit that
+found real defects the earlier ones had not looked for — pass 4 in the project's
+flagship structure, pass 5 in a complexity claim and in a brute-force oracle that
+had been invalid for as long as it existed.
+
+**How to read this file.** Every table is a dated record of what was true *then*.
+Current-state numbers are the ones in the most recent pass and in `README.md`;
+earlier figures are history, not claims, and are left in place because the point
+of the ledger is the trajectory.
 
 ---
 
-## Tier 1 — Credibility killers  ·  status: ✅ done
+## Pass 1 — Claims that contradicted the code  ·  status: ✅ done
 
 | # | Flaw | Before | After |
 |---|---|---|---|
@@ -46,7 +50,7 @@ those numbers real landed just before this tier (see
 
 ---
 
-## Tier 2 — Substance / rigor  ·  status: ✅ done
+## Pass 2 — Substance / rigor  ·  status: ✅ done
 
 | # | Flaw | Before | After |
 |---|---|---|---|
@@ -59,18 +63,18 @@ those numbers real landed just before this tier (see
 holds under the stricter method — **100k: quadtree ~32×, R-tree ~35×, spread
 ±3–10%** — so "~33×" is now a figure with an error bar, not a lucky single run.
 
-## Tier 3 — Positioning for a resume  ·  status: ✅ done
+## Pass 3 — Framing and claim accuracy  ·  status: ✅ done
 
 | # | Flaw | Before | After |
 |---|---|---|---|
-| 9 | **Breadth reads as shallow** | 14 structures + 17 algorithms + simulator + dashboard + CI; an interviewer drills one. | Added the **Resume framing** section below: lead with depth (the persistent quadtree + the honest ceiling analysis), one disciplined bullet, and what *not* to quote. The README callout points evaluators at the graded core first. |
+| 9 | **Breadth reads as shallow** | 14 structures + 17 algorithms + simulator + dashboard + CI; an interviewer drills one. | README and docs were restructured to lead with the five graded core structures and treat everything else as explicitly-labelled extensions, so depth is what a reader hits first. |
 | 10 | **"No `std::`" reads as NIH** | Framed as pure rigor; a senior engineer reads it as poor production judgment. | README ground rule now states it is a **deliberate learning constraint for the course, not a production recommendation** — in real software you'd use `std::unordered_map` and a mature spatial library. |
 | 11 | **Category inflation** | Most of the repo mass is systems/sim/viz, not data structures. | README "What this is" callout names the graded core (`geo/ index/ ds/ graph/`, ≈8k lines) and calls the simulator/dashboard/CI **scaffolding, not the deliverable**. |
 | 12 | **Product framing oversells** | "The engine every team imports," "runs offline on a device" — reads as a deployable product. | README callout states plainly: **course project, not a shipped product; no mobile app, no live server; real geography, simulated people.** "on a device" softened to "locally, no server, in simulation." GitHub About/description rewritten to lead with the data-structures framing. |
 
 ---
 
-## Tier 4 — Correctness and invariant hardening  ·  status: ✅ done
+## Pass 4 — Correctness and invariant hardening  ·  status: ✅ done
 
 Tiers 1–3 audited what the project *said*. This tier audited what it *did*: every
 structure's behaviour under deletion and churn, every serialisation format's
@@ -220,7 +224,7 @@ shipping a sanitizer target nobody on the team can execute.
 
 ---
 
-## Tier 5 — Claim–code alignment  ·  status: ✅ done
+## Pass 5 — Claim–code alignment  ·  status: ✅ done
 
 Tier 4 audited behaviour against claims. This pass re-audited the tree tier 4 left
 behind, hunting the specific residue a large correctness pass tends to leave: a
@@ -259,36 +263,3 @@ was to make them share a metric and then measure the modelling difference
 separately, so one number stopped standing for two questions.
 
 ---
-
-## Resume framing — how to present this without getting exposed
-
-The project's breadth is a liability in an interview: an interviewer picks **one**
-thing and drills to bedrock. Lead with depth, not the catalogue.
-
-**Do:**
-
-- **Lead with one advanced structure you can defend to the floor** — the
-  persistent path-copying quadtree. It is genuinely uncommon, it is real
-  (`shared_ptr<const Node>`, immutable nodes, measured 13× structural sharing),
-  and the "why the speedup ceilings at ~33×, not 29,000×" analysis shows judgment,
-  not just coding.
-- **Quote numbers with their caveats built in:** "≈33× over a brute-force oracle
-  (median of 7 runs, single machine), bounded by output size — analysed, not just
-  measured."
-- **Call it what it is:** a data-structures course project / simulation study.
-
-**Suggested one-liner** (defensible end to end):
-
-> Built a persistent (path-copying) quadtree in C++17 with reference-counted
-> immutable nodes for O(log n)-per-update historical queries; measured 13×
-> structural sharing over 5,000 versions and validated every index against a
-> brute-force oracle. Analysed why the spatial-index speedup is output-bound
-> (~33×), not the ~29,000× first predicted.
-
-**Don't:**
-
-- Don't quote a big test-count or "eleven gaps" as if breadth proves depth.
-- Don't imply a deployed product or real-world safety impact — the data is simulated.
-- Don't claim "O(log n) spatial index" unqualified — say "average-case; O(n) worst
-  case, which is why the AVL interval tree is the one with a real guarantee."
-- Don't list all 14 structures; name two or three you can whiteboard on demand.

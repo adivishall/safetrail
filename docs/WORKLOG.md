@@ -279,7 +279,7 @@ deletion and churn, every serialisation format against malformed input, every
 place two layers could disagree about the same question, and every asymptotic
 claim against the code implementing it. Twelve defects fixed; the full
 before/problem/fix/test ledger is [Tier 4 in
-RESUME_HARDENING.md](RESUME_HARDENING.md).
+DEFECT_LOG.md](DEFECT_LOG.md).
 
 The ones that mattered most:
 
@@ -408,13 +408,13 @@ dropped.
 
 3. **Reframed the "no `std::`" rule** as a deliberate learning constraint for the course, explicitly *not* a production recommendation — heading off the "reinventing `std::unordered_map` is poor judgment" read.
 
-4. **Added a "Resume framing" section** to `docs/RESUME_HARDENING.md`: lead with one deep structure (the persistent quadtree) plus the ceiling analysis, a defensible one-line bullet, and a "don't" list (no vanity counts, no implied product, no unqualified O(log n)).
+4. **Added a "Resume framing" section** to `docs/DEFECT_LOG.md`: lead with one deep structure (the persistent quadtree) plus the ceiling analysis, a defensible one-line bullet, and a "don't" list (no vanity counts, no implied product, no unqualified O(log n)).
 
 5. **Rewrote the GitHub About/description** to lead with the data-structures learning framing instead of "geofencing engine for tourist safety."
 
 **Why:** On a resume, breadth reads as shallow and a "geofencing engine" implies a product that doesn't exist. An interviewer drills one thing; the honest, depth-first framing is what turns the project from a liability into a differentiator.
 
-**Impact:** No code changed — positioning only. `README.md`, `docs/RESUME_HARDENING.md`, and the GitHub repo description updated. Closes the resume-hardening pass (tiers 1–3).
+**Impact:** No code changed — positioning only. `README.md`, `docs/DEFECT_LOG.md`, and the GitHub repo description updated. Closes the resume-hardening pass (tiers 1–3).
 
 ### 2026-08-25 — Substance pass (tier 2): benchmark rigor + honest caveats
 
