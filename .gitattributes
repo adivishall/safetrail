@@ -1,0 +1,19 @@
+# Language statistics
+#
+# GitHub's linguist counts bytes, so a 1.6 MB generated dashboard and a 4.9 MB
+# OSM road extract were drowning out ~780 KB of hand-written C++ and labelling
+# this repository "HTML". These files are build output and input data, not
+# authored source, so they are excluded from the language bar.
+
+dashboard.html      linguist-generated=true
+slides.html         linguist-generated=true
+web/**              linguist-generated=true
+data/**             linguist-generated=true
+bench/results/**    linguist-generated=true
+*.pdf               linguist-generated=true
+*.pptx              linguist-generated=true
+docs/**             linguist-documentation=true
+
+# Treat the real work as the real work.
+*.cpp               linguist-language=C++
+*.hpp               linguist-language=C++
