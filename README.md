@@ -296,6 +296,8 @@ data/  tools/           real OSM zones, road graph; data-prep + plotting scripts
 | [docs/PROFESSOR_REVIEW.md](docs/PROFESSOR_REVIEW.md) | ★ Examiner's-eye assessment: likely questions, the hardest one, the weakest area |
 | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | ★ A literal 5-minute demo script — command, screen, what to say |
 | [docs/PRESENTATION.md](docs/PRESENTATION.md) | ★ 10-slide walkthrough for your guide |
+| [docs/INTERVIEW.md](docs/INTERVIEW.md) | ★ Tech-interview framing: 30s/60s/3-min, key decisions, likely Q&A |
+| [docs/RESUME.md](docs/RESUME.md) | ★ Résumé bullets, each number traceable to a `make bench` command |
 | [docs/COURSE_MAPPING.md](docs/COURSE_MAPPING.md) | Which DS concept each module demonstrates; CORE vs EXTENSIONS |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The hot loop, data flow, layer responsibilities |
 
