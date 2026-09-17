@@ -15,6 +15,16 @@ This is a **Data Structures course project**. The data structures are the
 deliverable; the simulator, dashboard, and CI exist only to exercise them and
 prove they work.
 
+![SafeTrail dashboard — animated tourists and hazard zones over real OpenStreetMap geography, with the live brute-force vs quadtree vs R-tree benchmark table and the O(log n + k) explanation](docs/images/dashboard-main.png)
+
+<sub>The self-contained `make dashboard` (open `dashboard.html`, no server, no network). Real OSM geography around Shillong; the right panel is the measured benchmark, straight from `bench/results/index_scaling.csv`.</sub>
+
+**The index switch draws the *actual* structure each index builds on the same data** — the quadtree's disjoint space partition vs the R-tree's overlapping item envelopes:
+
+| Quadtree — partitions **space** (disjoint cells) | R-tree — partitions **items** (overlapping envelopes) |
+|---|---|
+| ![Quadtree spatial index: the map overlaid with the quadtree's recursive disjoint grid cells](docs/images/dashboard-quadtree.png) | ![R-tree spatial index: the map overlaid with the R-tree's overlapping green bounding-box envelopes](docs/images/dashboard-rtree.png) |
+
 ---
 
 ## The problem
