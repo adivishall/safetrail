@@ -1,0 +1,4 @@
+zones,brute_us,quad_us,rtree_us,quad_speedup,rtree_speedup,candidates,brute_iqr_pct,quad_iqr_pct,rtree_iqr_pct,brute_build_ms,quad_build_ms,rtree_build_ms,brute_bytes,quad_bytes,rtree_bytes,quad_nodes,quad_depth,rtree_nodes,rtree_depth,area_deg
+1000,3.8959,0.2325,0.2081,16.52,18.05,0.97,7.7,19.9,2.1,0.003,0.178,0.226,40072,77496,54952,321,5,155,3,0.350
+10000,37.6247,0.5030,0.3804,73.48,98.43,1.03,7.4,10.1,9.3,0.047,2.591,3.581,400072,777592,539848,3453,6,1456,4,1.107
+100000,425.8478,1.4478,0.8016,294.14,531.24,0.99,2.9,21.1,18.4,0.402,35.711,40.814,4000072,7315808,5380840,27245,9,14383,5,3.500
