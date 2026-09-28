@@ -251,36 +251,193 @@ the ceiling on any speedup.
 
 ---
 
-## Likely follow-ups
+## Other follow-ups
 
 **"Why hand-write this instead of using PostGIS or Boost.Geometry?"** The
 structures were the subject, and building them is what let me demonstrate their
 invariants, bounds and failure modes. In production I'd start from a mature
-library, and I'd still want the oracle and differential tests.
+library — and keep the oracle and the differential tests around it.
 
-**"Is 25× good?"** At that density the answer size, not the index, sets the limit.
-The constant-density run shows the same code at hundreds of times. The number to
-look at is k.
-
-**"How do you know the tests would catch a bug?"** `make mutation` injects 22
-realistic bugs — a pruning test that skips a child, a missing `max_high` refit, a
-state-machine step never run — and the suite must fail on each. Two early
-survivors were real gaps: the quadtree audit couldn't tell a quadtree from an
-arbitrary tree of boxes, and a duplicate-vertex screen in the sweep turned out to
-be dead weight.
-
-**"What happens if the index returns a zone twice, or in a different order?"**
-The differential tests check for duplicates; the evaluator sorts candidates by
-id; and `tests/fence/index_independence_test.cpp` requires identical event
-streams across indexes.
-
-**"What would break first under load?"** Zone churn (O(n) removal), then a single
-thread, then GPS-jump radius inflation.
+**"What if an index returns a zone twice, or in a different order?"** The
+differential tests fail on duplicates; the evaluator sorts candidates by id; and
+`tests/fence/index_independence_test.cpp` requires identical event streams
+across all four indexes.
 
 **"Is testing three neighbours in the sweep provably enough?"** No — it is
 evidence-based. An edge has at most two exempt partners, which motivates three;
-800,000 fuzzed degenerate rings show zero disagreements with the O(V²) oracle, and
-the mutation check shows the suite fails at one. A proof would mean handling
+800,000 fuzzed degenerate rings show zero disagreements with the O(V²) oracle,
+and the mutation check shows the suite fails at one. A proof would mean handling
 degenerate event points explicitly, the way Bentley–Ottmann implementations do
-(all segments through the event point at once). The oracle stays in the codebase
-and validation of small rings still uses it.
+(every segment through the event point at once). The oracle stays in the
+codebase, and small rings still use it.
+
+## Red-team questions
+
+The hardest questions this repository invites, answered from the code as it is.
+File references are to the current tree.
+
+**Why did the original implementation miss exits?**
+`Evaluator::evaluate()` advanced a (tourist, zone) state only inside its loop
+over the zones the index returned for the current fix. The query box is the fix's
+accuracy plus speed × 300 s, clamped to 100 m–10 km. If the next fix landed far
+enough away that the zone's box fell outside that query — a GPS gap, a vehicle —
+the zone never came back, its state stayed Inside forever, and no `ZoneExit` was
+emitted. Worse, a later real re-entry was silent, because the transition diff saw
+Inside → Inside. Zones going out of force were skipped before their state was
+touched, with the same effect. Now `reconcile()` visits every state not seen this
+fix: a zone that is deleted or out of force is closed (with an exit if it was
+Inside); an in-force zone the index did not return is fed a certain Outside
+observation through the hysteresis machine; settled states are dropped.
+`tests/fence/state_reconciliation_test.cpp`: before the fix, a walk across 60
+zones in 1 km steps produced 60 entries and zero exits.
+
+**Why was the flap filter wrong?**
+`HysteresisState` filtered Inside ↔ Outside with margins, a confirmation count
+and a minimum dwell, but returned an Uncertain verdict immediately. Two leaks
+followed. During a pending exit, one Uncertain fix was reported as Uncertain; the
+evaluator's diff saw Inside → Uncertain and emitted a `ZoneExit`, and the next
+inside fix emitted a `ZoneEnter`. And because the GPS model switches between 4 m
+and 35 m accuracy fix to fix, a person standing near a boundary alternated
+Outside/Uncertain and got a new `ZoneUncertain` on every alternation. Reported
+Uncertain is now a phase (`Ambiguous`) that clears only after `confirm_samples`
+consecutive clearly-outside fixes, and Uncertain cancels a pending exit. On the
+demo run, entries fell from 2,440 to 987 and Uncertain events from 64,168 to
+16,558.
+
+**Why did the query box create a correctness bug?**
+Filter-then-refine is only correct if the filter accepts everything the
+refinement could. The refinement measures on a sphere of radius 6,371,008.8 m
+(about 111,195 m per degree); the box used 111,320·cos(lat) m per degree of
+longitude, a WGS84 constant, so it was 0.11% too narrow east–west. A zone whose
+edge sat between 99.89% and 100% of the radius due east was dropped even though
+the exact test would have called it Uncertain. It mattered twice over, because
+the reconciliation step treats "not returned" as "certainly outside", which is
+only true if the box is conservative. `Bbox::around` is now the exact bounding
+box of a spherical cap, and `tests/geo/bbox_around_test.cpp` samples 160,000
+points (1,728 fell outside the old box).
+
+**How did you find the 94 polygons the sweep line misjudged?**
+Its own test used points on a jittered circle, which never produce touching
+edges, repeated vertices or collinear overlaps — exactly where sweep lines break.
+I generated random rings with coordinates snapped to a 4×4 or 8×8 lattice and
+compared the sweep with the O(V²) pairwise oracle: 94 of 800,000 disagreed, all
+"sweep says simple". Classified: 50 had a repeated vertex, 44 only touches or
+collinear overlaps, none a proper crossing. Then I isolated the cause by reverting
+each half of my fix separately: reverting the removal-side change changed
+nothing; reverting the insertion-side change brought back 118 disagreements. The
+real bug: on insertion a segment was tested only against its first non-exempt
+neighbour, and exempt (ring-adjacent) edges break Shamos–Hoey's adjacency
+argument. The fix tests every eligible segment among the nearest three on each
+side. It is evidence-based, not proven.
+
+**Why did the persistent index copy 96 nodes to remove one zone?**
+`remove_copy` copied a node before knowing whether the zone was beneath it, then
+searched depth-first, so every node visited on the way to the zone was copied and
+the copies of subtrees that didn't hold it were thrown away (but still counted in
+the sharing statistics). Removing an absent id copied 125 nodes and still minted a
+version. The insert rule — descend into the first child whose region fully
+contains the box — is deterministic, so a zone's location is determined by its
+box. The index now keeps each live zone's box and follows that single path:
+≤ 15 new nodes at the depth cap of 14 (measured mean 14.3 per removal).
+
+**How does the brute-force oracle establish correctness?**
+`BruteForceIndex` implements the same contract as every index — return each id
+whose box intersects the query box, touching included — with a linear scan too
+simple to get wrong. `tests/index/differential_test.cpp` compares every index
+with it set for set, over seven workload profiles designed to break spatial
+indexes, after every insert, removal and rebuild, together with each structure's
+invariant audit. Its limit: the oracle and the indexes share `Bbox::intersects`,
+so a bug in that predicate would change both sides identically and no
+differential test could see it. That predicate has no direct test of its own; it
+is the gap I'd close first. (The oracle has been wrong once before: its candidate
+counter added the whole output buffer — DEFECT_LOG pass 4.)
+
+**Why does 22/22 on the mutation check matter?**
+A passing suite shows the code satisfies the tests; a mutation check shows the
+tests constrain the code. Each of the 22 mutants is a realistic fault in a
+different core mechanism — a pruning test that skips a child, a missing `max_high`
+refit, a skipped rebalance, history filtered by today's rules, a reconciliation
+never run, an Uncertain fix completing an exit — and each must make a named test
+fail. It found two real gaps in the tests themselves before reaching 22/22: the
+quadtree audit could not tell a quadtree from an arbitrary tree of boxes, and a
+duplicate-vertex screen in the sweep was redundant (removed). The mutants are
+hand-picked, so 22/22 is evidence, not proof.
+
+**Why is the R-tree faster even at constant density, where each query has about one answer?**
+Both return the same ~1 result; the difference is how many boxes each tests to
+find it. The quadtree's rule sends a box only into a child that fully contains
+it, so a zone straddling a split line stays at that internal node — and every
+query that enters the node tests all of them. With 60–480 m zones, some fraction
+straddles a line at every level, so the upper nodes carry many items. That is
+where most of the quadtree's per-query work goes — I checked it with an
+instrumented build while preparing this answer; that instrumentation is not part
+of the repository, so treat it as my observation rather than a published
+number. The STR-packed R-tree keeps every entry in a leaf
+under a tight envelope (fan-out 8), so a query tests a few dozen boxes. The
+committed stats show the shape difference: at 100,000 zones and constant density
+the quadtree is depth 9 against the R-tree's 5 (`bench/results/index_density.csv`).
+
+**Why does the speedup collapse in crowded areas?**
+In one district k grows with n: at 100,000 zones about 98 overlap each 450 m
+query, and each must be found and returned, while brute force costs about n box
+tests no matter what. Speedup ≈ n / (log n + c·k) with k ∝ n is bounded. The
+quadtree levels off around 23–28×; the R-tree goes higher because it reaches the
+k answers through fewer box tests (the straddler effect above).
+
+**Why isn't O(log n + k) a worst-case guarantee here?**
+Neither spatial tree bounds the work per query. The quadtree partitions space:
+identical boxes cannot be separated, and straddling boxes accumulate at internal
+nodes, so a query can test O(n) boxes while k is small; `max_depth` bounds the
+depth but not the items per node. The R-tree is height-balanced, but sibling
+envelopes can overlap, so a query can descend every branch. O(log n + k) is the
+expected cost on spread data. The AVL interval tree is the structure with a
+guaranteed bound.
+
+**Why is the interval tree useful if it isn't on the per-fix path?**
+Per fix, validity is checked in O(1) on a handful of candidates the spatial index
+already chose — nothing beats that. The interval tree answers the question with
+no spatial filter: `VersionedIndex::active_at(t)`, "every zone in force at t",
+by the rules of time t. There it gives a guaranteed O(log n + k) and O(log n)
+deletion under churn, and it is 14–44× faster than a scan when windows are
+selective (RESULTS.md §8). When hundreds of windows contain every instant it is
+no faster than a scan (0.9–1.3×) — the same O(k) ceiling.
+
+**What happens at longitude 180?**
+The loader refuses non-finite coordinates and anything outside ±90° / ±180°, so
+no zone can span the antimeridian. Distance and bearing handle the wrap, and
+`offset` normalises its output. But `Bbox::around` does not wrap: near ±180° the
+query box extends past 180°, so a fix at 179.99° cannot see a zone at −179.99°.
+The indexes stay correct on out-of-domain boxes (tested), but geography across
+the seam is not supported. The fix would be to split a query box that crosses the
+seam into two.
+
+**Why are tolerances necessary in the geometry?**
+A point computed from doubles — an edge's midpoint, an interpolated vertex — is
+not exactly on the line; its cross product is ~1e-16 relative, not zero. Without
+a tolerance, "on the boundary" is a coin flip and ray casting and winding number
+disagree on it. The on-edge tolerance is a perpendicular distance, 1e-9° (about
+0.1 mm), so it is the same on every edge — the bug was a cross-product tolerance
+that made short edges 11 cm thick. Orientation treats |cross| ≤ 1e-14 deg² as
+collinear. Every caller shares `src/geo/segment.cpp`, so validation, containment
+and the sweep cannot disagree about where an edge is. Exact adaptive predicates
+would remove the tolerances; they are not implemented.
+
+**What would you change to make it multi-threaded?**
+The work splits by person: each `Tourist` owns its zone states, and the index and
+zone store are read-only during a tick. What the code would need changed: every
+index's `const query()` increments a `mutable IndexStats` counter, which is a data
+race under concurrent queries — move stats per thread or off the query path. The
+`Evaluator` keeps scratch buffers and counters as members — one evaluator per
+thread. And to keep output byte-identical, merge the per-thread event buffers in
+tourist-id order before the alert pipeline, which stays a single consumer. No
+locks are needed on the per-fix path.
+
+**What would change for millions of concurrent users?**
+It stops being one process. Shard by geography, each shard owning its zones and
+the people in them, with hand-off at shard boundaries; replicate each shard's
+index read-only across workers, since zones are few and people many; ingest fixes
+as a stream with per-person sequencing, because they arrive late and out of
+order; add id → node maps so zone edits are cheap; replace the in-memory event
+vector with a durable log. The per-person state is already bounded by the
+candidate window. The numbers in this repository are single-threaded per-query
+costs; I have not load-tested anything, so capacity figures would be guesses.

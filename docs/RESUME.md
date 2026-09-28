@@ -10,89 +10,63 @@ re-check them against [RESULTS.md](RESULTS.md) after any `make bench`.
 
 ## Bullets
 
-**1. The system**
+Each is about thirty words — two lines on a résumé. The source line under each
+is not part of the bullet.
 
-> Built a C++17 geofencing engine on hand-written spatial and temporal data
-> structures (quadtree, STR-packed R-tree, AVL interval tree, persistent
-> path-copying quadtree) with a brute-force correctness oracle, cutting
-> bounding-box query time at 100,000 zones by ~100–115× (R-tree) and ~27–28×
-> (quadtree) while returning results identical to a linear scan.
+1. **Built a C++17 geofencing engine on hand-written spatial and temporal indexes
+   (quadtree, STR R-tree, AVL interval tree, persistent quadtree); 100k-zone range
+   queries run ~100–115× faster than a linear scan with identical results.**
+   <sub>`make bench` §1, `bench/results/index_scaling.csv` and
+   `bench/results/variation/` (R-tree 102–114× over four runs); identical results
+   enforced by per-query checksums and `tests/index/differential_test.cpp`.</sub>
 
-<sub>Source: `make bench` §1 (`bench/results/index_scaling.csv`, ranges over the
-runs in `bench/results/variation/`); identical results enforced by per-query
-checksums in the benchmark and by `tests/index/differential_test.cpp`.</sub>
+2. **Established correctness with randomized differential tests against a
+   brute-force oracle, invariant audits after every operation, and mutation
+   testing (22/22 injected bugs caught), uncovering 8 latent defects in code that
+   passed its tests.**
+   <sub>`make test`, `make stress`, `make mutation`;
+   [DEFECT_LOG.md](DEFECT_LOG.md) pass 6.</sub>
 
-**2. Correctness engineering**
+3. **Traced ~60% of a simulation's enter/exit events to a hysteresis flaw that let
+   uncertain GPS readings bypass the flap filter; after the fix, transition counts
+   match noise-free ground truth within 4% under realistic drift.**
+   <sub>Dashboard configuration before/after (2,440 → 987 entries);
+   `make bench` §10, `bench/results/hysteresis_ab.csv` (502 vs 521);
+   `tests/fence/hysteresis_test.cpp`.</sub>
 
-> Validated the engine with randomized differential testing (~275,000 queries
-> over seven adversarial workload profiles), structural invariant audits after
-> every operation, and mutation testing (22 of 22 injected bugs caught), finding
-> and fixing 10 latent defects (8 in the engine, 2 in its benchmarks) — including a
-> state-machine bug that silently dropped zone exits after GPS gaps.
+4. **Found a sweep-line (Shamos–Hoey) bug by fuzzing 800,000 degenerate polygons
+   against an O(V²) oracle, and made the spatial filter conservative by deriving
+   query boxes from exact spherical-cap bounds.**
+   <sub>`tests/geo/sweep_line_test.cpp`, `tests/geo/bbox_around_test.cpp`;
+   [DEFECT_LOG.md](DEFECT_LOG.md) pass 6.</sub>
 
-<sub>Source: `make test` (45 files), `make mutation`,
-[DEFECT_LOG.md](DEFECT_LOG.md) pass 6, `tests/fence/state_reconciliation_test.cpp`.</sub>
+5. **Designed a persistent path-copying quadtree that answers "rules at time t"
+   queries at present-query cost, copying ~15 nodes per change (13× structural
+   sharing at 5,001 versions), verified against a full-replay oracle.**
+   <sub>`make bench` §9 (`versioned_index.csv`, `versioned_mutations.csv`);
+   `tests/index/persistence_differential_test.cpp`.</sub>
 
-**3. A bug with a number on it**
-
-> Diagnosed a hysteresis leak that let uncertain GPS readings bypass the flap
-> filter, producing about 60% of all enter/exit events in the reference run
-> (2,440 → 987 entries); replaced a before/after metric that could not detect
-> missed crossings with a noise-free ground-truth comparison, showing the filter
-> recovers 96% of the transitions perfect GPS would yield under realistic drift,
-> while an unfiltered geofence reports ~8× more transitions than real crossings.
-
-<sub>Source: `make dashboard` configuration run on the code before and after the
-fix; `make bench` §10 (`bench/results/hysteresis_ab.csv`);
-`tests/fence/hysteresis_test.cpp`.</sub>
-
-**4. The advanced structure**
-
-> Designed a persistent quadtree using path copying and an append-only validity
-> log, answering "which rules were in force at time t" at the cost of a present-
-> time query, allocating ~15 nodes per change (13× structural sharing at 5,001
-> versions) and verified against a full-replay oracle.
-
-<sub>Source: `make bench` §9 (`versioned_index.csv`, `versioned_mutations.csv`);
-`tests/index/persistence_differential_test.cpp`.</sub>
-
-**5. Measurement**
-
-> Rebuilt the benchmark harness — calibrated samples, interleaved rounds, paired
-> speedup ratios, result checksums, recorded environment — after finding the
-> previously published headline speedup irreproducible; documentation tables are
-> generated from the benchmark CSVs and CI fails if they disagree.
-
-<sub>Source: `apps/safetrail_bench.cpp` (protocol comment), `tools/render_results.py
---check` in `.github/workflows/deploy.yml`, [DEFECT_LOG.md](DEFECT_LOG.md).</sub>
-
-**6. Build and CI**
-
-> Enforced `-Werror` on gcc and clang from one warning list shared by Make and
-> CMake, whole-suite AddressSanitizer + UBSan, the Clang Static Analyzer (0
-> findings), mutation testing and a byte-for-byte determinism check in CI.
-
-<sub>Source: `tools/build/*.flags`, `Makefile`, `CMakeLists.txt`,
-`.github/workflows/deploy.yml`, `make analyze`, `make determinism`.</sub>
-
----
+6. **Rebuilt the benchmark harness — calibrated interleaved sampling, paired
+   ratios, result checksums, recorded environment — after the published headline
+   proved irreproducible; docs tables are generated from the CSVs and checked in
+   CI.**
+   <sub>`apps/safetrail_bench.cpp` (protocol comment), `tools/render_results.py`,
+   `.github/workflows/deploy.yml`.</sub>
 
 ## Short forms
 
-- *Hand-built quadtree / STR R-tree / AVL interval tree / persistent quadtree in
-  C++17; ~100–115× faster range queries than a linear scan at 100k zones with
+- *Hand-built quadtree, STR R-tree, AVL interval tree and persistent quadtree in
+  C++17; ~100–115× faster range queries than a linear scan at 100k zones, with
   identical results.*
-- *Differential + mutation testing (22/22 injected bugs caught) found 10 latent
-  defects in code that was already passing its tests.*
-- *Persistent path-copying quadtree: historical queries at present-query cost,
-  ~15 nodes per change.*
+- *Differential and mutation testing (22/22 injected bugs caught) found 8 latent
+  defects in code that already passed its tests.*
 
 ## Choosing bullets
 
-For a systems or infrastructure role lead with 2 and 5 (correctness and
-measurement discipline); for an algorithms-heavy role, 1 and 4; bullet 3 is the
-best story in an interview because it has a clear before/after and a lesson about
-metrics. Two or three bullets are plenty.
+For a systems or infrastructure role, lead with 2 and 6 (correctness and
+measurement discipline); for an algorithms-heavy role, 1, 4 and 5. Bullet 3 is the
+best interview story: a clear before/after, and a lesson about metrics. Two or
+three bullets are plenty.
 
 ## Do not claim
 

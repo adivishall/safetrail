@@ -165,8 +165,8 @@ without it, and no test could tell it was there).
 | Check | Where it runs | Result |
 |---|---|---|
 | AddressSanitizer + UBSan, whole suite, `-fno-sanitize-recover` | Linux CI (g++) | gates deployment |
-| UBSan, whole suite | macOS locally and in CI (Apple clang) | clean |
-| Warnings as errors: `tools/build/warnings.flags` (gcc, clang) + the `-Wconversion` family (clang) | every CI build job; `make validate` | clean |
+| UBSan, whole suite | macOS locally and in CI (Apple clang) | clean locally (Apple clang 17) |
+| Warnings as errors: `tools/build/warnings.flags` (gcc, clang) + the `-Wconversion` family (clang) | every CI build job; `make validate` | clean with Apple clang 17; g++ 13 and Linux clang are checked by CI |
 | Clang Static Analyzer, library + apps | `make analyze`; Linux CI (clang) | 0 findings with Apple clang 17 |
 
 AddressSanitizer cannot run on macOS 26 with Apple clang 17 — an empty program

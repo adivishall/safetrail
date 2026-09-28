@@ -15,19 +15,29 @@ candidates to the few zones near the fix, and exact geometry then decides those
 few. That split is only correct if the index never drops a zone the geometry
 would have accepted, and if the per-zone state machine stays truthful when zones
 drift in and out of the candidate set. Most of the engineering here is making
-those two things provably true.
+those two things true, and showing that they are.
 
-| Structure | Role | Implementation |
-|---|---|---|
-| **Brute force** | correctness oracle and speedup baseline | `src/index/brute_force.cpp` |
-| **Quadtree** | spatial filter — partitions space | root fitted to data, doubling expansion, collapse on delete |
-| **R-tree** | spatial filter — partitions items | quadratic split, **STR bulk loading**, condensing delete |
-| **AVL interval tree** | "which rules are in force at t?" | max-high augmentation, total-order key, O(log n + k) guaranteed |
-| **Persistent quadtree** | "what were the rules at 14:32?" | path copying + append-only validity log; O(depth) nodes per change |
+- **Key result (measured):** at 100,000 zones in one district,
+  <!-- results:keyline -->the R-tree answers the index query **110× faster** than a linear scan (102–114× over 4 runs) and the quadtree **28.1×** (26.9–28.4×), returning identical results<!-- /results:keyline -->.
+- **Correctness (evidence):** every index is compared with a brute-force oracle
+  on randomized hostile workloads, with invariant audits after every operation;
+  the whole engine must emit identical events under all four indexes; 22 of 22
+  injected bugs are caught. This process found ten real defects.
+- **Run it:** `make test && make demo && make dashboard` — a C++17 compiler and
+  `make`, nothing else.
 
-No spatial library, no `std::map`/`set`/`unordered_map`/`priority_queue`, no
-dependencies beyond a C++17 compiler. [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md)
-covers each structure's invariants and bounds.
+| Structure | Answers | Bound (theoretical) | Implementation |
+|---|---|---|---|
+| **Brute force** | which zone boxes meet this box? (the oracle) | O(n) | a scanned vector, kept forever as the baseline |
+| **Quadtree** | same, partitioning **space** | O(log n + k) expected; O(n) worst | root fitted to data, doubling expansion, collapse on delete |
+| **R-tree** | same, partitioning **items** | O(log n + k) expected; O(n) worst | quadratic split, **STR bulk loading**, condensing delete |
+| **AVL interval tree** | which rules are in force at t? | O(log n + k) worst case | max-high augmentation, total-order key |
+| **Persistent quadtree** | what were the rules at 14:32? | O(depth) new nodes per change | path copying + append-only validity log |
+
+k is the number of results. No spatial library, no
+`std::map`/`set`/`unordered_map`/`priority_queue`, no dependencies beyond a C++17
+compiler. [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) covers each structure's
+invariants and bounds.
 
 ![SafeTrail dashboard: simulated tourists over real OpenStreetMap hazard zones around Shillong, with the index-scaling table measured by make bench](docs/images/dashboard-main.png)
 
@@ -39,7 +49,7 @@ draws each index's actual structure on the same data.</sub>
 |---|---|
 | ![Quadtree cells over the zones](docs/images/dashboard-quadtree.png) | ![R-tree envelopes over the zones](docs/images/dashboard-rtree.png) |
 
-## Measured
+## Measured results (empirical)
 
 Speedups are **paired ratios against this project's own brute force**, shown with
 their range over independent runs. Absolute times are one laptop's
@@ -76,7 +86,7 @@ What the numbers say, and why:
   5,000-zone index), zero for a rule change, and a query against the past costs
   the same as one against the present. (§9)
 
-## How correctness is established
+## How correctness is established (evidence)
 
 | Method | What it covers |
 |---|---|
@@ -85,13 +95,13 @@ What the numbers say, and why:
 | **Invariant audits** | each core structure's `check_invariants()` runs after **every** operation in those tests |
 | **End to end** | the whole engine under all four indexes must emit bit-identical event streams |
 | **Mutation testing** | 22 realistic bugs injected into the core; the suite must fail on each (`make mutation`: 22/22) |
-| **Sanitizers, analysis** | whole suite under ASan + UBSan (Linux CI), UBSan (macOS), `-Werror` on gcc and clang, Clang Static Analyzer |
+| **Sanitizers, warnings, analysis** | the whole suite is UBSan-clean on macOS and gated under ASan + UBSan in Linux CI; `-Werror` builds with clang, and with g++ 13 in CI; Clang Static Analyzer: 0 findings |
 
 This process found **ten defects** in code that was already passing its tests —
-eight in the engine, two in how it was measured.
-One was the state machine never observing a zone again after it left the
-candidate window, which meant a missed exit and then a silent re-entry. Another,
-in the hysteresis filter, produced about 60% of the demo's enter/exit events. Each has a regression test that fails on the old code
+eight in the engine, two in how it was measured. One was the state machine never
+observing a zone again after it left the candidate window: a missed exit, then a
+silent re-entry. Another, in the hysteresis filter, produced about 60% of the
+demo's enter/exit events. Each has a regression test that fails on the old code
 ([DEFECT_LOG.md](docs/DEFECT_LOG.md), [TESTING.md](docs/TESTING.md)).
 
 ## Run it
@@ -136,8 +146,12 @@ change at production scale.
 - **Removal is O(n)** in every spatial index (no id → node map); the quadtree and
   R-tree have O(n) worst-case queries on adversarial data. Only the interval tree
   has a guaranteed query bound.
-- **Tolerance-based geometry**, not exact predicates; antimeridian-spanning zones
-  are refused at load.
+- **Tolerance-based geometry**, not exact predicates (on-edge tolerance ~0.1 mm).
+- **No antimeridian support.** Zones crossing ±180° are refused at load, and
+  query boxes do not wrap, so a fix at 179.99° cannot see a zone at −179.99°.
+- **GPS jumps inflate the query radius.** A jump sits in the 64-fix speed window
+  for about a minute, the radius clamps toward 10 km, and pruning collapses for
+  that person meanwhile — still correct, just slow.
 - **Single-threaded**, one process, in-memory.
 - Benchmarks come from one laptop. Ratios transfer far better than absolute times,
   and even ratios move between runs, which is why they're quoted as ranges.

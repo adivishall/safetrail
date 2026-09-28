@@ -227,6 +227,18 @@ def block_extensions():
     return table(["Extension", "§", "Measured"], out, ["---", "---", "---"])
 
 
+def block_keyline():
+    """README first screen: the headline result as one generated sentence."""
+    r = next((r for r in rows("index_scaling.csv") if r["zones"] == "100000"), None)
+    if not r:
+        return "(run make bench)"
+    return ("the R-tree answers the index query **%s× faster** than a linear scan "
+            "(%s over %d runs) and the quadtree **%s×** (%s), returning identical results"
+            % (x(float(r["rtree_speedup"])), band("index_scaling.csv", "zones", "100000", "rtree_speedup"),
+               nruns("index_scaling.csv"), x(float(r["quad_speedup"])),
+               band("index_scaling.csv", "zones", "100000", "quad_speedup")))
+
+
 def block_headline():
     """README: the three questions a reader asks first, 100,000 zones."""
     def get(name, key_col, key):
@@ -257,6 +269,7 @@ def block_headline():
 BLOCKS = {
     "env": block_env,
     "machine": block_machine,
+    "keyline": block_keyline,
     "scaling": lambda: scaling_block("index_scaling.csv"),
     "density": lambda: scaling_block("index_density.csv"),
     "e2e": block_e2e,

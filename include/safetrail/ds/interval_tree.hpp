@@ -7,9 +7,11 @@
 // O(n) into O(log n + k). std::multimap cannot do this -- there is no hook to
 // maintain a subtree aggregate -- which is why this is hand-written.
 //
-// Two independent uses, worth noting because they are unrelated problems:
-//   - alert/escalation.hpp        which alerts are now overdue
-//   - index/versioned_index.hpp   which zones were in force at time t   [GAP 3]
+// Used by index/versioned_index.hpp for active_at(t): which zones were in force
+// at time t, by the rules of time t [GAP 3]. It is deliberately NOT the per-fix
+// temporal filter -- the evaluator checks validity in O(1) on the few candidates
+// the spatial index returned -- and alert escalation deadlines use
+// ds/timer_wheel.hpp, which fits "what has expired by now" better.
 //
 // ── The ordering key, and why it is not just `low` ───────────────────────────
 //

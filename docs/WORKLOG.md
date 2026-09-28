@@ -6,6 +6,31 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-28 — Integrated with origin/main and re-validated on the result
+
+**What:** Committed the audit as four commits (core fixes and tests; benchmark;
+build hardening; docs and CI) and rebased them onto `origin/main`, which had
+three docs-only commits. Conflicts were resolved file by file: this branch's
+README, INTERVIEW, RESUME, screenshots and `.gitattributes`; `origin/main`'s
+reframed defect-log intro and "Pass" naming (the audit became Pass 6), its
+WORKLOG wording fixes, and its "technologies used" résumé section. Each replayed
+commit was built and tested on its own. Integration also found and fixed three
+small issues: `make bench` flagged every run as "uncommitted" in
+`environment.txt`; CI's runner images floated, so the GCC version was not
+pinned (now `ubuntu-24.04`, g++ 13); and the interval tree's header claimed a
+use it does not have. Benchmarks were regenerated on the clean integrated
+commit, and the interview guide gained answers to the hardest questions the
+implementation invites.
+
+**Why:** The previous pass lived only in an uncommitted working tree on a stale
+base; it had to become reviewable history on top of the current `origin/main`
+without losing either side.
+
+**Impact:** No engine behaviour changed. The full suite, stress, mutation
+(22/22), UBSan, static analysis, clang `-Werror`, CMake + ctest and determinism
+pass on the integrated history. GCC `-Werror` has not run yet: there is no GCC on
+the development machine, and CI builds this branch only once it is pushed.
+
 ### 2026-09-28 — Hostile audit: ten defects, a new test and benchmark regime, docs rebuilt
 
 **What:** A full audit of the core with one question per structure — what input

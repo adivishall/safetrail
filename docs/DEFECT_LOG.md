@@ -148,6 +148,9 @@ demo's enter/exit events — and two in how it was measured.
 | The evaluator's header listed an "adaptive sampling" step that gated nothing, a `fixes_skipped_power` counter that nothing incremented, and the per-candidate validity check as O(log n + k) | The header now says the sampler is fed, not consulted (it is a device-side policy, measured on its own); the dead counter is gone; the validity check is O(1) per candidate. |
 | The interval tree was presented as the per-tick temporal filter | It is not on the per-tick path — the evaluator checks validity in O(1) per candidate. README, ARCHITECTURE and DATA_STRUCTURES now say where it is used (history queries), and RESULTS.md §8 measures when it beats a scan. |
 | Introduced and caught within this audit: `.gitignore`'s `build/` also matched `tools/build/`, so a fresh clone would have lacked the shared warning-flag files — Make would have built with no warnings and CMake would have failed | Found by validating a clean export of the branch before committing. Patterns anchored to the root; the Makefile now refuses to build if the flag file is missing. |
+| Found while integrating with `origin/main`: `make bench` recorded "(uncommitted changes)" in `environment.txt` on every run, because the shell redirect truncates that tracked file before `git diff --quiet HEAD` inspects the tree | The dirty check now covers only the code that produces the numbers (`src`, `include`, `apps`, build files). |
+| CI ran on `ubuntu-latest` / `macos-latest`, so the GCC version that `-Werror` is enforced against could change with no commit | Pinned to `ubuntu-24.04` (g++ 13) and `macos-15`. |
+| `ds/interval_tree.hpp` claimed a second use in alert escalation; escalation uses the timer wheel | Corrected: the persistent index's `active_at` is its only engine use. |
 
 ---
 
