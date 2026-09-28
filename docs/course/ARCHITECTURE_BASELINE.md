@@ -1,5 +1,7 @@
 # safetrail — Geo-Fenced Tourist Safety & Incident Response
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 > `SIH25002` · Ministry of Development of North Eastern Region
 > Smart Tourist Safety Monitoring & Incident Response System
 

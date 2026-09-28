@@ -9,24 +9,145 @@ Every entry is a real defect that shipped and was later caught: a flagship
 structure that silently never merged across ticks, a brute-force oracle that had
 been answering a different question than the thing it validated, a complexity
 claim that held in general but not on this project's data, a null-pointer UB in
-SHA-256 that a sanitizer gate surfaced. Each was fixed in its own commit.
+SHA-256 that a sanitizer gate surfaced, a state machine that lost zones once they
+left the index's candidate window. Passes 1–5 fixed each defect in its own
+commit; pass 6's engine fixes landed together, in one commit with their tests.
 
-The passes are ordered by depth, not by date — each one looked at a layer the
-previous one had not: **1** claims that contradicted the code, **2** benchmark
-rigor, **3** framing and claim accuracy, **4** correctness and invariants (what
-you find when you stop reading the docs and start reading the code), **5**
-claim–code alignment (complexity claims true in general but not for this data, a
-module built and never called, an oracle that had been quietly invalid).
+The passes are ordered by depth — each one looked at a layer the previous one
+had not: **1** claims that contradicted the code, **2** benchmark rigor, **3**
+framing and claim accuracy, **4** correctness and invariants (what you find when
+you stop reading the docs and start reading the code), **5** claim–code alignment
+(complexity claims true in general but not for this data, a module built and
+never called, an oracle that had been quietly invalid), **6** a hostile audit
+driven by differential tests against oracles, invariant audits after every
+operation, and mutation testing. Pass 6, the most recent and the deepest, is
+listed first.
 
-**Passes 4 and 5 are not victory laps.** Each records a later, deeper audit that
-found real defects the earlier ones had not looked for — pass 4 in the project's
-flagship structure, pass 5 in a complexity claim and in a brute-force oracle that
-had been invalid for as long as it existed.
+**Passes 4, 5 and 6 are not victory laps.** Each records a later, deeper audit
+that found real defects the earlier ones had not looked for — pass 4 in the
+project's flagship structure, pass 5 in a complexity claim and in a brute-force
+oracle that had been invalid for as long as it existed, pass 6 in the state
+machine on the per-fix path and in the benchmark's own headline.
 
 **How to read this file.** Every table is a dated record of what was true *then*.
-Current-state numbers are the ones in the most recent pass and in `README.md`;
-earlier figures are history, not claims, and are left in place because the point
-of the ledger is the trajectory.
+Current-state numbers are the ones in the most recent pass, in `README.md` and in
+[RESULTS.md](RESULTS.md) / [TESTING.md](TESTING.md); earlier figures are history,
+not claims, and are left in place because the point of the ledger is the
+trajectory. In pass 6, every "Test" cell names a test that was run against the
+pre-fix code and **failed**, then passed after the fix; where a defect was found
+by a probe rather than a test, the probe's output is quoted.
+
+---
+
+## Pass 6 — Hostile audit of the core (2026-09-28)  ·  status: ✅ done
+
+A full re-audit with one question per structure: *what input would make this
+disagree with its oracle?* Answered with randomised differential tests over
+deliberately hostile workloads, structural invariant audits after every
+operation, and a mutation check that injects known bugs and requires a test to
+fail for each. Ten findings: eight defects in the engine — four of them on the
+per-fix path from GPS fix to event, one of which produced about 60% of the
+demo's enter/exit events — and two in how it was measured.
+
+### The state machine lost track of zones that left the candidate window
+
+| | |
+|---|---|
+| **Before** | `fence::Evaluator` advanced a tourist's per-zone state only for zones the spatial index returned this tick. |
+| **Problem** | A tourist confirmed **Inside** who then left the zone's candidate window in one step — a GPS gap, a vehicle ride, a fix after the phone was off — was never observed against that zone again: no `ZoneExit`, state stuck at Inside, and a later genuine re-entry raised **no** `ZoneEnter` because the state already said Inside. A zone whose validity window closed while someone was inside did the same. Probe: a walk across 60 zones in 1 km steps produced 60 entries and **zero** exits. Silent missed alerts, on the core path. |
+| **Fix** | A reconciliation step: every zone with open state is observed on every usable fix. Not returned by the index → a *certain* Outside (the query box provably bounds a disc at least as large as the fix's uncertainty — see the next entry), fed through the same hysteresis machine so one wild fix cannot force an exit. Out of force or deleted → state closed at once, with a `ZoneExit` if it was Inside. Settled states outside the window are dropped, which also bounds `zone_states` by the neighbourhood instead of by every zone ever visited. Candidates are now evaluated in zone-id order, making the event stream independent of which index produced them. |
+| **Test** | `tests/fence/state_reconciliation_test.cpp` — 9 of 18 checks fail on the old code (jump away, re-entry, zone expiry at t=60 s, reactivation, deletion, bounded state across 60 zones; plus "one wild fix is not an exit" and "a candidate dropped by the cap is not given a fabricated exit"). `tests/fence/index_independence_test.cpp` runs the whole simulation and a hostile teleport/validity workload under all four indexes and requires bit-identical event streams. |
+
+### Hysteresis let the Uncertain band through — 60% of transitions were flaps
+
+| | |
+|---|---|
+| **Before** | The hysteresis machine (asymmetric margins, N confirming fixes, minimum dwell) filtered Inside ↔ Outside only. An Uncertain verdict was reported as-is, and the next Outside verdict silently reset it. |
+| **Problem** | Two leaks. (1) From a pending exit, one Uncertain fix was reported as Uncertain — which the evaluator emits as a `ZoneExit` — and the next inside fix re-entered: an exit/enter flap pair straight through the filter. (2) A fix whose accuracy alternates between open sky (4 m) and multipath (35 m) near a boundary emitted a fresh `ZoneUncertain` on every alternation: 150 in five minutes for one stationary tourist. On the dashboard's two-hour run, removing the leaks took entries from **2,440 to 987**, exits from 2,422 to 965, Uncertain events from 64,168 to 16,558 and operator alerts from 79,052 to 23,380. |
+| **Fix** | "Reported Uncertain" became a phase of its own with the same exit rule as Inside: only a run of `confirm_samples` clearly-outside fixes leaves it. An Uncertain fix never ends Inside and cancels a pending exit instead of completing it; during a pending entry it restarts the confirmation count but keeps the dwell clock. |
+| **Test** | `tests/fence/hysteresis_test.cpp`. Its first version failed 7 of 13 checks on the old code, including the evaluator-level count (150 `ZoneUncertain` events in five minutes; now 1); it has since grown checks that use the new phase and so cannot compile against the old code. |
+
+### The hysteresis experiment could not tell a removed flap from a missed crossing
+
+| | |
+|---|---|
+| **Before** | `make bench` compared transitions with the filter off and on, both under GPS noise, and reported the difference as "94% of false transitions removed". |
+| **Problem** | Nothing compared either run with the truth, so suppressing *real* crossings would have scored as removing false ones — and the flap leak above was hiding inside the "filter on" count. |
+| **Fix** | Four runs over identical trajectories (the GPS model draws the same random numbers at any sigma): noise-free without and with the filter (the raw truth, and the *target* — truth under the dwell/confirmation policy), and noisy without and with it. Under realistic correlated drift the filter reports 96% of the target's transitions, while the naive geofence reports 16,168 transitions for 1,934 real boundary crossings (about 8×); under white noise the filter recovers 66% of the target. That trade-off is now visible instead of hidden (RESULTS.md §10). |
+
+### The index query box was not conservative
+
+| | |
+|---|---|
+| **Before** | `Bbox::around(c, r)` used 110,574 m per degree of latitude and 111,320·cos(lat) m per degree of longitude. |
+| **Problem** | Those are WGS84 constants; `distance_m` measures on a 6,371,008.8 m sphere (~111,195 m per degree). The box came out 0.11% too **narrow** east-west, so the filter could drop a zone the exact test would have called Uncertain — the filter-then-refine contract requires the filter to be a superset. Probe: 1,728 of 160,000 points sampled inside the radius fell outside the box. It also mishandled caps containing a pole. |
+| **Fix** | The exact bounding box of the spherical cap on the same sphere: half-width `r/R` in latitude and `asin(sin(r/R) / cos(lat))` in longitude (a great circle bulges poleward), full longitude range when the cap reaches a pole, and a 1e-9 relative pad for rounding. |
+| **Test** | `tests/geo/bbox_around_test.cpp` — conservative on 160,000 sampled points across both hemispheres and radii from 1 m to 100 km; tight (no edge measurably beyond the cap); poles; zero and negative radii. 7 of 10 checks fail on the old code. |
+
+### "On the boundary" was thicker on short edges
+
+| | |
+|---|---|
+| **Before** | `point_on_segment` compared the raw cross product against 1e-11. |
+| **Problem** | The cross product is |edge| × perpendicular distance, so the boundary's thickness was inversely proportional to edge length: ~1 mm on a 100 m edge, ~11 cm on a 1 m edge. A fix 10 cm *outside* a small zone read as "on the boundary", which the containment rules define as inside. GEOMETRY_EDGE_CASES.md already promised a 1e-9° (~0.1 mm) tolerance; the code did not implement it. |
+| **Fix** | Compare the perpendicular distance: `|cross| <= 1e-9 · |edge|`, degrading gracefully to "within 1e-9 of the point" for a zero-length edge. |
+| **Test** | `tests/geo/ray_casting_test.cpp` — a point 10 cm outside 1 m, 100 m and 5 km edges is outside, the midpoint is on the boundary, and ray casting agrees with winding number. The 1 m case fails on the old code. |
+
+### Sweep-line validation called some self-intersecting rings simple
+
+| | |
+|---|---|
+| **Before** | Shamos–Hoey tested a newly inserted segment against its *first* non-exempt neighbour on each side (ring-adjacent edges are exempt: they share a vertex). Same-x events were ordered by `(x, type)` only. |
+| **Problem** | Exempt pairs break the textbook adjacency argument, so a touching segment one step further out was never compared. Fuzzing on lattice rings — touches, shared vertices, collinear overlaps, the inputs a sweep is fragile on — found **94 disagreements in 800,000 rings** against the O(V²) pairwise oracle, all false "simple" verdicts; the existing test used jittered circles, which never produce degeneracies, and asserted "verdicts identical on every ring". Separately, `std::sort` on `(x, type)` leaves same-x events in unspecified order, free to differ between standard libraries. A first diagnosis blamed the removal step; restoring each half of the fix separately showed the insertion step was the whole cause, and the removal change was reverted. |
+| **Fix** | Test every eligible segment among the nearest three on each side at insertion (an edge has at most two exempt partners); a total event order `(x, type, index)`. Still O(log n) per event. |
+| **Test** | `tests/geo/sweep_line_test.cpp` — eight pinned rings (all fail on the old code) and a 12,000-ring degenerate lattice fuzz, 0 disagreements; the 800,000-ring version also shows 0. |
+
+### Interval-tree deletion broke its own ordering invariant on exact duplicates
+
+| | |
+|---|---|
+| **Before** | Deleting a node with two children copied its in-order successor up, then removed "the successor" by *searching* for its `(low, high, value)` triple. |
+| **Problem** | With exact duplicates (legal: two rules with the same window and payload) the search can stop on a *different* node with the same triple. The real successor then survives in the right subtree while its payload and tie-break `seq` are also copied up: two live nodes with one total-order key. `check_invariants()` fails; queries stayed correct because the payloads are indistinguishable, which is how it hid — the existing test audited only after draining the tree. Also: `stabbing(INT64_MAX)` computed `at + 1`, a signed overflow (UB) reachable as `active_at(kForever)`, and an inverted query range `[10, 5)` "overlapped" `[0, 20)`. |
+| **Fix** | Unlink the successor by position (`erase_min`, rebalancing on the way up). Guard `INT64_MAX` (no half-open interval contains it) and empty ranges. |
+| **Test** | `tests/ds/interval_tree_test.cpp` — invariants audited after **every** removal of 50 identical entries, of a mixed duplicate block, and of 3,000 random ops over a 4×3×3 key space; the range and overflow cases. 7 checks fail on the old code; the overflow was reported by UBSan. |
+
+### The persistent quadtree's mutations were not what they claimed
+
+| | |
+|---|---|
+| **Before** | `remove_zone` searched the tree depth-first, copying every node it *visited*; `add_zone` of a present id inserted a second copy; commit times were trusted to be increasing; the world-sized root was never widened. |
+| **Problem** | Removing one zone from a 2,000-zone index allocated **96** nodes (the claim was O(depth)); removing an id that never existed allocated 125 and still minted a version; re-adding an id made every later query return it twice; a change stamped earlier than the latest version left `version_times_` unsorted, and `version_at()` binary-searches it, so `query_at` silently returned the wrong version; a box past lon 180 was stored at the root but pruned from every query. |
+| **Fix** | Removal follows the one path the insert rule put the zone on (a per-zone box makes it a guided descent) — O(depth) allocations. Absent-id removal and validity edits are no-ops that create no version. Re-adding replaces geometry and validity in a single version (`Change::Kind::Replaced`). Transaction time is monotone: a late change is recorded at the latest version's time. The root copy widens to cover out-of-domain boxes. A `check_invariants()` audits every retained version. |
+| **Test** | `tests/index/persistence_differential_test.cpp` — 25 seeds × 160 random ops (adds, replacements, absent removals, out-of-order commits, zero-area / on-split-line / negative / past-180 / huge boxes) against a replay oracle that keeps a full table per version; every `query_at`, `active_at`, `validity_at`, `zone_count_at` and `query_now` must match; invariants after every op; no mutation may allocate more than two paths plus a split. The mutation check confirms each fix is load-bearing (see TESTING.md). |
+
+### The zone loader converted untrusted numbers with undefined behaviour
+
+| | |
+|---|---|
+| **Before** | `uint8_t(severity)`, `uint32_t(jurisdiction)`, `Timestamp(seconds * 1000)` straight from the GeoJSON; coordinates unchecked. |
+| **Problem** | A double-to-integer conversion whose value does not fit is undefined behaviour in C++, not a wrap: `severity: 300`, `jurisdiction: -1` and `active_to_s: 1e300` each reached one (UBSan: "300 is outside the range of representable values of type 'unsigned char'"). A ring stored across the antimeridian as lon > 180 loaded and then half-worked, since nothing downstream wraps longitude. |
+| **Fix** | Every numeric property is range-checked before conversion and a bad one rejects the file with a reason; coordinates must be finite and on the lat/lon domain. Geohash's Morton encoder also sends NaN to cell 0 instead of converting it to an integer. |
+| **Test** | `tests/fence/zone_roundtrip_test.cpp` — seven hostile files, each refused with the right reason; all seven load on the old code. |
+
+### The benchmark's headline was not reproducible
+
+| | |
+|---|---|
+| **Before** | Each timing was the median of 7 passes of 2,000 queries — about 2 ms of work for a tree index — run index after index. The README quoted the R-tree at "~240–260×" and the quadtree at "~35×". |
+| **Problem** | A 2 ms window is at the mercy of the scheduler; a baseline run for this audit measured 138× and 29× on the same machine, with ±40% spreads. Nothing recorded the conditions a number was measured under. |
+| **Fix** | A calibrated, interleaved protocol (samples ≥ 20 ms, 11 rounds, contender order rotated, paired ratios, IQR reported, result checksums gated), fixed-density scaling beside fixed-area, an end-to-end filter+refine benchmark with a truly naive baseline, build/memory/update costs, the interval tree against a linear scan, and `bench/results/environment.txt` recording compiler, CPU, power source and load. See RESULTS.md. |
+
+### Smaller findings in the same pass
+
+| Finding | Resolution |
+|---|---|
+| Seven empty "tombstone" headers (`server/http_api.hpp`, `geo/predict.hpp`, …) and a stub `safetrail_server` that only printed an error | Deleted, with the one live `#include` repointed. Scaffolding that says "not implemented" is still scaffolding. |
+| `-Wshadow` hits in four places (CMake enabled it, the Makefile did not), a real `-Wformat-truncation` in the headless app's time formatter (gcc), 14 sign conversions | Fixed. Both build systems read one warning list (`tools/build/*.flags`); CI builds everything with `-Werror`. |
+| The quadtree's structural audit could not tell a quadtree from "some tree of boxes": a root expansion that put the old root in the wrong quadrant survived every test (found by the mutation check) | `Quadtree::check_invariants()` now requires every child to be exactly its parent's quadrant. |
+| Index memory was reported as node count × `sizeof(Node)` | Measured: nodes plus the capacity of every vector they own. |
+| The evaluator's header listed an "adaptive sampling" step that gated nothing, a `fixes_skipped_power` counter that nothing incremented, and the per-candidate validity check as O(log n + k) | The header now says the sampler is fed, not consulted (it is a device-side policy, measured on its own); the dead counter is gone; the validity check is O(1) per candidate. |
+| The interval tree was presented as the per-tick temporal filter | It is not on the per-tick path — the evaluator checks validity in O(1) per candidate. README, ARCHITECTURE and DATA_STRUCTURES now say where it is used (history queries), and RESULTS.md §8 measures when it beats a scan. |
+| Introduced and caught within this audit: `.gitignore`'s `build/` also matched `tools/build/`, so a fresh clone would have lacked the shared warning-flag files — Make would have built with no warnings and CMake would have failed | Found by validating a clean export of the branch before committing. Patterns anchored to the root; the Makefile now refuses to build if the flag file is missing. |
 
 ---
 

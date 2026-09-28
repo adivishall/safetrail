@@ -1,5 +1,7 @@
 # safetrail — Team Brief
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 Everything you need to understand this project, get it running, and pick up a
 task. Read this first; the deeper documents are linked at the end.
 
@@ -49,7 +51,7 @@ Two consequences, and both are ours to take:
 2. **It creates real functional gaps**, because depending on a server-side
    spatial database breaks in exactly the terrain this problem targets.
 
-Full research writeup with sources: [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md).
+Full research writeup with sources: [docs/GAP_ANALYSIS.md](../GAP_ANALYSIS.md).
 
 ---
 
@@ -128,7 +130,7 @@ data/zones/shillong_osm.geojson   (real OpenStreetMap data)
 ## 5. The eleven things nobody else does
 
 Each traces to a documented gap. Details in
-[docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md).
+[docs/GAP_ANALYSIS.md](../GAP_ANALYSIS.md).
 
 | # | Gap | What we do | Status |
 |---|---|---|---|
@@ -162,7 +164,7 @@ serverless by design — the engine emits one HTML file), `geo/haversine.hpp` an
 (superseded by `viz/html_export.cpp` and `sync/lamport.hpp`). They survive so that
 the comments referring to them lead somewhere honest rather than to a missing
 file. Full inventory with complexity and status, including a "what is deliberately
-NOT built" table: [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md).
+NOT built" table: [docs/DATA_STRUCTURES.md](../DATA_STRUCTURES.md).
 
 ### What's built
 
@@ -186,7 +188,7 @@ NOT built" table: [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md).
 Every fast structure has a unit test that checks it against a slow, obviously
 correct oracle, and the whole pipeline has an end-to-end test
 (`tests/golden/incident_formation_test.cpp`). Build order and history:
-[docs/ROADMAP.md](docs/ROADMAP.md).
+[docs/ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -206,7 +208,7 @@ on **simulated** data. State those three caveats before quoting the number.
 | Quadtree | ~7.0 µs | **~35×** |
 | R-tree (STR bulk build) | ~1.0 µs | **~240–260×** |
 
-All numbers are authoritative in [docs/RESULTS.md](docs/RESULTS.md).
+All numbers are authoritative in [docs/RESULTS.md](../RESULTS.md).
 The R-tree pulled ahead once `build()` switched from repeated insertion to STR
 bulk packing — same data, same query code, ~6× faster queries and a 33% smaller
 tree purely from how it was assembled.
@@ -280,7 +282,7 @@ Everything between input and output is genuinely computed. Nothing is mocked.
 no fetch, no XHR, no socket, no CDN, no tile server. The engine serialises its
 output straight into the HTML file (99.3% of the 1.6 MB is data; the viewer is
 11.7 KB). Verification commands:
-[docs/DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md).
+[docs/DATA_PROVENANCE.md](../DATA_PROVENANCE.md).
 
 ---
 
@@ -342,7 +344,7 @@ from one of three places:
    complexity and its own guarantees. When one stops being true, the code is the
    source of truth and the comment is the bug — that is how the k-d tree's
    metric mismatch was found (`docs/WORKLOG.md`).
-3. **A phase in [docs/ROADMAP.md](docs/ROADMAP.md)** that is genuinely future
+3. **A phase in [docs/ROADMAP.md](ROADMAP.md)** that is genuinely future
    work rather than a missing piece of what is already claimed.
 
 Whichever it is:
@@ -361,17 +363,17 @@ Whichever it is:
 | Doc | Why |
 |---|---|
 | **This file** | Start here |
-| [PRESENTATION.md](docs/PRESENTATION.md) | ★ A-to-Z slide-by-slide walkthrough to present to your guide |
-| [WALKTHROUGH.md](docs/WALKTHROUGH.md) | ★ Start-to-finish trace of one run with diagrams — how the whole thing works |
-| [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | The research: what exists, the eleven gaps, what we deliberately skip |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, the hot loop, data flow |
-| [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) | Every structure, complexity, and all measured results |
-| [ROADMAP.md](docs/ROADMAP.md) | Phase plan and what to build next |
-| [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | The ten ways point-in-polygon breaks |
-| [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) | Where every number comes from, verifiable |
-| [DESIGN_DEFENSE.md](docs/DESIGN_DEFENSE.md) | ★ Answers to the hard viva questions — worst case, noise model, hand-written rule, scope |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | How to deploy — dashboard to Pages, engine as binaries, and the on-device story |
-| [PROJECT_DESCRIPTION.md](docs/PROJECT_DESCRIPTION.md) | The formal writeup for our guide |
+| [PRESENTATION.md](PRESENTATION.md) | ★ A-to-Z slide-by-slide walkthrough to present to your guide |
+| [WALKTHROUGH.md](WALKTHROUGH.md) | ★ Start-to-finish trace of one run with diagrams — how the whole thing works |
+| [GAP_ANALYSIS.md](../GAP_ANALYSIS.md) | The research: what exists, the eleven gaps, what we deliberately skip |
+| [ARCHITECTURE.md](../ARCHITECTURE.md) | Layers, the hot loop, data flow |
+| [DATA_STRUCTURES.md](../DATA_STRUCTURES.md) | Every structure, complexity, and all measured results |
+| [ROADMAP.md](ROADMAP.md) | Phase plan and what to build next |
+| [GEOMETRY_EDGE_CASES.md](../GEOMETRY_EDGE_CASES.md) | The ten ways point-in-polygon breaks |
+| [DATA_PROVENANCE.md](../DATA_PROVENANCE.md) | Where every number comes from, verifiable |
+| [DESIGN_DEFENSE.md](DESIGN_DEFENSE.md) | ★ Answers to the hard viva questions — worst case, noise model, hand-written rule, scope |
+| [DEPLOYMENT.md](../DEPLOYMENT.md) | How to deploy — dashboard to Pages, engine as binaries, and the on-device story |
+| [PROJECT_DESCRIPTION.md](PROJECT_DESCRIPTION.md) | The formal writeup for our guide |
 
 ---
 

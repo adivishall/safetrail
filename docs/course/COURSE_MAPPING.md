@@ -1,5 +1,7 @@
 # Course Mapping — which Data Structures concept each part demonstrates
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 This maps the implementation onto the concepts a Data Structures course covers, and
 draws a hard line between **CORE** (the five graded structures + the geometry that
 makes them useful) and **EXTENSIONS** (substantial supporting work that is not
@@ -127,8 +129,8 @@ Legend: **[CORE]** is graded spine; **[EXT]** is extension.
 
 | Concept | Where | Notes |
 |---|---|---|
-| Average vs worst case | **[CORE]** [DATA_STRUCTURES.md](DATA_STRUCTURES.md) worst-case table | explicit for every structure |
-| Output-sensitive bounds (`+k`) | **[CORE]** [RESULTS.md](RESULTS.md) §1 | the candidate column proves the `k` ceiling empirically |
+| Average vs worst case | **[CORE]** [DATA_STRUCTURES.md](../DATA_STRUCTURES.md) worst-case table | explicit for every structure |
+| Output-sensitive bounds (`+k`) | **[CORE]** [RESULTS.md](../RESULTS.md) §1 | the candidate column proves the `k` ceiling empirically |
 | Amortised analysis | **[EXT]** hash-table rebuild, Merkle append | stated where it applies |
 | Empirical validation | **[CORE]** `make bench` | every asymptotic claim measured against the code |
 

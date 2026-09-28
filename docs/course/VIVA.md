@@ -1,8 +1,10 @@
 # Viva Preparation — 20 questions, answered from the implementation
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 Every answer here is grounded in code that exists in this repository, and every
-number is authoritative in [RESULTS.md](RESULTS.md). If you internalise the five
-core structures ([DATA_STRUCTURES.md](DATA_STRUCTURES.md)) and these twenty
+number is authoritative in [RESULTS.md](../RESULTS.md). If you internalise the five
+core structures ([DATA_STRUCTURES.md](../DATA_STRUCTURES.md)) and these twenty
 answers, you can defend the project.
 
 **Golden rule for the room:** never oversell. Where something is an approximation,

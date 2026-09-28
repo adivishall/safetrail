@@ -38,7 +38,7 @@ double ring_signed_area(const Ring& r);
 // The threshold is measured, not assumed, and it has moved once. Section 16 of
 // `make bench` times both on simple rings from 8 to 2048 vertices. When the
 // sweep was fixed to test several neighbours on insertion (it had been calling
-// some degenerate self-intersecting rings simple -- docs/DEFECT_LOG.md, tier 6)
+// some degenerate self-intersecting rings simple -- docs/DEFECT_LOG.md, pass 6)
 // it got ~25% slower, and the crossover moved from ~48-56 vertices to ~64-80:
 // two runs measured 0.96x / 0.89x at 64 and 1.11x / 1.07x at 80. The curve is
 // flat there, so the exact value costs little either way; above it the gap

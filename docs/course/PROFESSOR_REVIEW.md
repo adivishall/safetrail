@@ -1,9 +1,11 @@
 # Professor Review
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 An examiner's-eye assessment of this project as a **Data Structures course
 project** — written to be read before the viva, and to be honest about where the
 project is strong and where it is thin. Numbers are authoritative in
-[RESULTS.md](RESULTS.md); question drills are in [VIVA.md](VIVA.md).
+[RESULTS.md](../RESULTS.md); question drills are in [VIVA.md](VIVA.md).
 
 ---
 
@@ -29,7 +31,7 @@ Ranked by how probable and how load-bearing each is.
 **Strongest answer:** ~35× (quadtree) to ~240–260× (R-tree) at 100,000 zones, a
 ratio to our own brute force — and correctness is proven *first*: 18,000 randomized
 queries across three densities, **0 mismatches** against the brute-force oracle.
-**Evidence:** `make bench` §1 and §2; [RESULTS.md](RESULTS.md) §1–2; the dashboard's
+**Evidence:** `make bench` §1 and §2; [RESULTS.md](../RESULTS.md) §1–2; the dashboard's
 "main experiment" panel re-measures the mismatch count live (3,000 queries, 0
 mismatches over these zones).
 
@@ -67,7 +69,7 @@ versions" + per-version "+14 new / 115 shared"); `make bench` §5;
   proven and measured.
 - **Output-sensitive k:** every "+ k" is the result-set size, the speedup ceiling.
 
-**Evidence:** the worst-case table in [DATA_STRUCTURES.md](DATA_STRUCTURES.md); the
+**Evidence:** the worst-case table in [DATA_STRUCTURES.md](../DATA_STRUCTURES.md); the
 test asserts the interval tree's height ≤ 1.44·log₂(n+2) every run.
 
 ### 6. "You use `std::sort` / `std::shared_ptr` — is anything actually hand-written?"
@@ -75,14 +77,14 @@ test asserts the interval tree's height ≤ 1.44·log₂(n+2) every run.
 tree, brute force, persistent quadtree, plus the heap, hash table, union-find. The
 banned list is `std::map/set/unordered_map/priority_queue`, Boost.Geometry, PostGIS.
 `std::sort` is an algorithm; `std::shared_ptr` is the memory management path copying
-needs. **Evidence:** [DATA_STRUCTURES.md](DATA_STRUCTURES.md) ground rule.
+needs. **Evidence:** [DATA_STRUCTURES.md](../DATA_STRUCTURES.md) ground rule.
 
 ### 7. "The data is simulated — doesn't that invalidate the results?"
 **Strongest answer:** the *geography* is real (OpenStreetMap); only the *tourists*
 are simulated, deliberately, because simulation gives **ground truth** — we know
 the true position, so we can measure whether the engine is right. The performance
 results don't depend on the people at all; they're a function of zone count and
-query geometry. **Evidence:** [DATA_PROVENANCE.md](DATA_PROVENANCE.md).
+query geometry. **Evidence:** [DATA_PROVENANCE.md](../DATA_PROVENANCE.md).
 
 ---
 

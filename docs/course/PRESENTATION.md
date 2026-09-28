@@ -1,8 +1,10 @@
 # SafeTrail — Presentation
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 Ten core slides, ordered as you would present them, plus an optional appendix.
 Speaker notes are in *italics*. Every number is authoritative in
-[RESULTS.md](RESULTS.md) and reproducible with `make bench` / `make test`.
+[RESULTS.md](../RESULTS.md) and reproducible with `make bench` / `make test`.
 
 **Repository:** https://github.com/adivishall/safetrail
 **Course:** Data Structures · **One question:** *how much faster can custom spatial
@@ -124,7 +126,7 @@ bound, a measured result, and no counterpart in existing implementations.*
 ## Slide 8 — Experimental results
 
 All from `make bench` / `make test`; ratios are to **our own brute force**; data is
-**simulated** (real geography). Full table: [RESULTS.md](RESULTS.md).
+**simulated** (real geography). Full table: [RESULTS.md](../RESULTS.md).
 
 | Result | Number |
 |---|---|
@@ -184,7 +186,7 @@ groups (rollback union-find), prediction, alert correlation (DSU), routing
 (Dijkstra/A*), dispatch (Hungarian), offline sync (Lamport + geohash serialisation),
 evidence (RFC 6962 Merkle log, SHA-256 from scratch), adaptive sampling, hysteresis,
 jurisdiction. See [COURSE_MAPPING.md](COURSE_MAPPING.md) and
-[GAP_ANALYSIS.md](GAP_ANALYSIS.md).
+[GAP_ANALYSIS.md](../GAP_ANALYSIS.md).
 
 ### A2 — Testing & determinism
 
@@ -196,14 +198,14 @@ UBSan in CI; and `make determinism` asserts byte-identical output for a fixed se
 
 `Input → Zone Store → Spatial Index → Temporal Filter → Geometry → State Machine →
 Event`, with extensions hanging off the event stream. See
-[ARCHITECTURE.md](ARCHITECTURE.md).
+[ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ### A4 — Where to find everything
 
 | Question | Document |
 |---|---|
-| Every measured number | [RESULTS.md](RESULTS.md) |
-| The five structures in depth | [DATA_STRUCTURES.md](DATA_STRUCTURES.md) |
+| Every measured number | [RESULTS.md](../RESULTS.md) |
+| The five structures in depth | [DATA_STRUCTURES.md](../DATA_STRUCTURES.md) |
 | Viva questions | [VIVA.md](VIVA.md) · [DESIGN_DEFENSE.md](DESIGN_DEFENSE.md) |
 | How to run the demo | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) |
-| Is the data real? | [DATA_PROVENANCE.md](DATA_PROVENANCE.md) |
+| Is the data real? | [DATA_PROVENANCE.md](../DATA_PROVENANCE.md) |

@@ -1,5 +1,7 @@
 # Design Defense — Answers to the Hard Questions
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 Prep for the review. These are the questions a data-structures examiner is most
 likely to ask, and the honest, precise answer to each. If you can explain the
 five "load-bearing" ones from memory, the sophistication of the project becomes an
@@ -7,7 +9,7 @@ asset instead of a liability.
 
 The rule for the room: **never oversell.** Where something is unbuilt, say so.
 The project's credibility is built on honesty (see the "what is deliberately NOT
-built" table in [DATA_STRUCTURES.md](DATA_STRUCTURES.md)) — protect it.
+built" table in [DATA_STRUCTURES.md](../DATA_STRUCTURES.md)) — protect it.
 
 ---
 
@@ -331,14 +333,14 @@ right, only the counting was wrong.
 > tourist-tracking dataset exists and simulation gives us **ground truth**: we know
 > where each tourist truly was, so we can measure whether the engine got the right
 > answer. A recording of real GPS couldn't tell us that. See
-> [DATA_PROVENANCE.md](DATA_PROVENANCE.md).
+> [DATA_PROVENANCE.md](../DATA_PROVENANCE.md).
 
 **"Your GPS noise is unrealistic — real error drifts, it doesn't jump."**
 > We model both. The error is an **AR(1) process** (`correlation` = 0.9 by
 > default), so consecutive fixes are temporally correlated — smooth drift, like a
 > real receiver — not independent white noise. The hysteresis benchmark reports
 > against *both* regimes: 94.0% of false transitions removed under white noise,
-> **92.9% under realistic correlated drift** (see [RESULTS.md](RESULTS.md)). The
+> **92.9% under realistic correlated drift** (see [RESULTS.md](../RESULTS.md)). The
 > filter is robust to the honest,
 > harder case, not just the flattering one.
 
@@ -354,7 +356,7 @@ right, only the counting was wrong.
 > two different seeds give different results; the same seed gives a byte-identical
 > file; and the accuracy values are exactly {4, 35, 999} — the three regimes the
 > GPS model emits. Commands to verify all of this are in
-> [DATA_PROVENANCE.md](DATA_PROVENANCE.md) §4.
+> [DATA_PROVENANCE.md](../DATA_PROVENANCE.md) §4.
 
 ---
 

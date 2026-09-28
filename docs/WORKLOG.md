@@ -6,6 +6,42 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-28 — Hostile audit: ten defects, a new test and benchmark regime, docs rebuilt
+
+**What:** A full audit of the core with one question per structure — what input
+makes it disagree with its oracle? Answered with new randomised differential
+tests (every spatial index over seven hostile workload profiles; the persistent
+quadtree against a replay oracle; the whole engine under all four indexes),
+invariant audits after every operation (`check_invariants()` added to the
+quadtree, R-tree and persistent index), and a mutation check that injects 22
+known bugs and requires a test to fail for each. Ten findings were fixed, each
+with a regression test that fails on the old code: the evaluator never observed a
+zone again once it left the candidate window (missed exits, silent re-entries);
+the hysteresis filter let Uncertain verdicts through (about 60% of the demo's
+enter/exit events were flaps); the index query box was 0.11% too narrow;
+the on-boundary tolerance was 11 cm thick on a 1 m edge; the sweep line called
+degenerate self-intersecting rings simple; interval-tree deletion broke its own
+ordering invariant on duplicates; the persistent quadtree's removal copied every
+node it visited, and it trusted commit times to be ordered; the zone loader did
+undefined double-to-integer conversions on hostile files. The benchmark was
+rebuilt (calibrated interleaved samples, paired ratios, checksums, recorded
+environment, run-to-run ranges, a fixed-density sweep, an end-to-end
+filter+refine benchmark, build/memory/update costs, the interval tree against a
+linear scan, and a hysteresis experiment measured against noise-free truth).
+Docs now render every benchmark table from the CSVs. Build: one warning list for
+Make and CMake, `-Werror` in CI on gcc and clang, static analysis, `make
+validate` / `stress` / `mutation`. Course material moved to `docs/course/`;
+seven empty placeholder headers and a stub server app deleted.
+
+**Why:** Presenting the project as a flagship means every claim has to survive a
+skeptical reader. Several did not: the README's headline speedup did not
+reproduce, and the demo's event stream was dominated by an artefact.
+
+**Impact:** 45 test files (~11,800 checks), 22/22 mutants killed, UBSan-clean.
+Headline numbers changed and are now quoted as ranges with their workload. Full
+record: [DEFECT_LOG.md](DEFECT_LOG.md) pass 6, [TESTING.md](TESTING.md),
+[RESULTS.md](RESULTS.md).
+
 ### 2026-09-12 — Professor-level final review pass
 
 **What:** A strict end-to-end review before merge. (1) Audited every primary doc for
@@ -22,7 +58,7 @@ count (3,000 queries, 0 mismatches). (3) Added a "why the index works" panel and
 "course concepts demonstrated" panel (five core structures → concepts), and
 reframed the persistent-index panel around "same query, different historical
 version" (Wards Lake in force: no at 00:20, yes at 00:30). (4) Added
-[PROFESSOR_REVIEW.md](PROFESSOR_REVIEW.md) and a five-core→concepts table to
+[PROFESSOR_REVIEW.md](course/PROFESSOR_REVIEW.md) and a five-core→concepts table to
 COURSE_MAPPING.md.
 
 **Why:** Final defensibility pass — one source of truth for every number, the main
@@ -601,7 +637,7 @@ completes the core deliverable.
 
 **Impact:** Zero designed-but-unbuilt structures remain. Test suite grew from
 2,005 to **10,862 checks across 23 files**, all passing. Docs
-([DATA_STRUCTURES.md](DATA_STRUCTURES.md), [ROADMAP.md](ROADMAP.md)) updated to
+([DATA_STRUCTURES.md](DATA_STRUCTURES.md), [ROADMAP.md](course/ROADMAP.md)) updated to
 match. Committed as `ae3f946` on branch `feat/graph-dispatch-stack`
 ([PR #1](https://github.com/adivishall/safetrail/pull/1)).
 

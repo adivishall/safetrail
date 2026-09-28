@@ -1,12 +1,14 @@
 # Demo Script — a literal 5-minute walkthrough
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 For presenting to a professor or examiner. Each step gives the **command** to run,
 the **screen** to show, **what to say**, **what to point at**, and the **question it
 answers**. Total time ≈ 5 minutes. Rehearse once so the builds are warm (run
 `make test bench dashboard` beforehand so nothing compiles live).
 
 All numbers below are what the tools actually print; the authoritative table is
-[RESULTS.md](RESULTS.md).
+[RESULTS.md](../RESULTS.md).
 
 ---
 
@@ -68,7 +70,7 @@ same query code. That's the structure, not the machine."*
 **Answers:** *"How much faster, and how do you know it's still correct?"* and
 *"Why build two spatial indexes?"*
 
-**Optional visual:** open [`bench/plots/index_scaling.svg`](../bench/plots/index_scaling.svg)
+**Optional visual:** open [`bench/plots/index_scaling.svg`](../../bench/plots/index_scaling.svg)
 — the brute-force line going vertical while the trees stay flat.
 
 ---

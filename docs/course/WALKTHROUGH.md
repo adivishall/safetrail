@@ -1,5 +1,7 @@
 # Walkthrough — How safetrail Works, Start to Finish
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 A complete trace of one `make demo` run, from the compiler to the animated
 dashboard. Every file and function named here is real; the numbers are from an
 actual run on the real OpenStreetMap dataset (60 tourists, 438 zones, 2 simulated
@@ -118,7 +120,7 @@ versioned index is the time-travel history the investigation panel queries.
 
 **This is the only place "human data" enters, and it is entirely synthetic.**
 The tourists are 60 dots driven by a seeded random number generator. See
-[DATA_PROVENANCE.md](DATA_PROVENANCE.md) for the full honesty statement and
+[DATA_PROVENANCE.md](../DATA_PROVENANCE.md) for the full honesty statement and
 [the movement model below](#how-a-tourist-actually-moves).
 
 ---
@@ -238,7 +240,7 @@ Open `dashboard.html` and the 720 frames animate: dots moving over the real
 Shillong reservoirs and forests, zones lighting up on entry, the investigation
 panel showing which rules were in force at each moment as you scrub the timeline.
 It works over `file://` with the network physically off — see
-[DATA_PROVENANCE.md](DATA_PROVENANCE.md).
+[DATA_PROVENANCE.md](../DATA_PROVENANCE.md).
 
 ---
 
@@ -307,5 +309,5 @@ formalise this seam.
 | Output | capture + serialise | `src/viz/html_export.cpp` · `TraceRecorder::write_html` |
 
 For *why* each structure was chosen and its complexity, see
-[DATA_STRUCTURES.md](DATA_STRUCTURES.md). For the eleven gaps referenced by tag,
-see [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
+[DATA_STRUCTURES.md](../DATA_STRUCTURES.md). For the eleven gaps referenced by tag,
+see [GAP_ANALYSIS.md](../GAP_ANALYSIS.md).

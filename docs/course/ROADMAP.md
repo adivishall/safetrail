@@ -1,10 +1,12 @@
 # Roadmap
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 Ordered so that something runs end-to-end as early as possible. Replacing a slow
 stage with a fast one is easy; integrating twelve finished modules in the last
 week is not.
 
-`[GAP n]` marks work that exists because of [GAP_ANALYSIS.md](GAP_ANALYSIS.md) and
+`[GAP n]` marks work that exists because of [GAP_ANALYSIS.md](../GAP_ANALYSIS.md) and
 has no counterpart in existing implementations.
 
 ---
@@ -145,7 +147,7 @@ the present; a validity-only change allocates zero nodes.
 
 ## Phase 12 — Measure everything (week 14+)
 
-All ten measurements in [DATA_STRUCTURES.md](DATA_STRUCTURES.md#measurements-to-produce).
+All ten measurements in [DATA_STRUCTURES.md](../DATA_STRUCTURES.md#measurements-to-produce).
 Budget real time — this is what the report is made of.
 
 ---

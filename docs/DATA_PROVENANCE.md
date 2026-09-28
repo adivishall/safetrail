@@ -211,8 +211,8 @@ for seed in 111 222; do ./build/safetrail_headless --tourists 30 --hours 1 \
 ```
 
 ```
-seed 111:  zone entries  159
-seed 222:  zone entries  143
+seed 111:  zone entries  244
+seed 222:  zone entries  182
 ```
 
 ### Same seed, byte-identical output
@@ -224,7 +224,7 @@ cmp /tmp/a.html /tmp/b.html && md5 -q /tmp/a.html
 ```
 
 ```
-22f683bf36aa0a97c4ae110f7a0551ee
+99be58812ccfcc193fd7f69b77cf101a
 ```
 
 Determinism holds, which is what makes the replay harness and the hysteresis A/B
@@ -243,9 +243,9 @@ print('versions ', d['versions'], 'sharing', d['sharing'])"
 ```
 
 ```
-lat[:4]   [25.51757, 25.52218, 25.52496, 25.51701]
+lat[:4]   [25.58601, 25.58583, 25.58561, 25.58634]
 accuracy  [4.0, 35.0, 999.0]
-versions  909  sharing 13.79
+versions  439 sharing 8.72
 ```
 
 The accuracy set is exactly the three regimes the GPS model produces — 4 m open

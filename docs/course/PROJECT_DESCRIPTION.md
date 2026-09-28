@@ -1,5 +1,7 @@
 # Project Description
 
+> **Archived course material.** Written for the Data Structures course submission and frozen as of 2026-09-12. Figures here come from that date's benchmark run and predate the 2026-09-28 audit ([DEFECT_LOG.md](../DEFECT_LOG.md), pass 6); current, reproducible numbers are in [RESULTS.md](../RESULTS.md).
+
 **Title:** safetrail — A Geofencing and Incident-Response Engine for Tourist
 Safety in Low-Connectivity Terrain
 
