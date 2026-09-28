@@ -157,6 +157,39 @@ int main() {
     std::remove(bad.c_str());
   }
 
+  // ── Regression: numbers in the file are untrusted ──────────────────────────
+  // severity 300 used to go through uint8_t(300.0) -- undefined behaviour for a
+  // double-to-integer conversion, not a wrap -- and likewise a negative
+  // jurisdiction through uint32_t(...). Coordinates were never range-checked,
+  // so a ring stored across the antimeridian as lon > 180 loaded and then
+  // half-worked. Each is now refused with a reason.
+  {
+    const struct { const char* props; const char* coords; const char* why; } cases[] = {
+        {R"("severity":300)", "[[0,0],[1,0],[1,1],[0,1],[0,0]]", "severity"},
+        {R"("severity":-2)", "[[0,0],[1,0],[1,1],[0,1],[0,0]]", "severity"},
+        {R"("jurisdiction":-1)", "[[0,0],[1,0],[1,1],[0,1],[0,0]]", "jurisdiction"},
+        {R"("active_to_s":1e300)", "[[0,0],[1,0],[1,1],[0,1],[0,0]]", "active_to_s"},
+        {R"("exit_margin_m":-5)", "[[0,0],[1,0],[1,1],[0,1],[0,0]]", "exit_margin_m"},
+        {R"("name":"x")", "[[179.5,0],[180.5,0],[180.5,1],[179.5,1],[179.5,0]]", "coordinate"},
+        {R"("name":"x")", "[[0,95],[1,95],[1,96],[0,96],[0,95]]", "coordinate"},
+    };
+    for (const auto& c : cases) {
+      const std::string bad = tmp("range.geojson");
+      std::FILE* f = std::fopen(bad.c_str(), "w");
+      std::fprintf(f,
+                   R"({"type":"FeatureCollection","features":[{"type":"Feature",)"
+                   R"("properties":{%s},"geometry":{"type":"Polygon","coordinates":[%s]}}]})",
+                   c.props, c.coords);
+      std::fclose(f);
+      ZoneStore s;
+      std::string e;
+      const bool loaded = s.load_geojson(bad, &e);
+      t::ok(!loaded && e.find(c.why) != std::string::npos,
+            std::string("refused: ") + c.props + " -> " + (loaded ? "LOADED" : e));
+      std::remove(bad.c_str());
+    }
+  }
+
   std::remove(path.c_str());
   std::remove(path2.c_str());
   return t::report("fence/zone_roundtrip");

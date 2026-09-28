@@ -35,18 +35,20 @@ double ring_signed_area(const Ring& r);
 //                                   or above kSweepThresholdVertices, the
 //                                   pairwise scan below it.
 //
-// The threshold is measured, not assumed. Section 12 of `make bench` times both
-// on simple rings from 8 to 2048 vertices; on the reference machine the sweep is
-// 0.89x at 48 vertices and 1.11x at 64, so the crossover is around 56 and the
-// constant sits there. Below it the sweep loses on constants -- it sorts 2V
-// events and builds a balanced tree in order to skip a few dozen orientation
-// tests. Above it the gap widens: 1.6x at 128 vertices, 8.9x at 2048, which is
-// the range a simplified OSM district boundary actually lives in.
+// The threshold is measured, not assumed, and it has moved once. Section 16 of
+// `make bench` times both on simple rings from 8 to 2048 vertices. When the
+// sweep was fixed to test several neighbours on insertion (it had been calling
+// some degenerate self-intersecting rings simple -- docs/DEFECT_LOG.md, tier 6)
+// it got ~25% slower, and the crossover moved from ~48-56 vertices to ~64-80:
+// two runs measured 0.96x / 0.89x at 64 and 1.11x / 1.07x at 80. The curve is
+// flat there, so the exact value costs little either way; above it the gap
+// widens (roughly 1.5x at 128, 7x at 2048), which is the range a simplified OSM
+// district boundary actually lives in.
 //
 // The exact value is not load-bearing for correctness -- both branches return the
 // same verdict, which the tests assert on rings either side of it -- so it can be
 // retuned from a new measurement without anything else having to change.
-constexpr size_t kSweepThresholdVertices = 56;
+constexpr size_t kSweepThresholdVertices = 80;
 
 bool ring_self_intersects_pairwise(const Ring& r);
 bool ring_self_intersects(const Ring& r);

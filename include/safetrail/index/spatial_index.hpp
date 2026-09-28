@@ -33,7 +33,9 @@ using safetrail::ZoneId;
 struct IndexStats {
   size_t node_count      = 0;
   size_t max_depth       = 0;
-  size_t bytes           = 0;   // for the serialisation comparison, GAP 6
+  size_t bytes           = 0;   // structural footprint: nodes + vector CAPACITIES,
+                                // excluding allocator overhead (for Geohash, the
+                                // serialised size, which is what ships offline)
   size_t queries         = 0;
   size_t candidates_returned = 0;   // the number that matters: how much did the
                                     // index actually prune?

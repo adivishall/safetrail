@@ -76,24 +76,41 @@ bool ZoneStore::load_geojson(const std::string& path, std::string* error) {
     if (!coords || coords->type != util::Json::Type::Array || coords->arr.empty()) continue;
 
     Zone z;
+    // Every number in the file is untrusted. Converting an out-of-range double to
+    // an integer type is undefined behaviour in C++, not a wrap -- severity 300
+    // or a negative jurisdiction id used to go straight through uint8_t(...) and
+    // uint32_t(...). So each field is range-checked, and a bad one rejects the
+    // file with a message, the same policy as invalid geometry below.
+    std::string bad;
+    auto num = [&](const util::Json* j, double lo, double hi, const char* what) -> double {
+      const double v = j->number_or(lo);
+      if (!(std::isfinite(v) && v >= lo && v <= hi)) bad = what;
+      return bad.empty() ? v : lo;
+    };
+    constexpr double kMaxSeconds = 9.0e15;   // x1000 must still fit an int64 of ms
     if (props) {
       if (const util::Json* n = props->find("name")) z.name = n->string_or("");
       if (const util::Json* k = props->find("kind")) z.kind = kind_from(k->string_or("caution"));
-      if (const util::Json* s = props->find("severity")) z.severity = uint8_t(s->number_or(1));
+      if (const util::Json* s = props->find("severity"))
+        z.severity = uint8_t(num(s, 1, 5, "severity must be 1..5"));
       if (const util::Json* d = props->find("max_dwell_s"))
-        z.max_dwell_ms = Millis(d->number_or(0) * 1000);
+        z.max_dwell_ms = Millis(num(d, 0, kMaxSeconds, "max_dwell_s out of range") * 1000);
       // GAP 3: seconds-into-the-scenario, so demo files stay readable.
       if (const util::Json* a = props->find("active_from_s"))
-        z.validity.from = Timestamp(a->number_or(0) * 1000);
+        z.validity.from = Timestamp(num(a, -kMaxSeconds, kMaxSeconds, "active_from_s out of range") * 1000);
       if (const util::Json* b = props->find("active_to_s"))
-        z.validity.to = Timestamp(b->number_or(0) * 1000);
+        z.validity.to = Timestamp(num(b, -kMaxSeconds, kMaxSeconds, "active_to_s out of range") * 1000);
       if (const util::Json* sy = props->find("synthetic")) z.synthetic = sy->bool_or(false);
       if (const util::Json* j = props->find("jurisdiction"))
-        z.jurisdiction = uint32_t(j->number_or(double(kNoId)));
+        z.jurisdiction = uint32_t(num(j, 0, double(kNoId), "jurisdiction out of range"));
       if (const util::Json* e = props->find("enter_margin_m"))
-        z.enter_margin_m = e->number_or(0.0);
+        z.enter_margin_m = num(e, 0, 1e6, "enter_margin_m out of range");
       if (const util::Json* e = props->find("exit_margin_m"))
-        z.exit_margin_m = e->number_or(0.0);
+        z.exit_margin_m = num(e, 0, 1e6, "exit_margin_m out of range");
+    }
+    if (!bad.empty()) {
+      if (error) *error = "zone '" + z.name + "': " + bad;
+      return false;
     }
 
     geo::Ring outer;
@@ -112,6 +129,20 @@ bool ZoneStore::load_geojson(const std::string& path, std::string* error) {
 
     // GAP 10: reject invalid geometry rather than storing it. A self-intersecting
     // polygon in the store makes ray casting return arbitrary results downstream.
+    // Coordinates must be finite and on the lat/lon domain. The engine does not
+    // wrap the antimeridian (docs/GEOMETRY_EDGE_CASES.md), so a ring stored as
+    // lon > 180 is refused here rather than half-working downstream.
+    auto on_domain = [](const geo::Ring& r) {
+      for (const auto& p : r) if (!p.valid()) return false;
+      return true;
+    };
+    bool coords_ok = on_domain(z.shape.outer());
+    for (const auto& h : z.shape.holes()) coords_ok = coords_ok && on_domain(h);
+    if (!coords_ok) {
+      if (error) *error = "zone '" + z.name + "': coordinate not finite or outside lat/lon range";
+      return false;
+    }
+
     const auto v = z.shape.validate();
     if (v != geo::Polygon::Validity::Ok) {
       if (error) *error = "zone '" + z.name + "': " + geo::Polygon::to_string(v);

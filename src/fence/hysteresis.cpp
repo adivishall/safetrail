@@ -18,10 +18,30 @@ geo::Containment HysteresisState::update(geo::Containment raw, double sd_m,
     return raw;
   }
 
-  // Uncertain never drives a transition -- it is reported, not acted on.
+  // What EnteringPending reports while it waits: whatever was reported before
+  // the entry attempt began, so an unconfirmed entry changes nothing visible.
+  const geo::Containment before_entry = pending_from_ == Phase::Ambiguous
+                                            ? geo::Containment::Uncertain
+                                            : geo::Containment::Outside;
+
+  // An Uncertain verdict is reported, never acted on: it cannot end Inside, and
+  // it interrupts any confirmation run in progress.
   if (raw == geo::Containment::Uncertain) {
     agree_count_ = 0;
-    return phase_ == Phase::Inside ? geo::Containment::Inside : geo::Containment::Uncertain;
+    switch (phase_) {
+      case Phase::Inside:
+        return geo::Containment::Inside;
+      case Phase::ExitingPending:                 // the exit is not confirmed:
+        phase_ = Phase::Inside;                   // cancel it, report no change
+        return geo::Containment::Inside;
+      case Phase::EnteringPending:                // interrupt the confirmation run, but
+        pending_from_ = Phase::Ambiguous;         // keep the dwell clock: the entry can
+        return geo::Containment::Uncertain;       // still confirm once fixes agree again
+      case Phase::Outside:
+      case Phase::Ambiguous:
+        phase_ = Phase::Ambiguous;
+        return geo::Containment::Uncertain;
+    }
   }
 
   const bool deep_in  = sd_m < -cfg.enter_margin_m;   // sd is negative inside
@@ -29,10 +49,26 @@ geo::Containment HysteresisState::update(geo::Containment raw, double sd_m,
 
   switch (phase_) {
     case Phase::Outside:
+    case Phase::Ambiguous: {
+      const Phase from = phase_;
       if (deep_in) {
+        pending_from_ = from;
         phase_ = Phase::EnteringPending; agree_count_ = 1; pending_since_ms_ = t_ms;
+        return from == Phase::Ambiguous ? geo::Containment::Uncertain
+                                        : geo::Containment::Outside;
       }
-      return geo::Containment::Outside;
+      if (from == Phase::Outside) return geo::Containment::Outside;
+      // Ambiguous clears like Inside does: only a run of clearly-outside fixes.
+      if (clear_out) {
+        if (++agree_count_ >= cfg.confirm_samples) {
+          phase_ = Phase::Outside; agree_count_ = 0;
+          return geo::Containment::Outside;
+        }
+      } else {
+        agree_count_ = 0;
+      }
+      return geo::Containment::Uncertain;
+    }
 
     case Phase::EnteringPending:
       if (deep_in) {
@@ -41,10 +77,10 @@ geo::Containment HysteresisState::update(geo::Containment raw, double sd_m,
           phase_ = Phase::Inside; inside_since_ms_ = pending_since_ms_; agree_count_ = 0;
           return geo::Containment::Inside;
         }
-        return geo::Containment::Outside;      // still unconfirmed
+        return before_entry;                   // still unconfirmed
       }
-      phase_ = Phase::Outside; agree_count_ = 0; suppressed_ = true;   // ← a flap
-      return geo::Containment::Outside;
+      phase_ = pending_from_; agree_count_ = 0; suppressed_ = true;   // ← a flap
+      return before_entry;
 
     case Phase::Inside:
       if (clear_out) {

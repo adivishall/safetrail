@@ -72,10 +72,43 @@ class VersionedIndex {
   VersionedIndex();
   ~VersionedIndex();
 
-  // ── Mutation: every call creates a new version ────────────────────────────
+  // ── Mutation: every effective call creates exactly one new version ────────
+  //
+  // Semantics, pinned by tests/index/versioned_index_test.cpp and the replay
+  // oracle in tests/index/persistence_differential_test.cpp:
+  //
+  //   add_zone      on an id that is not present: inserts it. On an id that IS
+  //                 present: REPLACES its geometry and validity in one version
+  //                 (a moved or redrawn zone). It used to insert a second copy,
+  //                 so every later query returned the id twice.
+  //   remove_zone   on a present id: removes it, path-copying only the one
+  //                 root-to-node path that holds it (O(depth) new nodes). On an
+  //                 absent id: a no-op that creates no version and returns the
+  //                 latest one. It used to copy every node it VISITED while
+  //                 searching -- 96 allocations to remove one zone from a
+  //                 2,000-zone index -- and to mint a version for an id that
+  //                 never existed.
+  //   update_validity  changes only the validity; shares the whole tree.
+  //
+  // `at` is TRANSACTION time and is monotone: a change stamped earlier than the
+  // latest version is recorded at the latest version's time. The log is
+  // append-only, so history cannot be inserted into the past -- and version_at()
+  // binary-searches the commit times, which is only valid on a sorted array. An
+  // out-of-order commit used to make query_at() silently return the wrong
+  // version.
   VersionId add_zone(ZoneId id, const geo::Bbox& box, Validity v, Timestamp at);
   VersionId remove_zone(ZoneId id, Timestamp at);
   VersionId update_validity(ZoneId id, Validity v, Timestamp at);
+
+  // Is the zone present in the latest version?
+  bool contains_zone(ZoneId id) const;
+
+  // Structural audit of EVERY retained version: each item's box lies inside the
+  // region of the node that stores it (the invariant that makes pruning by
+  // region sound), children lie inside their parent with depth = parent + 1,
+  // no id appears twice in one version, and each version's item count equals
+  // the number of zones the history says were present at that version.
+  bool check_invariants() const;
 
   // ── Query ─────────────────────────────────────────────────────────────────
   //
@@ -124,7 +157,7 @@ class VersionedIndex {
     VersionId version;
     Timestamp at;
     ZoneId    zone;
-    enum class Kind { Added, Removed, ValidityChanged } kind;
+    enum class Kind { Added, Removed, ValidityChanged, Replaced } kind;
   };
   std::vector<Change> history_for(ZoneId id) const;
   std::vector<Change> changes_between(Timestamp from, Timestamp to) const;
@@ -206,10 +239,16 @@ class VersionedIndex {
   std::vector<Change>   changelog_;
   mutable size_t nodes_allocated_ = 0;
 
+  // The box each PRESENT zone was inserted with, indexed by id. Removal uses it
+  // to follow the single root-to-node path the insert rule put the zone on,
+  // instead of searching (and copying) the tree.
+  std::vector<geo::Bbox> live_box_;
+
   const ValidityRecord* record_as_of(ZoneId id, VersionId v) const;
   void push_record(ZoneId id, Validity v, bool present, VersionId version);
 
   VersionId commit(std::shared_ptr<const Node> root, Timestamp at);
+  Timestamp monotone(Timestamp at) const;
 };
 
 }  // namespace safetrail::index

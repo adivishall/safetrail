@@ -145,6 +145,21 @@ class Status {
   }
 };
 
+// How many neighbours an inserted segment is tested against on each side.
+//
+// Ring-adjacent edges are exempt from each other (they legitimately share a
+// vertex), and that breaks the textbook Shamos-Hoey argument: with exempt pairs
+// ignored, a segment's first eligible neighbour is no longer guaranteed to be
+// the one it would meet first. Testing ONLY that first eligible neighbour missed
+// touching pairs one step further out -- 118 of 800,000 fuzzed lattice rings,
+// all false "simple" verdicts. Testing every eligible segment among the nearest
+// kReach on each side closes that: an edge has at most two exempt partners, so
+// three covers them plus one. It is a constant, so every event is still
+// O(log n). The value is evidence-based, not proven: zero disagreements with the
+// O(V^2) oracle over the same 800,000 rings, and tools/mutation_check.py shows
+// the test suite fails if it is set to 1.
+constexpr int kReach = 3;
+
 bool sweep(const std::vector<Segment>& segs, bool ring_adjacency) {
   const size_t n = segs.size();
   if (n < 2) return false;
@@ -156,40 +171,42 @@ bool sweep(const std::vector<Segment>& segs, bool ring_adjacency) {
   std::vector<Event> ev;
   ev.reserve(2 * n);
   for (size_t i = 0; i < n; ++i) { ev.push_back({s[i].a.lon, 0, i}); ev.push_back({s[i].b.lon, 1, i}); }
+  // A total order. (x, type) alone left events at the same x in whatever order
+  // std::sort happened to produce -- unspecified, so free to differ between
+  // libc++ and libstdc++ -- and axis-aligned polygons put many events at one x.
   std::sort(ev.begin(), ev.end(), [](const Event& p, const Event& q) {
-    return p.x != q.x ? p.x < q.x : p.type < q.type;
+    if (p.x != q.x) return p.x < q.x;
+    if (p.type != q.type) return p.type < q.type;
+    return p.si < q.si;
   });
 
   auto eligible = [&](size_t i, size_t j) { return !(ring_adjacency && ring_adjacent(i, j, n)); };
 
   Status st(s);
-  // Test `seg` against its nearest TESTABLE neighbour below and above, skipping
-  // ring-adjacent (exempt) segments so a legitimate shared vertex cannot shield a
-  // real crossing. Each direction skips at most the two edges adjacent to `seg`.
-  auto test_neighbours = [&](size_t seg) -> bool {
-    for (size_t p = st.predecessor(seg); p != SIZE_MAX; p = st.predecessor(p)) {
-      if (!eligible(seg, p)) continue;
-      return segs_cross(s[seg], s[p]);
-    }
-    return false;
+  // The nearest kReach active segments below / above `seg`, nearest first.
+  size_t lo[kReach], hi[kReach];
+  auto neighbours = [&](size_t seg) {
+    int k = 0;
+    for (size_t p = st.predecessor(seg); p != SIZE_MAX && k < kReach; p = st.predecessor(p)) lo[k++] = p;
+    for (; k < kReach; ++k) lo[k] = SIZE_MAX;
+    k = 0;
+    for (size_t q = st.successor(seg); q != SIZE_MAX && k < kReach; q = st.successor(q)) hi[k++] = q;
+    for (; k < kReach; ++k) hi[k] = SIZE_MAX;
   };
-  auto test_neighbours_up = [&](size_t seg) -> bool {
-    for (size_t q = st.successor(seg); q != SIZE_MAX; q = st.successor(q)) {
-      if (!eligible(seg, q)) continue;
-      return segs_cross(s[seg], s[q]);
-    }
-    return false;
+  auto test = [&](size_t a, size_t b) {
+    return a != SIZE_MAX && b != SIZE_MAX && eligible(a, b) && segs_cross(s[a], s[b]);
   };
 
   for (const auto& e : ev) {
     st.set_x(e.x);
-    if (e.type == 0) {                 // enter
+    if (e.type == 0) {                 // enter: test against its near neighbours
       st.insert(e.si);
-      if (test_neighbours(e.si)) return true;
-      if (test_neighbours_up(e.si)) return true;
-    } else {                           // leave
+      neighbours(e.si);
+      for (int i = 0; i < kReach; ++i)
+        if (test(e.si, lo[i]) || test(e.si, hi[i])) return true;
+    } else {                           // leave: its two neighbours become adjacent
       const size_t p = st.predecessor(e.si), q = st.successor(e.si);
-      if (p != SIZE_MAX && q != SIZE_MAX && eligible(p, q) && segs_cross(s[p], s[q])) return true;
+      if (test(p, q)) return true;
       st.erase(e.si);
     }
   }
