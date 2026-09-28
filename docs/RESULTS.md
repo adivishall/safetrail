@@ -14,13 +14,15 @@ make bench-variation   # sections 1-3 three more times, for the ranges
 
 - **What is portable and what is not.** Absolute times belong to one machine in
   one state — the environment below records which, including power source and
-  load. The run published here was on a laptop **on battery with a load average
-  near 4**, which is not a quiet machine; absolute times are roughly twice what
-  the same laptop measured on mains power in an earlier run. Ratios measured
-  back to back, candidate counts, node counts, allocation counts and bytes are
-  far more stable. The docs quote ratios, with their range.
+  load (this run: <!-- results:machine -->Apple M4, AC power, load average 4.09 at the start, commit 8d44bc6<!-- /results:machine -->). They
+  drift between sessions: brute force over 100,000 zones measured 244 µs in a
+  12 September run and 460–560 µs across this audit's runs, on battery and on
+  mains alike, for reasons not established. Ratios measured back to back,
+  candidate counts, node counts, allocation counts and bytes are far more
+  stable, so the docs quote ratios, with their range.
 - **Ranges are real.** Even paired, a speedup moves between runs: the R-tree's
-  at 100,000 zones spanned roughly 97–229× across the runs below. Every
+  at 100,000 zones spanned 102–114× across the runs below, and 97–229× in the
+  previous committed set. Every
   headline ratio is shown with the min–max over
   <!-- results:runs -->4<!-- /results:runs --> independent runs.
 - **Speedups are against this project's own brute force**, the correctness
@@ -34,15 +36,15 @@ make bench-variation   # sections 1-3 three more times, for the ranges
 
 <!-- results:env -->
 ```
-date:     2026-09-28T09:37Z
-commit:   d469066 (uncommitted changes)
+date:     2026-09-28T10:37Z
+commit:   8d44bc6
 compiler: Apple clang version 17.0.0 (clang-1700.4.4.1)
 flags:    -std=c++17 -O2 -ffp-contract=off
 os:       Darwin 25.5.0 arm64
 cpu:      Apple M4
 cores:    10
-power:    Battery Power
-load:     5.18 6.90 6.21
+power:    AC Power
+load:     4.09 4.88 6.84
 ```
 <!-- /results:env -->
 
@@ -73,20 +75,20 @@ overlapping each query, **k**, grows in proportion to n.
 <!-- results:scaling -->
 | zones | brute µs | quadtree µs | R-tree µs | quadtree × | R-tree × | k / query | quadtree × range | R-tree × range | worst IQR |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 100 | 0.204 | 0.056 | 0.072 | **3.48×** | **2.83×** | 0.10 | 2.80–3.65× | 2.79–2.84× | 27% |
-| 1,000 | 4.07 | 0.224 | 0.213 | **19.4×** | **19.2×** | 0.97 | 15.3–31.2× | 17.3–30.1× | 21% |
-| 5,000 | 21.5 | 0.829 | 0.458 | **26.0×** | **46.9×** | 4.88 | 23.4–39.8× | 42.5–81.2× | 12% |
-| 10,000 | 41.2 | 1.66 | 0.708 | **23.8×** | **58.5×** | 9.77 | 23.4–35.8× | 57.1–97.3× | 14% |
-| 20,000 | 90.3 | 3.34 | 1.00 | **28.1×** | **85.5×** | 19.80 | 22.2–34.6× | 74.7–111× | 10% |
-| 50,000 | 229 | 8.15 | 1.89 | **27.9×** | **125×** | 49.22 | 25.0–33.5× | 102–178× | 15% |
-| 100,000 | 461 | 17.6 | 3.65 | **26.0×** | **127×** | 98.45 | 26.0–33.2× | 96.9–229× | 11% |
+| 100 | 0.215 | 0.079 | 0.079 | **2.72×** | **2.73×** | 0.10 | 2.57–3.47× | 2.68–2.87× | 4% |
+| 1,000 | 3.79 | 0.235 | 0.210 | **16.2×** | **18.2×** | 0.97 | 15.3–16.2× | 17.9–19.6× | 10% |
+| 5,000 | 19.8 | 0.862 | 0.463 | **23.8×** | **43.6×** | 4.88 | 22.9–27.2× | 39.6–51.7× | 24% |
+| 10,000 | 38.5 | 1.57 | 0.665 | **24.9×** | **58.3×** | 9.77 | 24.4–25.6× | 58.1–68.6× | 10% |
+| 20,000 | 77.5 | 3.35 | 1.01 | **24.6×** | **76.8×** | 19.80 | 24.6–26.2× | 74.7–83.6× | 14% |
+| 50,000 | 218 | 9.00 | 2.21 | **24.0×** | **91.1×** | 49.22 | 24.0–26.9× | 91.1–120× | 49% |
+| 100,000 | 560 | 18.8 | 4.47 | **28.1×** | **110×** | 98.45 | 26.9–28.4× | 102–114× | 58% |
 <!-- /results:scaling -->
 
 Brute force is linear. The trees are O(log n + k) and here **k dominates**: at
 100,000 zones about a hundred zones really do overlap each query, and every
 index must return all of them. That caps the speedup — no index returns fewer
 results than exist — and it is why the quadtree's ratio levels off around
-25–35× instead of growing. The R-tree keeps gaining because STR packing lets it
+23–28× instead of growing. The R-tree keeps gaining because STR packing lets it
 reach those k results through fewer nodes. The candidate counts are identical
 across indexes by construction; the checksum gate verifies it on every row.
 
@@ -100,9 +102,9 @@ each query overlaps about one zone at every size.
 <!-- results:density -->
 | zones | brute µs | quadtree µs | R-tree µs | quadtree × | R-tree × | k / query | quadtree × range | R-tree × range | worst IQR |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 3.90 | 0.233 | 0.208 | **16.5×** | **18.1×** | 0.97 | 16.1–33.6× | 18.0–31.2× | 20% |
-| 10,000 | 37.6 | 0.503 | 0.380 | **73.5×** | **98.4×** | 1.03 | 73.5–144× | 93.4–193× | 10% |
-| 100,000 | 426 | 1.45 | 0.802 | **294×** | **531×** | 0.99 | 269–530× | 531–1008× | 21% |
+| 1,000 | 5.05 | 0.225 | 0.227 | **20.1×** | **16.7×** | 0.97 | 15.6–26.0× | 16.7–23.1× | 212% |
+| 10,000 | 53.7 | 0.449 | 0.310 | **115×** | **178×** | 1.03 | 57.1–115× | 85.4–178× | 15% |
+| 100,000 | 529 | 1.20 | 0.638 | **451×** | **817×** | 0.99 | 250–451× | 513–817× | 25% |
 <!-- /results:density -->
 
 With k fixed, what is left is the tree's depth, and the speedup keeps rising
@@ -122,10 +124,10 @@ per polygon.
 <!-- results:e2e -->
 | V | naive µs | bbox scan µs | quadtree µs | R-tree µs | quadtree vs naive | range | quadtree vs scan | range | candidates / q | hits / q |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 8 | 59.2 | 20.0 | 0.325 | 0.191 | **184×** | 174–188× | 61.5× | 54.9–97.0× | 0.18 | 0.11 |
-| 32 | 224 | 19.5 | 0.358 | 0.248 | **616×** | 515–616× | 54.6× | 48.7–86.5× | 0.30 | 0.18 |
-| 128 | 851 | 18.1 | 0.487 | 0.384 | **1746×** | 1530–1746× | 39.4× | 34.0–58.1× | 0.28 | 0.16 |
-| 512 | 3636 | 21.8 | 1.50 | 1.22 | **2542×** | 2361–2697× | 14.5× | 14.3–26.3× | 0.34 | 0.16 |
+| 8 | 63.6 | 19.0 | 0.340 | 0.207 | **198×** | 182–198× | 56.2× | 52.5–56.2× | 0.18 | 0.11 |
+| 32 | 271 | 23.8 | 0.482 | 0.343 | **582×** | 533–634× | 51.2× | 41.4–54.8× | 0.30 | 0.18 |
+| 128 | 609 | 21.8 | 0.377 | 0.338 | **1512×** | 1512–1625× | 49.8× | 29.5–49.8× | 0.28 | 0.16 |
+| 512 | 3921 | 22.8 | 1.56 | 1.33 | **2502×** | 2435–2784× | 14.1× | 10.6–14.1× | 0.34 | 0.16 |
 <!-- /results:e2e -->
 
 The large factors against *naive* are what "check every zone against every
@@ -144,12 +146,12 @@ index.
 <!-- results:costs -->
 | zones | index | build ms | memory KB | bytes / zone | insert µs | remove µs |
 |---:|---|---:|---:|---:|---:|---:|
-| 10,000 | brute-force | 0.03 | 391 | 40 | 0.006 | 10.8 |
-| 10,000 | quadtree | 1.86 | 699 | 72 | 0.214 | 12.8 |
-| 10,000 | r-tree | 2.74 | 527 | 54 | 1.06 | 13.5 |
-| 100,000 | brute-force | 0.56 | 3,906 | 40 | 0.006 | 133 |
-| 100,000 | quadtree | 22.14 | 6,618 | 68 | 0.209 | 199 |
-| 100,000 | r-tree | 39.50 | 5,255 | 54 | 2.04 | 288 |
+| 10,000 | brute-force | 0.02 | 391 | 40 | 0.009 | 10.7 |
+| 10,000 | quadtree | 2.29 | 699 | 72 | 0.321 | 24.9 |
+| 10,000 | r-tree | 4.00 | 527 | 54 | 1.76 | 29.8 |
+| 100,000 | brute-force | 0.35 | 3,906 | 40 | 0.017 | 239 |
+| 100,000 | quadtree | 31.90 | 6,618 | 68 | 0.304 | 393 |
+| 100,000 | r-tree | 47.26 | 5,255 | 54 | 2.27 | 374 |
 <!-- /results:costs -->
 
 Removal is O(n) in all three indexes: none keeps an id → node map, so the entry
@@ -177,9 +179,9 @@ Same data, same queries; only the way the tree was assembled changes.
 <!-- results:str -->
 | zones | insertion build ms | STR build ms | insertion nodes | STR nodes | insertion µs / query | STR µs / query | STR query gain |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 0.5 | 0.2 | 214 | 155 | 0.456 | 0.208 | **2.14×** |
-| 10,000 | 6.2 | 3.5 | 2,133 | 1,456 | 3.01 | 0.642 | **4.89×** |
-| 100,000 | 91.7 | 39.7 | 21,368 | 14,383 | 19.6 | 3.11 | **6.27×** |
+| 1,000 | 0.4 | 0.3 | 214 | 155 | 0.478 | 0.227 | **2.08×** |
+| 10,000 | 5.7 | 3.1 | 2,133 | 1,456 | 3.38 | 0.691 | **4.92×** |
+| 100,000 | 97.8 | 43.0 | 21,368 | 14,383 | 27.3 | 4.38 | **6.12×** |
 <!-- /results:str -->
 
 Both builds are O(n log n). STR produces a smaller tree whose sibling boxes
@@ -195,12 +197,12 @@ Churn: ten rounds of deleting and reinserting a tenth of the set.
 <!-- results:interval -->
 | regime | windows | scan µs | tree µs | tree × | k / stab | height | AVL bound | height after churn | delete µs |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| selective | 1,000 | 0.975 | 0.067 | **14.8×** | 0.3 | 12 | 14.0 | 12 | 0.230 |
-| selective | 10,000 | 10.2 | 0.131 | **64.6×** | 3.6 | 16 | 18.8 | 16 | 0.354 |
-| selective | 100,000 | 109 | 2.93 | **37.7×** | 36.0 | 20 | 23.6 | 20 | 0.711 |
-| dense | 1,000 | 3.67 | 3.94 | **0.94×** | 363.2 | 12 | 14.0 | 12 | 0.253 |
-| dense | 10,000 | 23.9 | 23.7 | **1.04×** | 980.5 | 16 | 18.8 | 16 | 0.364 |
-| dense | 100,000 | 127 | 73.7 | **1.68×** | 1192.3 | 20 | 23.6 | 20 | 0.763 |
+| selective | 1,000 | 1.13 | 0.080 | **14.1×** | 0.3 | 12 | 14.0 | 12 | 0.273 |
+| selective | 10,000 | 11.3 | 0.255 | **44.3×** | 3.6 | 16 | 18.8 | 16 | 0.317 |
+| selective | 100,000 | 132 | 4.58 | **28.4×** | 36.0 | 20 | 23.6 | 20 | 1.29 |
+| dense | 1,000 | 4.00 | 4.14 | **0.97×** | 363.2 | 12 | 14.0 | 12 | 0.252 |
+| dense | 10,000 | 24.4 | 25.9 | **0.94×** | 980.5 | 16 | 18.8 | 16 | 0.539 |
+| dense | 100,000 | 170 | 150 | **1.34×** | 1192.3 | 20 | 23.6 | 20 | 1.02 |
 <!-- /results:interval -->
 
 Selective windows are where the `max_high` augmentation earns its keep. With
@@ -219,10 +221,10 @@ version scheme would have allocated. Then the cost of each kind of mutation on a
 <!-- results:persistent -->
 | versions | nodes allocated | if full-copied | sharing | query @ past µs | query @ now µs |
 |---:|---:|---:|---:|---:|---:|
-| 51 | 523 | 1,903 | **3.6×** | 0.222 | 0.202 |
-| 201 | 2,582 | 14,633 | **5.7×** | 0.297 | 0.271 |
-| 1,001 | 14,025 | 158,257 | **11.3×** | 0.555 | 0.537 |
-| 5,001 | 71,314 | 930,257 | **13.0×** | 1.79 | 2.63 |
+| 51 | 523 | 1,903 | **3.6×** | 0.215 | 0.211 |
+| 201 | 2,582 | 14,633 | **5.7×** | 0.302 | 0.274 |
+| 1,001 | 14,025 | 158,257 | **11.3×** | 0.585 | 0.579 |
+| 5,001 | 71,314 | 930,257 | **13.0×** | 2.00 | 2.70 |
 
 | mutation (5,000-zone index) | nodes allocated, mean | max |
 |---|---:|---:|
@@ -251,9 +253,9 @@ named after each section.
 | Hungarian vs greedy dispatch | §12 | 15.7% less total travel at 40 responders; never worse in any of 200 layouts |
 | Adaptive GPS sampling | §13 | 28,800 → 257 fixes over an 8 h trek (99.1% fewer) at 100.0% near-zone recall |
 | Index churn (20 × add/remove 2,000) | §14 | quadtree 1.00×, r-tree 1.57×, geohash 1.00×, hash_table 1.00× node count vs fresh |
-| Geohash serialisation | §15 | 44 bytes / zone; 100,000 zones read in 1.39 ms |
-| Shamos–Hoey vs pairwise validation | §16 | sweep first wins at 80 vertices; 7.52× at 2,048; verdicts agree on every ring |
-| k-d tree vs linear snap | §17 | 37.8× at 10,000 junctions, same node every time |
+| Geohash serialisation | §15 | 44 bytes / zone; 100,000 zones read in 1.12 ms |
+| Shamos–Hoey vs pairwise validation | §16 | sweep first wins at 64 vertices; 6.44× at 2,048; verdicts agree on every ring |
+| k-d tree vs linear snap | §17 | 49.3× at 10,000 junctions, same node every time |
 <!-- /results:extensions -->
 
 ## Test suite and verification

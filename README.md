@@ -42,34 +42,35 @@ draws each index's actual structure on the same data.</sub>
 ## Measured
 
 Speedups are **paired ratios against this project's own brute force**, shown with
-their range over independent runs. Absolute times are one laptop's (Apple M4, on
-battery, under load; see [RESULTS.md](docs/RESULTS.md) for the protocol and the
-environment). Every number is generated from `bench/results/*.csv`.
+their range over independent runs. Absolute times are one laptop's
+(<!-- results:machine -->Apple M4, AC power, load average 4.09 at the start, commit 8d44bc6<!-- /results:machine -->; see
+[RESULTS.md](docs/RESULTS.md) for the protocol). Every number is generated from
+`bench/results/*.csv`.
 
 <!-- results:headline -->
 | Workload | Brute force / naive | Quadtree speedup (range over runs) | R-tree speedup (range over runs) |
 |---|---:|---:|---:|
-| Range query, 100,000 zones in one district (k ≈ 98) | 461 µs | 26.0× (26.0–33.2×) | 127× (96.9–229×) |
-| Range query, 100,000 zones at constant density (k ≈ 1) | 426 µs | 294× (269–530×) | 531× (531–1008×) |
-| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 851 µs | 1746× (1530–1746×) | 2214× (ratio of medians) |
+| Range query, 100,000 zones in one district (k ≈ 98) | 560 µs | 28.1× (26.9–28.4×) | 110× (102–114×) |
+| Range query, 100,000 zones at constant density (k ≈ 1) | 529 µs | 451× (250–451×) | 817× (513–817×) |
+| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 609 µs | 1512× (1512–1625×) | 1803× (ratio of medians) |
 <!-- /results:headline -->
 
 What the numbers say, and why:
 
 - **The speedup has a ceiling, and it is the answer size.** In one crowded
   district, about 100 zones really do overlap each query at 100,000 zones, and
-  every index must return all of them; the quadtree levels off around 25–35×. Hold
+  every index must return all of them; the quadtree levels off around 23–28×. Hold
   the density constant so each query overlaps about one zone, and the same code
   is hundreds of times faster at 100,000 zones. O(log n + k), measured both ways.
 - **The index accelerates the filter, not the geometry.** Against checking every
-  polygon, the tree wins by ~180× for 8-vertex polygons and ~2,500× for 512-vertex
+  polygon, the tree wins by ~200× for 8-vertex polygons and ~2,500× for 512-vertex
   ones; against a plain bounding-box scan followed by the same exact test, by
-  ~60× falling to ~15× as polygons get more complex. ([RESULTS.md](docs/RESULTS.md) §3)
+  ~50× falling to ~14× as polygons get more complex. ([RESULTS.md](docs/RESULTS.md) §3)
 - **STR packing matters**: a bulk-loaded R-tree is about 6× faster to query than
   the same R-tree built by insertion at 100,000 zones. (§7)
-- **The interval tree wins only when the query is selective**: 15–65× over a
-  linear scan for short windows; about 1–2× when hundreds of windows contain
-  every instant. That is why the engine checks validity in O(1) per candidate
+- **The interval tree wins only when the query is selective**: 14–44× over a
+  linear scan for short windows; 0.9–1.3× — no better than the scan — when
+  hundreds of windows contain every instant. That is why the engine checks validity in O(1) per candidate
   per tick and uses the tree only for history queries. (§8)
 - **Persistence is cheap**: one root-to-leaf path per change (≈15 nodes on a
   5,000-zone index), zero for a rule change, and a query against the past costs

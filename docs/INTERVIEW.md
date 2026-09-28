@@ -26,9 +26,9 @@ Add the result and its limit:
 "Checking every zone for every fix is O(n·V). A spatial index returns just the
 zones whose bounding boxes overlap the fix's uncertainty disc, then exact
 geometry decides those. At 100,000 zones in one district the R-tree answers the
-filter query somewhere between 100 and 230 times faster than scanning, depending
-on the run — I quote it as a range — and the quadtree 26–33 times; and I can
-explain the ceiling: about a hundred zones genuinely overlap each
+filter query about 100–115 times faster than scanning and the quadtree about 27–28
+times — ranges, because they move between runs — and I can explain the
+ceiling: about a hundred zones genuinely overlap each
 query, and no index can return fewer answers than exist. Hold the density
 constant so each query overlaps one zone and the same code is hundreds of times
 faster. So it is O(log n + k), measured both ways.
@@ -57,7 +57,7 @@ started the audit, and the tests I built are what found it."
 4. **Measurement.** Interleaved rounds, samples of at least 20 ms, paired ratios,
    checksums so contenders must return identical results, and the environment
    recorded. I re-ran everything and quote ranges, because even paired ratios
-   moved by up to 2× between runs on a laptop on battery.
+   moved by up to 2× between runs on one laptop.
 5. **Correctness.** Differential tests over seven hostile workloads, invariant
    audits after every operation, the whole engine required to produce
    bit-identical events under all four indexes, and 22 injected bugs that the
@@ -133,8 +133,10 @@ boundary crossings.
 - **Gate on correctness:** every contender returns an order-independent
   checksum of its results; unequal checksums fail the run.
 - **Record the environment** (compiler, CPU, power, load) next to the CSVs, and
-  **report ranges** over repeated runs. On this laptop, on battery, absolute times
-  were about twice an earlier mains-powered run's, so I quote ratios.
+  **report ranges** over repeated runs. Absolute times on this laptop drifted by
+  about 2× between sessions (244 µs vs 460–560 µs for the same brute-force query),
+  and not because of the power source — the mains-powered run was among the slow
+  ones. I don't know the cause, which is exactly why I quote ratios.
 - **Generate the docs from the data:** every table is rendered from the CSVs,
   and CI fails if a committed table disagrees with them.
 
@@ -147,9 +149,9 @@ item that straddles a split stays high in the tree, and identical boxes defeat i
 forced upward, but envelopes overlap, so a query may descend several branches.
 
 Measured on identical data they return identical candidates (they must), and the
-STR-packed R-tree reaches them through fewer nodes: roughly 100–230× faster than
-brute force at 100,000 dense zones (it varies most between runs) against the
-quadtree's 26–33×. STR itself is
+STR-packed R-tree reaches them through fewer nodes: roughly 100–115× faster than
+brute force at 100,000 dense zones (97–229× in an earlier set of runs — it varies
+most) against the quadtree's 27–28×. STR itself is
 worth ~6× over building the same R-tree by insertion — same O(n log n) build, a
 smaller tree with less overlap. So: R-tree for a mostly-static zone set built in
 bulk; quadtree where updates are frequent, where persistence matters, or where a

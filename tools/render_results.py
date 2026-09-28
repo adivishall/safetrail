@@ -86,6 +86,24 @@ def nruns(name):
 
 # ── blocks ────────────────────────────────────────────────────────────────────
 
+def block_machine():
+    """One line of benchmark conditions for prose, from environment.txt."""
+    p = os.path.join(RES, "environment.txt")
+    if not os.path.exists(p):
+        return "conditions not recorded"
+    env = {}
+    for line in open(p):
+        if ":" in line:
+            k, v = line.split(":", 1)
+            env[k.strip()] = v.strip()
+    load = env.get("load", "").split()
+    parts = [env.get("cpu", "?"), env.get("power", "?").replace(" Power", " power")]
+    if load:
+        parts.append("load average %s at the start" % load[0])
+    parts.append("commit %s" % env.get("commit", "?"))
+    return ", ".join(parts)
+
+
 def block_env():
     p = os.path.join(RES, "environment.txt")
     return "```\n" + (open(p).read().rstrip() if os.path.exists(p) else "(not recorded)") + "\n```"
@@ -238,6 +256,7 @@ def block_headline():
 
 BLOCKS = {
     "env": block_env,
+    "machine": block_machine,
     "scaling": lambda: scaling_block("index_scaling.csv"),
     "density": lambda: scaling_block("index_density.csv"),
     "e2e": block_e2e,

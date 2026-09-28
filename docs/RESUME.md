@@ -15,7 +15,7 @@ re-check them against [RESULTS.md](RESULTS.md) after any `make bench`.
 > Built a C++17 geofencing engine on hand-written spatial and temporal data
 > structures (quadtree, STR-packed R-tree, AVL interval tree, persistent
 > path-copying quadtree) with a brute-force correctness oracle, cutting
-> bounding-box query time at 100,000 zones by ~100–230× (R-tree) and ~26–33×
+> bounding-box query time at 100,000 zones by ~100–115× (R-tree) and ~27–28×
 > (quadtree) while returning results identical to a linear scan.
 
 <sub>Source: `make bench` §1 (`bench/results/index_scaling.csv`, ranges over the
@@ -80,7 +80,7 @@ fix; `make bench` §10 (`bench/results/hysteresis_ab.csv`);
 ## Short forms
 
 - *Hand-built quadtree / STR R-tree / AVL interval tree / persistent quadtree in
-  C++17; ~100–230× faster range queries than a linear scan at 100k zones with
+  C++17; ~100–115× faster range queries than a linear scan at 100k zones with
   identical results.*
 - *Differential + mutation testing (22/22 injected bugs caught) found 10 latent
   defects in code that was already passing its tests.*
