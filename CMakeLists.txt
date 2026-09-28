@@ -5,7 +5,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_options(-Wall -Wextra -Wpedantic -Wshadow)
+# Warning flags come from the same files the Makefile reads, so the two build
+# systems cannot enforce different warning sets. The conversion family is
+# clang-only, for the reason given in the Makefile.
+file(STRINGS ${CMAKE_SOURCE_DIR}/tools/build/warnings.flags SAFETRAIL_WARNINGS)
+add_compile_options(${SAFETRAIL_WARNINGS})
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  file(STRINGS ${CMAKE_SOURCE_DIR}/tools/build/warnings-clang.flags SAFETRAIL_WARNINGS_CLANG)
+  add_compile_options(${SAFETRAIL_WARNINGS_CLANG})
+endif()
+option(SAFETRAIL_WERROR "Treat warnings as errors (CI sets this)" OFF)
+if(SAFETRAIL_WERROR)
+  add_compile_options(-Werror)
+endif()
 
 # Must match the Makefile. See the long note there: without this, whether the
 # compiler fuses `a*b + c` into an FMA depends on the optimisation level and the

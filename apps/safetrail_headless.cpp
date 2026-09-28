@@ -1,7 +1,16 @@
 // safetrail_headless -- run a scenario, print what the engine sees.
 //
-// Deliberately terminal-only. The web dashboard is Phase 3; this is the thing
-// that proves the engine works, and it is what you run in a viva.
+// Loads real OpenStreetMap zones, simulates a population of tourists with a GPS
+// error model, runs the geofencing engine tick by tick, and prints the event
+// stream and the engine's counters. `--export-html` also writes the
+// self-contained dashboard. `make demo` and `make dashboard` are the two usual
+// invocations.
+//
+//   --index brute|quadtree|rtree|geohash   spatial index (default quadtree);
+//                                          the event stream is identical for all
+//                                          four (tests/fence/index_independence_test)
+//   --tourists N  --hours H  --seed S  --synthetic N  --zones FILE  --show N
+//   --no-hysteresis                        the naive baseline, for the A/B
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -23,7 +32,9 @@ static const char* kind_str(fence::EventKind k) {
   return "?";
 }
 static std::string hhmmss(int64_t ms) {
-  char b[16];
+  // Sized for the widest int64 hour count, so snprintf can never truncate
+  // (g++ -Wformat-truncation proved the old 16 bytes could).
+  char b[48];
   snprintf(b, sizeof b, "%02lld:%02lld:%02lld", (long long)(ms / 3600000),
            (long long)(ms / 60000 % 60), (long long)(ms / 1000 % 60));
   return b;
@@ -46,6 +57,14 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--hours") && i + 1 < argc) cfg.duration_ms = atoll(argv[++i]) * 3600000;
     else if (!strcmp(argv[i], "--no-hysteresis")) cfg.eval.hysteresis.enabled = false;
     else if (!strcmp(argv[i], "--seed") && i + 1 < argc) cfg.seed = uint64_t(atoll(argv[++i]));
+    else if (!strcmp(argv[i], "--index") && i + 1 < argc) {
+      const std::string k = argv[++i];
+      if (k == "brute") cfg.index = index::IndexKind::BruteForce;
+      else if (k == "quadtree") cfg.index = index::IndexKind::Quadtree;
+      else if (k == "rtree") cfg.index = index::IndexKind::RTree;
+      else if (k == "geohash") cfg.index = index::IndexKind::Geohash;
+      else { printf("unknown index '%s' (brute|quadtree|rtree|geohash)\n", k.c_str()); return 2; }
+    }
     else if (!strcmp(argv[i], "--brute")) cfg.index = index::IndexKind::BruteForce;
     else if (!strcmp(argv[i], "--zones") && i + 1 < argc) zones = argv[++i];
     else if (!strcmp(argv[i], "--show") && i + 1 < argc) show = size_t(atoi(argv[++i]));
@@ -133,6 +152,10 @@ int main(int argc, char** argv) {
          (unsigned long long)c.fixes_rejected_noise, geo::UncertainPoint::UNUSABLE_ACCURACY_M);
   printf("  \033[1mflaps suppressed [GAP 8]  %10llu\033[0m   drift-induced false transitions\n",
          (unsigned long long)c.flaps_suppressed);
+  printf("  out-of-window observations%10llu   open state, zone no longer a candidate\n",
+         (unsigned long long)c.out_of_window_observations);
+  printf("  states closed             %10llu   zone went out of force\n",
+         (unsigned long long)c.states_closed);
 
   printf("\n\033[1mindex\033[0m %s\n", s.index().name());
   printf("  nodes  %zu   max depth  %zu   memory  %.1f KB\n",

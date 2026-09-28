@@ -5,7 +5,7 @@
 #include "safetrail/index/versioned_index.hpp"
 #include "safetrail/alert/correlator.hpp"
 #include "safetrail/evidence/merkle_log.hpp"
-#include "safetrail/geo/haversine.hpp"
+#include "safetrail/geo/point.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <climits>
@@ -558,9 +558,10 @@ function experimentPanel() {
   el.innerHTML = `<table class="exp">
     <tr><th>zones</th><th>brute µs</th><th>quad µs</th><th>R-tree µs</th><th>QT×</th><th>RT×</th><th>cand</th></tr>
     ${body}</table>
-    <div class="note">Latency = median of 7, µs/query, 450 m box, 2000 probes/row —
-      from <code>bench/results/index_scaling.csv</code> (the source
-      <code>RESULTS.md</code> uses). Speedups are vs our own brute force. The
+    <div class="note">Latency = median of 11 interleaved rounds, µs/query, 450 m box,
+      2000 probes/row — from <code>bench/results/index_scaling.csv</code> (the source
+      <code>RESULTS.md</code> uses; one laptop, see its environment note). Speedups are
+      paired ratios vs our own brute force and vary between runs. The
       <b>candidate count is identical across all three</b>: they return the same
       true positives, so the ceiling is output size <b>k</b>, exactly as
       O(log n + k) predicts.</div>
@@ -670,6 +671,22 @@ document.getElementById('disp').onclick = e => { showDisp = !showDisp; e.target.
 scrub.oninput = () => { frame = +scrub.value; playing = false;
   document.getElementById('play').textContent = 'play'; render(); };
 addEventListener('resize', () => { resize(); render(); });
+// Deep links: dashboard.html#index=rtree&frame=1200&pause opens on that view, so
+// a particular state can be linked to, and tools/screenshots.sh can capture the
+// README images headlessly instead of by hand.
+{
+  const h = new URLSearchParams(location.hash.slice(1));
+  const mode = IDX_NAMES.indexOf((h.get('index') || '').replace('bruteforce', 'brute force')
+                                                      .replace('rtree', 'r-tree'));
+  if (mode > 0) {
+    idxMode = mode;
+    const b = document.getElementById('qt');
+    b.textContent = 'index: ' + IDX_NAMES[idxMode];
+    b.classList.add('on');
+  }
+  if (h.has('frame')) frame = Math.max(0, Math.min(D.frames.length - 1, +h.get('frame') || 0));
+  if (h.has('pause')) { playing = false; document.getElementById('play').textContent = 'play'; }
+}
 resize(); render();
 incidentFeed(); evidencePanel(); versionsPanel();   // end-of-run summaries; render once
 experimentPanel(); whyPanel(); conceptsPanel();     // the main experiment + concept map
@@ -746,11 +763,11 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
     const Frame& f = frames_[fi];
     if (fi) d += ",";
     d += "{\"t_ms\":" + std::to_string(f.t_ms) + ",\"lat\":[";
-    for (size_t i = 0; i < f.lat.size(); ++i) { if (i) d += ","; put_f(d, f.lat[i], 5); }
+    for (size_t i = 0; i < f.lat.size(); ++i) { if (i) d += ","; put_f(d, double(f.lat[i]), 5); }
     d += "],\"lon\":[";
-    for (size_t i = 0; i < f.lon.size(); ++i) { if (i) d += ","; put_f(d, f.lon[i], 5); }
+    for (size_t i = 0; i < f.lon.size(); ++i) { if (i) d += ","; put_f(d, double(f.lon[i]), 5); }
     d += "],\"acc\":[";
-    for (size_t i = 0; i < f.acc.size(); ++i) { if (i) d += ","; put_f(d, f.acc[i], 1); }
+    for (size_t i = 0; i < f.acc.size(); ++i) { if (i) d += ","; put_f(d, double(f.acc[i]), 1); }
     d += "],\"state\":[";
     for (size_t i = 0; i < f.state.size(); ++i)
       { if (i) d += ","; d += std::to_string(int(f.state[i])); }
@@ -842,10 +859,10 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
       std::vector<std::string> col;
       size_t p = 0;
       while (p <= line.size()) {
-        size_t c = line.find(',', p);
-        if (c == std::string::npos) c = line.size();
-        col.push_back(line.substr(p, c - p));
-        p = c + 1;
+        size_t comma = line.find(',', p);
+        if (comma == std::string::npos) comma = line.size();
+        col.push_back(line.substr(p, comma - p));
+        p = comma + 1;
       }
       if (col.size() < 7) continue;
       if (!firstrow) d += ",";
@@ -880,16 +897,17 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
     };
     const int Q = 3000;
     long long mism = 0, cand = 0;
-    std::vector<index::ZoneId> a, b, c;
+    std::vector<index::ZoneId> a, b, rt_hits;
     for (int i = 0; i < Q; ++i) {
       geo::LatLon ctr{bounds.min_lat + nextf() * (bounds.max_lat - bounds.min_lat),
                       bounds.min_lon + nextf() * (bounds.max_lon - bounds.min_lon)};
       const geo::Bbox q = geo::Bbox::around(ctr, 450.0);
-      a.clear(); b.clear(); c.clear();
-      bf.query(q, a); qt.query(q, b); rt.query(q, c);
-      std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end()); std::sort(c.begin(), c.end());
+      a.clear(); b.clear(); rt_hits.clear();
+      bf.query(q, a); qt.query(q, b); rt.query(q, rt_hits);
+      std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end());
+      std::sort(rt_hits.begin(), rt_hits.end());
       if (a != b) ++mism;
-      if (a != c) ++mism;
+      if (a != rt_hits) ++mism;
       cand += (long long)a.size();
     }
     d += ",\"equivalence\":{\"queries\":" + std::to_string(Q) +

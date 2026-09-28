@@ -233,7 +233,8 @@ std::string Json::escape(const std::string& s) {
   std::string out;
   out.reserve(s.size() + 2);
   out += '"';
-  for (unsigned char c : s) {
+  for (const char ch : s) {
+    const auto c = static_cast<unsigned char>(ch);
     switch (c) {
       case '"':  out += "\\\""; break;
       case '\\': out += "\\\\"; break;

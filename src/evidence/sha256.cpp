@@ -65,12 +65,12 @@ Hash sha256(const uint8_t* data, size_t len) {
   size_t padlen = (rem < 56) ? 64 : 128;
   std::memset(tail + rem + 1, 0, padlen - rem - 1 - 8);
   uint64_t bits = uint64_t(len) * 8;
-  for (int i = 0; i < 8; ++i) tail[padlen-1-i] = uint8_t(bits >> (8*i));
+  for (size_t i = 0; i < 8; ++i) tail[padlen-1-i] = uint8_t(bits >> (8*i));
   process(st, tail);
   if (padlen == 128) process(st, tail + 64);
 
   Hash out{};
-  for (int i = 0; i < 8; ++i) {
+  for (size_t i = 0; i < 8; ++i) {
     out[i*4]   = uint8_t(st[i]>>24); out[i*4+1] = uint8_t(st[i]>>16);
     out[i*4+2] = uint8_t(st[i]>>8);  out[i*4+3] = uint8_t(st[i]);
   }

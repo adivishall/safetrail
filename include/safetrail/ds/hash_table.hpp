@@ -61,7 +61,7 @@ struct Hash {
   size_t operator()(uint64_t k) const { return size_t(k * 0x9E3779B97F4A7C15ull); }
   size_t operator()(const std::string& s) const {
     uint64_t h = 1469598103934665603ull;               // FNV-1a
-    for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
+    for (const char ch : s) { h ^= uint64_t(static_cast<unsigned char>(ch)); h *= 1099511628211ull; }
     return size_t(h);
   }
  private:
