@@ -34,6 +34,10 @@
 # `|| true` appears exactly once below, on the benchmark step, and that is
 # deliberate rather than incidental -- it used to be on steps whose failure meant
 # something.
+# Runner images are pinned (ubuntu-24.04 ships g++ 13; macos-15 ships Apple
+# clang) so that a compiler upgrade -- and whatever new -Werror diagnostics it
+# brings -- is a deliberate change to this file, not something that happens to a
+# commit because GitHub moved "latest".
 name: build-test-deploy
 
 on:
@@ -54,7 +58,7 @@ concurrency:
 jobs:
   # ── Correctness gates ───────────────────────────────────────────────────────
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Compiler version
@@ -74,7 +78,7 @@ jobs:
   # family (see the Makefile), and a second compiler is a second opinion on UB
   # and portability. Then the randomised tests at 10x, and static analysis.
   clang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Compiler version
@@ -89,14 +93,14 @@ jobs:
   # Do the tests catch broken code? Each mutant in tools/mutation_check.py is a
   # realistic bug in the core; the job fails if any survives.
   mutation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Mutation check
         run: CXX=g++ python3 tools/mutation_check.py
 
   sanitize:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Whole suite under AddressSanitizer + UndefinedBehaviorSanitizer
@@ -108,7 +112,7 @@ jobs:
   # The other build system, on the same tree. Catches Make/CMake drift and any
   # warning that only one of the two sets of flags surfaces.
   cmake:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Configure
@@ -138,7 +142,7 @@ jobs:
   # macOS as well as Linux: the project claims to build easily on both, and
   # libc++ vs libstdc++ is where portability assumptions surface.
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
       - name: Build and test with clang++
@@ -149,7 +153,7 @@ jobs:
   # ── Artifact generation ─────────────────────────────────────────────────────
   build:
     needs: [test, clang, mutation, sanitize, cmake, macos]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -178,7 +182,7 @@ jobs:
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -91,11 +91,15 @@ dashboard: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 60 --hours 2 --synthetic 400 --show 6 --export-html dashboard.html
 
 # Writes bench/results/*.csv and bench/results/environment.txt (compiler, flags,
-# OS, CPU, date), then redraws the scaling chart if Python 3 is available.
+# OS, CPU, power, load, and the commit whose CODE produced the numbers), then
+# redraws the scaling chart and re-renders the docs tables if Python 3 is
+# available. The dirty check looks only at code paths: the redirect below has
+# already truncated environment.txt -- itself a tracked file -- by the time it
+# runs, so checking the whole tree flagged every run as uncommitted.
 bench: $(BUILD)/safetrail_bench
 	@mkdir -p bench/results
 	@{ echo "date:     $$(date -u +%Y-%m-%dT%H:%MZ)"; \
-	   echo "commit:   $$(git rev-parse --short HEAD 2>/dev/null)$$(git diff --quiet HEAD 2>/dev/null || echo ' (uncommitted changes)')"; \
+	   echo "commit:   $$(git rev-parse --short HEAD 2>/dev/null)$$(git diff --quiet HEAD -- src include apps tools/build Makefile CMakeLists.txt 2>/dev/null || echo ' (uncommitted code changes)')"; \
 	   echo "compiler: $$($(CXX) --version 2>/dev/null | head -1)"; \
 	   echo "flags:    -std=c++17 $(OPT) -ffp-contract=off"; \
 	   echo "os:       $$(uname -srm)"; \

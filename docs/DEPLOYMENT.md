@@ -36,12 +36,16 @@ Every job below gates the deploy except the benchmark, which deliberately does n
 
 | Gate | What it runs |
 |---|---|
-| test (Linux, g++) | docs links resolve, results tables match the committed CSVs, every header compiles standalone, the whole suite, and `make determinism` — all with `WERROR=1` |
+| test (Ubuntu 24.04, g++ 13) | docs links resolve, results tables match the committed CSVs, every header compiles standalone, the whole suite, and `make determinism` — all with `WERROR=1` |
 | clang (Linux) | the suite with clang's stricter conversion warnings as errors, `make stress` (randomised tests at 10×), and the Clang Static Analyzer |
 | mutation | `tools/mutation_check.py`: 22 injected bugs, each must fail a test |
 | sanitize | `make asan` — the WHOLE suite under ASan + UBSan with `-fno-sanitize-recover`, so UB aborts instead of printing and continuing |
 | cmake | configure with `-DSAFETRAIL_WERROR=ON`, build, `ctest`, and check Make and CMake see the same source files |
 | macos | the suite with Apple clang and `-Werror`, then the whole suite under UBSan |
+
+Runner images are pinned (`ubuntu-24.04`, `macos-15`), so the compilers — and
+the warnings `-Werror` turns into failures — only change when the workflow file
+does.
 | *benchmarks* | *informational only.* Timings on shared CI runners are noisy; gating on them produces flaky failures that teach people to ignore red builds. The CSVs are uploaded as an artifact on every run. |
 
 If any gate fails, nothing publishes. The generated `dashboard.html`
