@@ -96,30 +96,30 @@ data/zones/shillong_osm.geojson           real OSM geometry on disk
         ▼  util::Json::parse_file()               src/util/json.cpp
    hand-written JSON parser, no library
         │
-        ▼  ZoneStore::load_geojson()              src/fence/zone.cpp:53
-   ├─ strip_closing_vertex()                      src/fence/zone.cpp:84
+        ▼  ZoneStore::load_geojson()              src/fence/zone.cpp:63
+   ├─ strip_closing_vertex()                      src/fence/zone.cpp:32
    │    GeoJSON repeats the first vertex; our rings are implicitly closed,
    │    so keeping it creates a zero-length edge
-   ├─ Polygon::validate()                         src/fence/zone.cpp:97
+   ├─ Polygon::validate()                         src/fence/zone.cpp:146
    │    self-intersecting geometry is REJECTED, never stored  [GAP 10]
    └─ Validity{active_from_s, active_to_s}        [GAP 3]
         │
-        ▼  Simulator::reindex()                   src/sim/simulator.cpp:19
+        ▼  Simulator::reindex()                   src/sim/simulator.cpp:61
    ├─ SpatialIndex::build()      quadtree / R-tree, root fitted to data
-   └─ VersionedIndex::add_zone() one version per zone   src/sim/simulator.cpp:63
+   └─ VersionedIndex::add_zone() one version per zone   src/sim/simulator.cpp:77
         │
         ▼  Simulator::step()   ×7200 ticks
    mobility → GPS error → Evaluator::evaluate_all()
    → containment, hysteresis, transitions → Events
         │
-        ▼  TraceRecorder::capture(s)              apps/safetrail_headless.cpp:86
+        ▼  TraceRecorder::capture(s)              apps/safetrail_headless.cpp:107
    one frame per 10 s of simulated time: positions, accuracy, confirmed state
         │
-        ▼  TraceRecorder::write_html()            src/viz/html_export.cpp:282
+        ▼  TraceRecorder::write_html()            src/viz/html_export.cpp:701
    serialise to JSON, substitute into the HTML shell at the __DATA__ marker
         │
         ▼
-dashboard.html                          1,643,399 bytes, self-contained
+dashboard.html                          ~1.6 MB, self-contained
 ```
 
 Verify the hops exist:
@@ -146,13 +146,14 @@ print('html+css+js shell %9d bytes' % (len(h)-(j-i)))"
 ```
 
 ```
-total file          1643399 bytes
-embedded data       1631641 bytes (99.3%)
-html+css+js shell     11748 bytes
+total file          1611560 bytes
+embedded data       1576795 bytes (97.8%)
+html+css+js shell     34755 bytes
 ```
 
-The page is 99.3% data. The viewer is 11.7 KB of hand-written HTML, CSS and
-canvas JavaScript.
+The page is 97.8% data. The viewer is about 35 KB of hand-written HTML, CSS and
+canvas JavaScript. (Counts are characters, and move slightly whenever the code
+or `bench/results/index_scaling.csv` changes; the proportions are the point.)
 
 ### Proof of zero network activity
 
@@ -220,12 +221,15 @@ seed 222:  zone entries  182
 ```bash
 ./build/safetrail_headless --seed 111 --export-html /tmp/a.html >/dev/null
 ./build/safetrail_headless --seed 111 --export-html /tmp/b.html >/dev/null
-cmp /tmp/a.html /tmp/b.html && md5 -q /tmp/a.html
+cmp /tmp/a.html /tmp/b.html && echo identical
 ```
 
 ```
-99be58812ccfcc193fd7f69b77cf101a
+identical
 ```
+
+The hash itself is not quoted here: the page embeds the committed benchmark
+table, so it changes whenever `make bench` regenerates the CSVs.
 
 Determinism holds, which is what makes the replay harness and the hysteresis A/B
 comparison valid at all.

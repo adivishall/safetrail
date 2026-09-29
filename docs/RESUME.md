@@ -14,13 +14,15 @@ Each is about thirty words — two lines on a résumé. The source line under ea
 is not part of the bullet.
 
 1. **Built a C++17 geofencing engine on hand-written spatial and temporal indexes
-   (quadtree, STR R-tree, AVL interval tree, persistent quadtree); 100k-zone range
-   queries run ~100–115× faster than a linear scan with identical results.**
+   (quadtree, STR R-tree, AVL interval tree, persistent quadtree); on a synthetic
+   100k-zone benchmark, range queries ran ~100–115× faster than a linear scan,
+   with identical results.**
    <sub>`make bench` §1, `bench/results/index_scaling.csv` and
    `bench/results/variation/` (R-tree 102–114× over four runs); identical results
-   enforced by per-query checksums and `tests/index/differential_test.cpp`.</sub>
+   enforced by result checksums on every timed pass and
+   `tests/index/differential_test.cpp`.</sub>
 
-2. **Established correctness with randomized differential tests against a
+2. **Tested correctness with randomized differential tests against a
    brute-force oracle, invariant audits after every operation, and mutation
    testing (22/22 injected bugs caught), uncovering 8 latent defects in code that
    passed its tests.**
@@ -29,20 +31,23 @@ is not part of the bullet.
 
 3. **Traced ~60% of a simulation's enter/exit events to a hysteresis flaw that let
    uncertain GPS readings bypass the flap filter; after the fix, transition counts
-   match noise-free ground truth within 4% under realistic drift.**
+   came within 4% of noise-free ground truth under simulated GPS drift.**
    <sub>Dashboard configuration before/after (2,440 → 987 entries);
    `make bench` §10, `bench/results/hysteresis_ab.csv` (502 vs 521);
    `tests/fence/hysteresis_test.cpp`.</sub>
 
-4. **Found a sweep-line (Shamos–Hoey) bug by fuzzing 800,000 degenerate polygons
-   against an O(V²) oracle, and made the spatial filter conservative by deriving
-   query boxes from exact spherical-cap bounds.**
+4. **Found a sweep-line (Shamos–Hoey) bug by fuzzing 800,000 small degenerate
+   polygons against an O(V²) oracle, and made the spatial filter conservative by
+   deriving query boxes from exact spherical-cap bounds.**
    <sub>`tests/geo/sweep_line_test.cpp`, `tests/geo/bbox_around_test.cpp`;
-   [DEFECT_LOG.md](DEFECT_LOG.md) pass 6.</sub>
+   [DEFECT_LOG.md](DEFECT_LOG.md) pass 6. The 800,000-ring run (94 disagreements)
+   was a one-off; its failures are pinned as regression cases, and the checked-in
+   fuzz loop covers 12,000 rings per `make test`, 120,000 under `make stress`.</sub>
 
 5. **Designed a persistent path-copying quadtree that answers "rules at time t"
-   queries at present-query cost, copying ~15 nodes per change (13× structural
-   sharing at 5,001 versions), verified against a full-replay oracle.**
+   queries about as fast as present-time ones, copying ~15 nodes per insert or
+   removal (13× structural sharing at 5,001 versions), verified against a
+   full-replay oracle.**
    <sub>`make bench` §9 (`versioned_index.csv`, `versioned_mutations.csv`);
    `tests/index/persistence_differential_test.cpp`.</sub>
 
@@ -56,8 +61,8 @@ is not part of the bullet.
 ## Short forms
 
 - *Hand-built quadtree, STR R-tree, AVL interval tree and persistent quadtree in
-  C++17; ~100–115× faster range queries than a linear scan at 100k zones, with
-  identical results.*
+  C++17; ~100–115× faster range queries than a linear scan on a synthetic
+  100k-zone benchmark, with identical results.*
 - *Differential and mutation testing (22/22 injected bugs caught) found 8 latent
   defects in code that already passed its tests.*
 
@@ -72,8 +77,12 @@ three bullets are plenty.
 
 - **"Faster than PostGIS / Boost."** Every speedup is against this project's own
   brute force, not an external library.
-- **A single speedup figure as a constant.** Quote the range; one laptop, and
-  ratios moved by up to 2× between runs.
+- **A single speedup figure as a constant, or as a guarantee.** Quote the range;
+  one laptop, synthetic zones, and ratios moved by more than 2× between sessions
+  (97–229× in one set of runs). The bounds are O(log n + k) expected, O(n) worst
+  case.
+- **Mutation score as proof of correctness.** 22/22 means those 22 hand-written
+  bugs are caught; it says nothing about bugs unlike them.
 - **"Tested on real users."** Real OpenStreetMap geography, simulated movement.
 - **"Production-ready" or "scales to millions".** Single-threaded, in-memory,
   O(n) removal; see the limitations in [ARCHITECTURE.md](ARCHITECTURE.md).

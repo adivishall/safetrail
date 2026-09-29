@@ -203,8 +203,9 @@ int main() {
   // validate() really runs the sweep -- left simple or given one injected
   // degeneracy: a vertex moved onto a non-adjacent edge, a duplicated vertex,
   // or a collinear spike. tools/ has no separate fuzzer; this is it, scaled to
-  // run in a second. The 800,000-ring version used to find the bugs above is
-  // the same loop with a larger count.
+  // run in a second. The run that found the bugs above was a throwaway program
+  // doing the first half of this loop alone: 800,000 tiny rings, 400,000 on each
+  // grid size.
   {
     safetrail::sim::Rng frng(12345);
     auto L = [](double y, double x) { return LatLon{25.0 + 0.001 * y, 91.0 + 0.001 * x}; };

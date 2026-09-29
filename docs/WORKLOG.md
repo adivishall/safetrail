@@ -6,6 +6,32 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-09-29 — Re-validated every commit from clean clones; fixed a flaky mutation check
+
+**What:** Checked each commit on the branch on its own (docs references,
+rendered-results check, `make test` with `-Werror`, determinism) and ran every
+Makefile target on a fresh clone of the final commit. One mutation-check run
+reported a survivor that earlier runs had killed. The tests were fine; the
+script was not: macOS's make compares timestamps to the second, so a mutant
+written in the same second as the previous build was never compiled. The script
+now waits for the next second before every write. The docs pass corrected
+`DATA_PROVENANCE.md`, whose seven `file:line` citations and byte counts had
+drifted. It also qualified the résumé bullets as benchmark and simulation
+results ("synthetic 100k-zone benchmark", "simulated GPS drift"), added
+"mutation score as proof" to the do-not-claim list, and corrected "ratios moved
+by up to 2×" to more than 2×. RESULTS.md now also reports that two uncommitted
+clean-clone runs measured the R-tree at 206× and 236×.
+
+**Why:** A 22/22 that depends on sub-second timing is not a measurement, and a
+résumé line should not read as a guarantee.
+
+**Impact:** No engine code changed. With the fixed script the mutation check is
+22/22 in three consecutive full runs. Every commit passes its own gates; the
+clean clone passes test, check, determinism, UBSan, CMake + ctest, stress,
+static analysis, validate, bench (all checksums equal), dashboard and the docs
+checks. GCC `-Werror` still has not run: CI builds this branch only once it is
+pushed or opened as a PR.
+
 ### 2026-09-28 — Integrated with origin/main and re-validated on the result
 
 **What:** Committed the audit as four commits (core fixes and tests; benchmark;

@@ -57,7 +57,7 @@ started the audit, and the tests I built are what found it."
 4. **Measurement.** Interleaved rounds, samples of at least 20 ms, paired ratios,
    checksums so contenders must return identical results, and the environment
    recorded. I re-ran everything and quote ranges, because even paired ratios
-   moved by up to 2× between runs on one laptop.
+   moved by more than 2× between sessions on one laptop.
 5. **Correctness.** Differential tests over seven hostile workloads, invariant
    audits after every operation, the whole engine required to produce
    bit-identical events under all four indexes, and 22 injected bugs that the

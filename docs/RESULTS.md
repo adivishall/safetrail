@@ -16,13 +16,15 @@ make bench-variation   # sections 1-3 three more times, for the ranges
   one state — the environment below records which, including power source and
   load (this run: <!-- results:machine -->Apple M4, AC power, load average 4.09 at the start, commit 8d44bc6<!-- /results:machine -->). They
   drift between sessions: brute force over 100,000 zones measured 244 µs in a
-  12 September run and 460–560 µs across this audit's runs, on battery and on
-  mains alike, for reasons not established. Ratios measured back to back,
+  12 September run and 460–560 µs across the committed runs below, on battery
+  and on mains alike, for reasons not established. Ratios measured back to back,
   candidate counts, node counts, allocation counts and bytes are far more
   stable, so the docs quote ratios, with their range.
 - **Ranges are real.** Even paired, a speedup moves between runs: the R-tree's
   at 100,000 zones spanned 102–114× across the runs below, and 97–229× in the
-  previous committed set. Every
+  previous committed set. Two later clean-clone validation runs of the same code
+  (not committed) measured brute force at 241 and 287 µs and the R-tree at 236×
+  and 206×: the committed runs are the slow end of what this laptop does. Every
   headline ratio is shown with the min–max over
   <!-- results:runs -->4<!-- /results:runs --> independent runs.
 - **Speedups are against this project's own brute force**, the correctness
