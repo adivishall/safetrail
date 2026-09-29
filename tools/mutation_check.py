@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -144,6 +145,22 @@ MUTANTS = [
 ]
 
 
+def write_source(path, text):
+    """Write a source file so that make is certain to see it as changed.
+
+    make rebuilds a target only if a prerequisite is strictly newer, and GNU make
+    3.81 -- /usr/bin/make on macOS -- compares mtimes to the whole second. A
+    mutant written (or an original restored) in the same second as the last
+    build therefore looks up to date: the old binary runs, and reports a
+    SURVIVED that never ran the mutant, or a kill that belonged to the previous
+    one. Starting each write in a later second than every build output removes
+    that; it costs under a second per write.
+    """
+    time.sleep(1.0 - time.time() % 1.0 + 0.01)
+    with open(path, "w") as f:
+        f.write(text)
+
+
 def run(cmd, cwd, env=None):
     return subprocess.run(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                           env=env).returncode
@@ -176,7 +193,7 @@ def main():
                 print("  ERROR     %s  (pattern matches %d times)" % (name, original.count(old)))
                 errors += 1
                 continue
-            open(path, "w").write(original.replace(old, new))
+            write_source(path, original.replace(old, new))
             try:
                 if run(["make", "-s", "-j" + jobs] + ["build/test/" + t for t in kill_tests], work) != 0:
                     print("  ERROR     %s  (mutant does not compile)" % name)
@@ -189,7 +206,7 @@ def main():
                     print("  SURVIVED  %s" % name)
                     survived += 1
             finally:
-                open(path, "w").write(original)     # fresh mtime -> make rebuilds it
+                write_source(path, original)        # newer than the mutant's build
 
         total = len(mutants)
         print("\nmutation check: %d/%d killed, %d survived, %d errors"

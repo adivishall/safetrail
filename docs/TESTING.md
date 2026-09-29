@@ -114,7 +114,10 @@ resolution against smallest-containing search.
 A green suite proves nothing on its own; a test that cannot fail when the code
 is wrong is decoration. `tools/mutation_check.py` applies one realistic bug at a
 time to a copy of the tree, rebuilds, and runs the tests named for it. A mutant
-is **killed** if any of them fails; any survivor fails the run.
+is **killed** if any of them fails; any survivor fails the run. Each edit is
+written in a later wall-clock second than the last build, because macOS's make
+compares timestamps to the second: without that wait, a mutant could be judged
+by the previous build's binary ([DEFECT_LOG.md](DEFECT_LOG.md)).
 
 | Mutant | Killed by |
 |---|---|
