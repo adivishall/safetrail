@@ -266,7 +266,7 @@ def block_keyline():
     if not r:
         return "(run make bench)"
     return ("the R-tree answers the index query **%s× faster** than a linear scan "
-            "(%s over %d runs) and the quadtree **%s×** (%s), returning identical results"
+            "(%s over %d runs in one session) and the quadtree **%s×** (%s), returning identical results"
             % (x(float(r["rtree_speedup"])), band("index_scaling.csv", "zones", "100000", "rtree_speedup"),
                nruns("index_scaling.csv"), x(float(r["quad_speedup"])),
                band("index_scaling.csv", "zones", "100000", "quad_speedup")))

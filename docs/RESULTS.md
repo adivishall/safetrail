@@ -14,19 +14,34 @@ make bench-variation   # sections 1-3 three more times, for the ranges
 
 - **What is portable and what is not.** Absolute times belong to one machine in
   one state — the environment below records which, including power source and
-  load (this run: <!-- results:machine -->Apple M4, AC power, load average 4.09 at the start, commit 8d44bc6<!-- /results:machine -->). They
-  drift between sessions: brute force over 100,000 zones measured 244 µs in a
-  12 September run and 460–560 µs across the committed runs below, on battery
-  and on mains alike, for reasons not established. Ratios measured back to back,
-  candidate counts, node counts, allocation counts and bytes are far more
-  stable, so the docs quote ratios, with their range.
-- **Ranges are real.** Even paired, a speedup moves between runs: the R-tree's
-  at 100,000 zones spanned 102–114× across the runs below, and 97–229× in the
-  previous committed set. Two later clean-clone validation runs of the same code
-  (not committed) measured brute force at 241 and 287 µs and the R-tree at 236×
-  and 206×: the committed runs are the slow end of what this laptop does. Every
-  headline ratio is shown with the min–max over
-  <!-- results:runs -->4<!-- /results:runs --> independent runs.
+  load (this run: <!-- results:machine -->Apple M4, Battery power, load average 3.63 at the start, commit f267de0<!-- /results:machine -->). They
+  drift between sessions: brute force over 100,000 zones measured 244 µs on 12
+  September and again on 1 October, and 460–560 µs in the runs committed on 28
+  September, on battery and on mains alike, for reasons not established. Ratios
+  measured back to back, candidate counts, node counts, allocation counts and
+  bytes are far more stable, so the docs quote ratios, with their range.
+- **Ranges come in two sizes.** Within one session the runs agree closely: every
+  headline ratio below is shown with its min–max over
+  <!-- results:runs -->4<!-- /results:runs --> independent runs of one session. Between sessions they do not,
+  and the R-tree — about a microsecond per query, the shortest timing here —
+  moves most. At 100,000 zones in one district it measured 102–114× in the runs
+  committed on 28 September (every contender 2–4× slower in absolute time, IQRs
+  of 16–58% on that row), 97–229× in the set before that, 206× and 236× in two
+  uncommitted clean-clone runs, and 223–235× in the runs below. The quadtree's
+  ratio has stayed within 26–35×. Read ~100× as the R-tree's floor on this
+  machine and the tables as one session's measurement.
+- **Measured, theoretical, simulated.** Everything on this page is measured.
+  Bounds — O(log n + k) expected, O(min(n, (k + 1) log n)) for the interval
+  tree — are theory, stated and checked against the code in
+  [DATA_STRUCTURES.md](DATA_STRUCTURES.md). Zones in §1–9 are synthetic; §10
+  and §18 use the real OpenStreetMap zones (§18 adds synthetic ones); people and
+  their GPS error are simulated everywhere.
+- **Identical across platforms, or not.** Counts — candidates, nodes,
+  allocations, events, the hysteresis tallies — are deterministic: identical run
+  to run, and between the Make and CMake builds. Across operating systems they
+  are not gated; the one macOS/Linux comparison matched in the evaluation core
+  and differed in the dispatch travel totals (§12), whose `libm` calls differ in
+  the last ulp ([TESTING.md](TESTING.md) §7). Times are never portable.
 - **Speedups are against this project's own brute force**, the correctness
   oracle — not against PostGIS, Boost.Geometry or any library.
 - **Simulated people, real geography.** Benchmarks use synthetic zones in a
@@ -38,15 +53,15 @@ make bench-variation   # sections 1-3 three more times, for the ranges
 
 <!-- results:env -->
 ```
-date:     2026-09-28T10:37Z
-commit:   8d44bc6
+date:     2026-10-01T09:39Z
+commit:   f267de0
 compiler: Apple clang version 17.0.0 (clang-1700.4.4.1)
 flags:    -std=c++17 -O2 -ffp-contract=off
 os:       Darwin 25.5.0 arm64
 cpu:      Apple M4
 cores:    10
-power:    AC Power
-load:     4.09 4.88 6.84
+power:    Battery Power
+load:     3.63 2.69 2.23
 ```
 <!-- /results:env -->
 
@@ -77,20 +92,20 @@ overlapping each query, **k**, grows in proportion to n.
 <!-- results:scaling -->
 | zones | brute µs | quadtree µs | R-tree µs | quadtree × | R-tree × | k / query | quadtree × range | R-tree × range | worst IQR |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 100 | 0.215 | 0.079 | 0.079 | **2.72×** | **2.73×** | 0.10 | 2.57–3.47× | 2.68–2.87× | 4% |
-| 1,000 | 3.79 | 0.235 | 0.210 | **16.2×** | **18.2×** | 0.97 | 15.3–16.2× | 17.9–19.6× | 10% |
-| 5,000 | 19.8 | 0.862 | 0.463 | **23.8×** | **43.6×** | 4.88 | 22.9–27.2× | 39.6–51.7× | 24% |
-| 10,000 | 38.5 | 1.57 | 0.665 | **24.9×** | **58.3×** | 9.77 | 24.4–25.6× | 58.1–68.6× | 10% |
-| 20,000 | 77.5 | 3.35 | 1.01 | **24.6×** | **76.8×** | 19.80 | 24.6–26.2× | 74.7–83.6× | 14% |
-| 50,000 | 218 | 9.00 | 2.21 | **24.0×** | **91.1×** | 49.22 | 24.0–26.9× | 91.1–120× | 49% |
-| 100,000 | 560 | 18.8 | 4.47 | **28.1×** | **110×** | 98.45 | 26.9–28.4× | 102–114× | 58% |
+| 100 | 0.079 | 0.021 | 0.027 | **3.77×** | **2.92×** | 0.10 | 3.71–3.83× | 2.91–2.92× | 8% |
+| 1,000 | 1.87 | 0.061 | 0.062 | **31.2×** | **30.4×** | 0.97 | 28.7–32.1× | 28.5–31.2× | 12% |
+| 5,000 | 11.8 | 0.343 | 0.175 | **34.5×** | **72.1×** | 4.88 | 34.5–40.1× | 72.1–84.7× | 19% |
+| 10,000 | 24.1 | 0.692 | 0.266 | **34.5×** | **92.1×** | 9.77 | 34.5–37.3× | 92.1–102× | 10% |
+| 20,000 | 47.9 | 1.42 | 0.410 | **33.7×** | **117×** | 19.80 | 33.7–35.1× | 117–119× | 9% |
+| 50,000 | 120 | 3.49 | 0.693 | **34.1×** | **171×** | 49.22 | 34.1–34.6× | 171–179× | 3% |
+| 100,000 | 244 | 7.25 | 1.10 | **33.5×** | **223×** | 98.45 | 33.5–34.4× | 223–235× | 6% |
 <!-- /results:scaling -->
 
 Brute force is linear. The trees are O(log n + k) and here **k dominates**: at
 100,000 zones about a hundred zones really do overlap each query, and every
 index must return all of them. That caps the speedup — no index returns fewer
-results than exist — and it is why the quadtree's ratio levels off around
-23–28× instead of growing. The R-tree keeps gaining because STR packing lets it
+results than exist — and it is why the quadtree's ratio stops growing after a
+few thousand zones instead of rising with n. The R-tree keeps gaining because STR packing lets it
 reach those k results through fewer nodes. The candidate counts are identical
 across indexes by construction; the checksum gate verifies it on every row.
 
@@ -104,9 +119,9 @@ each query overlaps about one zone at every size.
 <!-- results:density -->
 | zones | brute µs | quadtree µs | R-tree µs | quadtree × | R-tree × | k / query | quadtree × range | R-tree × range | worst IQR |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 5.05 | 0.225 | 0.227 | **20.1×** | **16.7×** | 0.97 | 15.6–26.0× | 16.7–23.1× | 212% |
-| 10,000 | 53.7 | 0.449 | 0.310 | **115×** | **178×** | 1.03 | 57.1–115× | 85.4–178× | 15% |
-| 100,000 | 529 | 1.20 | 0.638 | **451×** | **817×** | 0.99 | 250–451× | 513–817× | 25% |
+| 1,000 | 1.90 | 0.059 | 0.063 | **32.4×** | **29.8×** | 0.97 | 29.7–32.4× | 29.5–31.6× | 9% |
+| 10,000 | 21.3 | 0.156 | 0.128 | **137×** | **167×** | 1.03 | 137–142× | 167–183× | 47% |
+| 100,000 | 218 | 0.397 | 0.209 | **551×** | **1048×** | 0.99 | 546–575× | 961–1048× | 14% |
 <!-- /results:density -->
 
 With k fixed, what is left is the tree's depth, and the speedup keeps rising
@@ -126,10 +141,10 @@ per polygon.
 <!-- results:e2e -->
 | V | naive µs | bbox scan µs | quadtree µs | R-tree µs | quadtree vs naive | range | quadtree vs scan | range | candidates / q | hits / q |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 8 | 63.6 | 19.0 | 0.340 | 0.207 | **198×** | 182–198× | 56.2× | 52.5–56.2× | 0.18 | 0.11 |
-| 32 | 271 | 23.8 | 0.482 | 0.343 | **582×** | 533–634× | 51.2× | 41.4–54.8× | 0.30 | 0.18 |
-| 128 | 609 | 21.8 | 0.377 | 0.338 | **1512×** | 1512–1625× | 49.8× | 29.5–49.8× | 0.28 | 0.16 |
-| 512 | 3921 | 22.8 | 1.56 | 1.33 | **2502×** | 2435–2784× | 14.1× | 10.6–14.1× | 0.34 | 0.16 |
+| 8 | 17.1 | 9.67 | 0.103 | 0.063 | **166×** | 166–176× | 93.7× | 93.0–95.2× | 0.18 | 0.11 |
+| 32 | 58.6 | 9.86 | 0.116 | 0.080 | **503×** | 503–513× | 84.5× | 84.5–86.8× | 0.30 | 0.18 |
+| 128 | 262 | 9.91 | 0.176 | 0.125 | **1509×** | 1497–1540× | 56.5× | 56.0–59.0× | 0.28 | 0.16 |
+| 512 | 954 | 10.2 | 0.396 | 0.332 | **2411×** | 2332–2556× | 25.9× | 23.5–25.9× | 0.34 | 0.16 |
 <!-- /results:e2e -->
 
 The large factors against *naive* are what "check every zone against every
@@ -148,12 +163,12 @@ index.
 <!-- results:costs -->
 | zones | index | build ms | memory KB | bytes / zone | insert µs | remove µs |
 |---:|---|---:|---:|---:|---:|---:|
-| 10,000 | brute-force | 0.02 | 391 | 40 | 0.009 | 10.7 |
-| 10,000 | quadtree | 2.29 | 699 | 72 | 0.321 | 24.9 |
-| 10,000 | r-tree | 4.00 | 527 | 54 | 1.76 | 29.8 |
-| 100,000 | brute-force | 0.35 | 3,906 | 40 | 0.017 | 239 |
-| 100,000 | quadtree | 31.90 | 6,618 | 68 | 0.304 | 393 |
-| 100,000 | r-tree | 47.26 | 5,255 | 54 | 2.27 | 374 |
+| 10,000 | brute-force | 0.01 | 391 | 40 | 0.003 | 3.29 |
+| 10,000 | quadtree | 0.74 | 699 | 72 | 0.078 | 3.58 |
+| 10,000 | r-tree | 1.24 | 527 | 54 | 0.420 | 5.17 |
+| 100,000 | brute-force | 0.09 | 3,906 | 40 | 0.004 | 32.5 |
+| 100,000 | quadtree | 8.36 | 6,618 | 68 | 0.082 | 35.1 |
+| 100,000 | r-tree | 16.39 | 5,255 | 54 | 0.779 | 64.2 |
 <!-- /results:costs -->
 
 Removal is O(n) in all three indexes: none keeps an id → node map, so the entry
@@ -181,9 +196,9 @@ Same data, same queries; only the way the tree was assembled changes.
 <!-- results:str -->
 | zones | insertion build ms | STR build ms | insertion nodes | STR nodes | insertion µs / query | STR µs / query | STR query gain |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 0.4 | 0.3 | 214 | 155 | 0.478 | 0.227 | **2.08×** |
-| 10,000 | 5.7 | 3.1 | 2,133 | 1,456 | 3.38 | 0.691 | **4.92×** |
-| 100,000 | 97.8 | 43.0 | 21,368 | 14,383 | 27.3 | 4.38 | **6.12×** |
+| 1,000 | 0.2 | 0.1 | 214 | 155 | 0.148 | 0.069 | **2.16×** |
+| 10,000 | 2.0 | 1.3 | 2,133 | 1,456 | 1.36 | 0.241 | **5.75×** |
+| 100,000 | 28.6 | 16.6 | 21,368 | 14,383 | 6.59 | 1.04 | **6.43×** |
 <!-- /results:str -->
 
 Both builds are O(n log n). STR produces a smaller tree whose sibling boxes
@@ -199,17 +214,19 @@ Churn: ten rounds of deleting and reinserting a tenth of the set.
 <!-- results:interval -->
 | regime | windows | scan µs | tree µs | tree × | k / stab | height | AVL bound | height after churn | delete µs |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| selective | 1,000 | 1.13 | 0.080 | **14.1×** | 0.3 | 12 | 14.0 | 12 | 0.273 |
-| selective | 10,000 | 11.3 | 0.255 | **44.3×** | 3.6 | 16 | 18.8 | 16 | 0.317 |
-| selective | 100,000 | 132 | 4.58 | **28.4×** | 36.0 | 20 | 23.6 | 20 | 1.29 |
-| dense | 1,000 | 4.00 | 4.14 | **0.97×** | 363.2 | 12 | 14.0 | 12 | 0.252 |
-| dense | 10,000 | 24.4 | 25.9 | **0.94×** | 980.5 | 16 | 18.8 | 16 | 0.539 |
-| dense | 100,000 | 170 | 150 | **1.34×** | 1192.3 | 20 | 23.6 | 20 | 1.02 |
+| selective | 1,000 | 0.317 | 0.020 | **15.7×** | 0.3 | 12 | 14.0 | 12 | 0.110 |
+| selective | 10,000 | 3.15 | 0.052 | **61.3×** | 3.6 | 16 | 18.8 | 16 | 0.151 |
+| selective | 100,000 | 31.3 | 0.590 | **53.1×** | 36.0 | 20 | 23.6 | 20 | 0.253 |
+| dense | 1,000 | 1.08 | 1.45 | **0.74×** | 363.2 | 12 | 14.0 | 12 | 0.123 |
+| dense | 10,000 | 10.1 | 9.57 | **1.11×** | 980.5 | 16 | 18.8 | 16 | 0.167 |
+| dense | 100,000 | 41.9 | 19.6 | **2.18×** | 1192.3 | 20 | 23.6 | 20 | 0.262 |
 <!-- /results:interval -->
 
 Selective windows are where the `max_high` augmentation earns its keep. With
 hundreds of windows containing every instant the tree must still visit and
-report each one, and a sequential scan is as fast. The bound says exactly this:
+report each one: it loses to the scan when a third of 1,000 windows contain t,
+and is at most a small factor ahead at 100,000, where about 1% do. The bound
+says exactly this:
 reporting k windows costs O(min(n, (k + 1) log n)) — a worst-case guarantee from
 the AVL height, but not O(log n + k), because the prune admits a subtree as soon
 as any window in it reaches past t, so each result can cost a root-to-leaf path.
@@ -226,10 +243,10 @@ version scheme would have allocated. Then the cost of each kind of mutation on a
 <!-- results:persistent -->
 | versions | nodes allocated | if full-copied | sharing | query @ past µs | query @ now µs |
 |---:|---:|---:|---:|---:|---:|
-| 51 | 523 | 1,903 | **3.6×** | 0.215 | 0.211 |
-| 201 | 2,582 | 14,633 | **5.7×** | 0.302 | 0.274 |
-| 1,001 | 14,025 | 158,257 | **11.3×** | 0.585 | 0.579 |
-| 5,001 | 71,314 | 930,257 | **13.0×** | 2.00 | 2.70 |
+| 51 | 523 | 1,903 | **3.6×** | 0.078 | 0.079 |
+| 201 | 2,582 | 14,633 | **5.7×** | 0.105 | 0.104 |
+| 1,001 | 14,025 | 158,257 | **11.3×** | 0.193 | 0.187 |
+| 5,001 | 71,314 | 930,257 | **13.0×** | 0.579 | 0.992 |
 
 | mutation (5,000-zone index) | nodes allocated, mean | max |
 |---|---:|---:|
@@ -257,13 +274,20 @@ as in §1) and at constant density (k held, as in §2). It is `make bench`
 section 18 and sits here because it is the hot loop, not an extension.
 
 <!-- results:evaluator -->
-(run make bench)
+| regime | zones | µs / fix | IQR | candidates / fix | exact tests / fix | reconciled / fix (step 9) | open states, mean | max | enter + exit | deterministic |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| one district | 1,038 | 2.25 | 4% | 3.38 | 3.35 | 0.08 | 3.35 | 15 | 145 | yes |
+| one district | 5,038 | 4.92 | 1% | 13.95 | 13.92 | 0.36 | 13.93 | 36 | 499 | yes |
+| one district | 20,038 | 17.1 | 3% | 52.47 | 52.44 | 1.42 | 52.49 | 106 | 2,028 | yes |
+| constant density | 5,038 | 4.88 | 2% | 13.95 | 13.92 | 0.36 | 13.93 | 36 | 499 | yes |
+| constant density | 20,038 | 5.10 | 1% | 13.81 | 13.79 | 0.36 | 13.80 | 33 | 608 | yes |
+| constant density | 50,038 | 5.46 | 1% | 13.73 | 13.70 | 0.36 | 13.71 | 35 | 566 | yes |
 <!-- /results:evaluator -->
 
 µs/fix tracks candidates/fix: the exact geometry on k candidates is the cost of
 a fix, so the district rows grow with n — the same crowding ceiling as §1 — and
-the constant-density rows stay flat while n grows 10×, which is the index doing
-its job. Reconciliation is the step-9 column: the zones a walker has open state
+the constant-density rows barely move while n grows 10×: what is left is the
+tree's extra depth, which is the index doing its job. Reconciliation is the step-9 column: the zones a walker has open state
 with that the index did *not* return this fix, a fraction of a zone per fix, each
 a bounding-box distance and a hysteresis update, no geometry. The open-state
 columns are the per-walker memory: one state per in-force candidate plus the
@@ -286,9 +310,9 @@ named after each section.
 | Hungarian vs greedy dispatch | §12 | 15.7% less total travel at 40 responders; never worse in any of 200 layouts |
 | Adaptive GPS sampling | §13 | 28,800 → 257 fixes over an 8 h trek (99.1% fewer) at 100.0% near-zone recall |
 | Index churn (20 × add/remove 2,000) | §14 | quadtree 1.00×, r-tree 1.57×, geohash 1.00×, hash_table 1.00× node count vs fresh |
-| Geohash serialisation | §15 | 44 bytes / zone; 100,000 zones read in 1.12 ms |
-| Shamos–Hoey vs pairwise validation | §16 | sweep first wins at 64 vertices; 6.44× at 2,048; verdicts agree on every ring |
-| k-d tree vs linear snap | §17 | 49.3× at 10,000 junctions, same node every time |
+| Geohash serialisation | §15 | 44 bytes / zone; 100,000 zones read in 0.39 ms |
+| Shamos–Hoey vs pairwise validation | §16 | sweep first wins at 96 vertices; 5.52× at 2,048; verdicts agree on every ring |
+| k-d tree vs linear snap | §17 | 48.3× at 10,000 junctions, same node every time |
 <!-- /results:extensions -->
 
 ## Test suite and verification

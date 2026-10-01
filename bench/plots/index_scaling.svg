@@ -29,34 +29,34 @@
 <text x="570.0" y="418.0" font-size="11" fill="#666" text-anchor="middle">100,000</text>
 <text x="320" y="446" font-size="12" fill="#333" text-anchor="middle">number of hazard zones</text>
 <rect x="70" y="40" width="500" height="360" fill="none" stroke="#333"/>
-<polyline points="70.0,304.1 236.7,214.4 353.2,162.6 403.3,141.9 453.5,120.0 519.8,87.6 570.0,58.1" fill="none" stroke="#d1495b" stroke-width="2.5"/>
-<circle cx="70.0" cy="304.1" r="3" fill="#d1495b"/>
-<circle cx="236.7" cy="214.4" r="3" fill="#d1495b"/>
-<circle cx="353.2" cy="162.6" r="3" fill="#d1495b"/>
-<circle cx="403.3" cy="141.9" r="3" fill="#d1495b"/>
-<circle cx="453.5" cy="120.0" r="3" fill="#d1495b"/>
-<circle cx="519.8" cy="87.6" r="3" fill="#d1495b"/>
-<circle cx="570.0" cy="58.1" r="3" fill="#d1495b"/>
+<polyline points="70.0,335.2 236.7,236.4 353.2,178.9 403.3,156.5 453.5,135.0 519.8,106.4 570.0,84.0" fill="none" stroke="#d1495b" stroke-width="2.5"/>
+<circle cx="70.0" cy="335.2" r="3" fill="#d1495b"/>
+<circle cx="236.7" cy="236.4" r="3" fill="#d1495b"/>
+<circle cx="353.2" cy="178.9" r="3" fill="#d1495b"/>
+<circle cx="403.3" cy="156.5" r="3" fill="#d1495b"/>
+<circle cx="453.5" cy="135.0" r="3" fill="#d1495b"/>
+<circle cx="519.8" cy="106.4" r="3" fill="#d1495b"/>
+<circle cx="570.0" cy="84.0" r="3" fill="#d1495b"/>
 <rect x="586" y="43" width="14" height="4" fill="#d1495b"/>
 <text x="604" y="48" font-size="12" fill="#222">brute force</text>
-<polyline points="70.0,335.6 236.7,301.2 353.2,260.7 403.3,242.0 453.5,218.2 519.8,187.3 570.0,164.2" fill="none" stroke="#2a9d8f" stroke-width="2.5"/>
-<circle cx="70.0" cy="335.6" r="3" fill="#2a9d8f"/>
-<circle cx="236.7" cy="301.2" r="3" fill="#2a9d8f"/>
-<circle cx="353.2" cy="260.7" r="3" fill="#2a9d8f"/>
-<circle cx="403.3" cy="242.0" r="3" fill="#2a9d8f"/>
-<circle cx="453.5" cy="218.2" r="3" fill="#2a9d8f"/>
-<circle cx="519.8" cy="187.3" r="3" fill="#2a9d8f"/>
-<circle cx="570.0" cy="164.2" r="3" fill="#2a9d8f"/>
+<polyline points="70.0,376.7 236.7,343.4 353.2,289.4 403.3,267.5 453.5,245.1 519.8,217.0 570.0,194.1" fill="none" stroke="#2a9d8f" stroke-width="2.5"/>
+<circle cx="70.0" cy="376.7" r="3" fill="#2a9d8f"/>
+<circle cx="236.7" cy="343.4" r="3" fill="#2a9d8f"/>
+<circle cx="353.2" cy="289.4" r="3" fill="#2a9d8f"/>
+<circle cx="403.3" cy="267.5" r="3" fill="#2a9d8f"/>
+<circle cx="453.5" cy="245.1" r="3" fill="#2a9d8f"/>
+<circle cx="519.8" cy="217.0" r="3" fill="#2a9d8f"/>
+<circle cx="570.0" cy="194.1" r="3" fill="#2a9d8f"/>
 <rect x="586" y="65" width="14" height="4" fill="#2a9d8f"/>
 <text x="604" y="70" font-size="12" fill="#222">quadtree</text>
-<polyline points="70.0,335.4 236.7,304.9 353.2,280.1 403.3,268.7 453.5,255.8 519.8,231.2 570.0,209.2" fill="none" stroke="#3d5a80" stroke-width="2.5"/>
-<circle cx="70.0" cy="335.4" r="3" fill="#3d5a80"/>
-<circle cx="236.7" cy="304.9" r="3" fill="#3d5a80"/>
-<circle cx="353.2" cy="280.1" r="3" fill="#3d5a80"/>
-<circle cx="403.3" cy="268.7" r="3" fill="#3d5a80"/>
-<circle cx="453.5" cy="255.8" r="3" fill="#3d5a80"/>
-<circle cx="519.8" cy="231.2" r="3" fill="#3d5a80"/>
-<circle cx="570.0" cy="209.2" r="3" fill="#3d5a80"/>
+<polyline points="70.0,368.9 236.7,342.8 353.2,310.5 403.3,297.5 453.5,283.8 519.8,267.5 570.0,253.0" fill="none" stroke="#3d5a80" stroke-width="2.5"/>
+<circle cx="70.0" cy="368.9" r="3" fill="#3d5a80"/>
+<circle cx="236.7" cy="342.8" r="3" fill="#3d5a80"/>
+<circle cx="353.2" cy="310.5" r="3" fill="#3d5a80"/>
+<circle cx="403.3" cy="297.5" r="3" fill="#3d5a80"/>
+<circle cx="453.5" cy="283.8" r="3" fill="#3d5a80"/>
+<circle cx="519.8" cy="267.5" r="3" fill="#3d5a80"/>
+<circle cx="570.0" cy="253.0" r="3" fill="#3d5a80"/>
 <rect x="586" y="87" width="14" height="4" fill="#3d5a80"/>
 <text x="604" y="92" font-size="12" fill="#222">R-tree (STR)</text>
 <text x="586" y="126" font-size="10" fill="#888">median of 11 rounds;</text>

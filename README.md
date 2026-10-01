@@ -18,7 +18,10 @@ drift in and out of the candidate set. Most of the engineering here is making
 those two things true, and showing that they are.
 
 - **Key result (measured):** at 100,000 zones in one district,
-  <!-- results:keyline -->the R-tree answers the index query **110× faster** than a linear scan (102–114× over 4 runs) and the quadtree **28.1×** (26.9–28.4×), returning identical results<!-- /results:keyline -->.
+  <!-- results:keyline -->the R-tree answers the index query **223× faster** than a linear scan (223–235× over 4 runs in one session) and the quadtree **33.5×** (33.5–34.4×), returning identical results<!-- /results:keyline -->.
+  The R-tree's ratio moves between sessions: an earlier session on the same
+  laptop measured 102–114×, so read ~100× as the floor
+  ([why](docs/RESULTS.md#read-this-first)).
 - **Correctness (evidence):** every index is compared with a brute-force oracle
   on randomized hostile workloads, with invariant audits after every operation;
   the whole engine must emit identical events under all four indexes; 22 of 22
@@ -31,7 +34,7 @@ those two things true, and showing that they are.
 | **Brute force** | which zone boxes meet this box? (the oracle) | O(n) | a scanned vector, kept forever as the baseline |
 | **Quadtree** | same, partitioning **space** | O(log n + k) expected; O(n) worst | root fitted to data, doubling expansion, collapse on delete |
 | **R-tree** | same, partitioning **items** | O(log n + k) expected; O(n) worst | quadratic split, **STR bulk loading**, condensing delete |
-| **AVL interval tree** | which rules are in force at t? | O(log n) to find one; O(min(n, k·log n)) to report k, worst case | max-high augmentation, total-order key |
+| **AVL interval tree** | which rules are in force at t? | O(log n) to find one; O(min(n, (k + 1) log n)) to report k, worst case | max-high augmentation, total-order key |
 | **Persistent quadtree** | what were the rules at 14:32? | O(depth) new nodes per change | path copying + append-only validity log |
 
 k is the number of results. No spatial library, no
@@ -53,39 +56,44 @@ draws each index's actual structure on the same data.</sub>
 
 Speedups are **paired ratios against this project's own brute force**, shown with
 their range over independent runs. Absolute times are one laptop's
-(<!-- results:machine -->Apple M4, AC power, load average 4.09 at the start, commit 8d44bc6<!-- /results:machine -->; see
+(<!-- results:machine -->Apple M4, Battery power, load average 3.63 at the start, commit f267de0<!-- /results:machine -->; see
 [RESULTS.md](docs/RESULTS.md) for the protocol). Every number is generated from
 `bench/results/*.csv`.
 
 <!-- results:headline -->
 | Workload | Brute force / naive | Quadtree speedup (range over runs) | R-tree speedup (range over runs) |
 |---|---:|---:|---:|
-| Range query, 100,000 zones in one district (k ≈ 98) | 560 µs | 28.1× (26.9–28.4×) | 110× (102–114×) |
-| Range query, 100,000 zones at constant density (k ≈ 1) | 529 µs | 451× (250–451×) | 817× (513–817×) |
-| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 609 µs | 1512× (1512–1625×) | 1803× (ratio of medians) |
+| Range query, 100,000 zones in one district (k ≈ 98) | 244 µs | 33.5× (33.5–34.4×) | 223× (223–235×) |
+| Range query, 100,000 zones at constant density (k ≈ 1) | 218 µs | 551× (546–575×) | 1048× (961–1048×) |
+| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 262 µs | 1509× (1497–1540×) | 2100× (ratio of medians) |
 <!-- /results:headline -->
 
 What the numbers say, and why:
 
 - **The speedup has a ceiling, and it is the answer size.** In one crowded
   district, about 100 zones really do overlap each query at 100,000 zones, and
-  every index must return all of them; the quadtree levels off around 23–28×. Hold
-  the density constant so each query overlaps about one zone, and the same code
-  is hundreds of times faster at 100,000 zones. O(log n + k), measured both ways.
+  every index must return all of them, so the quadtree's ratio stops growing
+  after a few thousand zones. Hold the density constant so each query overlaps
+  about one zone, and the same code is hundreds of times faster at 100,000
+  zones. O(log n + k), measured both ways. (§1–2)
 - **The index accelerates the filter, not the geometry.** Against checking every
-  polygon, the tree wins by ~200× for 8-vertex polygons and ~2,500× for 512-vertex
-  ones; against a plain bounding-box scan followed by the same exact test, by
-  ~50× falling to ~14× as polygons get more complex. ([RESULTS.md](docs/RESULTS.md) §3)
+  polygon the tree wins by two to three orders of magnitude, more as polygons
+  get more complex; against a plain bounding-box scan followed by the same exact
+  test the margin is far smaller and shrinks as vertex counts grow, because the
+  exact test on the few candidates is the same work in both.
+  ([RESULTS.md](docs/RESULTS.md) §3)
 - **STR packing matters**: a bulk-loaded R-tree is about 6× faster to query than
   the same R-tree built by insertion at 100,000 zones. (§7)
-- **The interval tree wins only when the query is selective**: 14–44× over a
-  linear scan for short windows; 0.9–1.3× — no better than the scan — when
-  hundreds of windows contain every instant. That is why the engine checks validity in O(1) per candidate
-  per tick and uses the tree only for history queries. (§8)
+- **The interval tree wins only when the query is selective**: an order of
+  magnitude or more over a linear scan for short windows; when hundreds of
+  windows contain every instant it loses to the scan at 1,000 windows and is at
+  most a small factor ahead at 100,000 — what its O(min(n, (k + 1) log n)) bound
+  predicts. That is why the engine checks validity in O(1) per candidate per
+  tick and uses the tree only for history queries. (§8)
 - **Persistence is cheap**: one root-to-leaf path per change (≈15 nodes on a
   5,000-zone index), zero for a rule change, and a query against the past costs
   the same as one against the present. (§9)
-- **Reconciliation does not undo the index**: <!-- results:evalfix -->(run make bench)<!-- /results:evalfix -->. (§18)
+- **Reconciliation does not undo the index**: <!-- results:evalfix -->the whole `evaluate()` — index, geometry, hysteresis and the observation of every zone with open state — costs **4.88 µs per fix at 5,038 zones and 5.46 µs at 50,038** when the zone density is held constant; packed into one district it costs 2.25 µs at 1,038 zones and 17.1 µs at 20,038, tracking the candidate count (k grows with n, as in §1). Reconciliation itself is 0.08–1.42 zones observed per fix outside the candidate set, a box distance each, no geometry<!-- /results:evalfix -->. (§18)
 
 ## How correctness is established (evidence)
 
@@ -146,8 +154,8 @@ change at production scale.
   Meghalaya; synthetic movement with a GPS error model. No field data.
 - **Removal is O(n)** in every spatial index (no id → node map); the quadtree and
   R-tree have O(n) worst-case queries on adversarial data. The interval tree's
-  guarantee is O(min(n, k·log n)) for reporting k results — a bound, but not the
-  O(log n + k) a centred interval tree would give.
+  guarantee is O(min(n, (k + 1) log n)) for reporting k results — a bound, but
+  not the O(log n + k) a centred interval tree would give.
 - **Tolerance-based geometry**, not exact predicates (on-edge tolerance ~0.1 mm).
 - **No antimeridian support.** Zones crossing ±180° are refused at load, and
   query boxes do not wrap, so a fix at 179.99° cannot see a zone at −179.99°.
@@ -156,7 +164,9 @@ change at production scale.
   that person meanwhile — still correct, just slow.
 - **Single-threaded**, one process, in-memory.
 - Benchmarks come from one laptop. Ratios transfer far better than absolute times,
-  and even ratios move between runs, which is why they're quoted as ranges.
+  and even ratios move — under ~10% within a session at 100,000 zones, more
+  than 2× between sessions for the R-tree — which is why they're quoted as
+  ranges.
 
 ## Documentation
 
