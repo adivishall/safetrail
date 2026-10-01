@@ -110,8 +110,10 @@ This process found **ten defects** in code that was already passing its tests โ€
 eight in the engine, two in how it was measured. One was the state machine never
 observing a zone again after it left the candidate window: a missed exit, then a
 silent re-entry. Another, in the hysteresis filter, produced about 60% of the
-demo's enter/exit events. Each has a regression test that fails on the old code
-([DEFECT_LOG.md](docs/DEFECT_LOG.md), [TESTING.md](docs/TESTING.md)).
+demo's enter/exit events. Each is pinned: by a test that fails on the old code,
+or, where the test now uses API the old code lacks, by a mutant that reverts the
+fix; the measurement defect is pinned by the benchmark's own gates
+([DEFECT_LOG.md](docs/DEFECT_LOG.md), [TESTING.md](docs/TESTING.md) ยง5).
 
 ## Run it
 

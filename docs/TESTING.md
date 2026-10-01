@@ -10,8 +10,9 @@ than the first:
    tests call that audit after every single operation.
 3. **The tests are themselves tested**: a mutation check injects realistic bugs
    into the core and fails unless some test catches each one.
-4. **Every real defect found has a regression test** that fails on the old code
-   ([DEFECT_LOG.md](DEFECT_LOG.md)).
+4. **Every real defect found is pinned**: by a regression test that fails on
+   the old code, or, where the test now uses API the old code lacks, by a mutant
+   that reverts the fix (§5, [DEFECT_LOG.md](DEFECT_LOG.md)).
 5. The whole suite runs under **AddressSanitizer + UBSan** (Linux CI) and
    **UBSan** (macOS), with **warnings as errors** on gcc and clang and the
    **Clang Static Analyzer** over the library.

@@ -22,14 +22,15 @@ make bench-variation   # sections 1-3 three more times, for the ranges
   bytes are far more stable, so the docs quote ratios, with their range.
 - **Ranges come in two sizes.** Within one session the runs agree closely: every
   headline ratio below is shown with its min–max over
-  <!-- results:runs -->4<!-- /results:runs --> independent runs of one session. Between sessions they do not,
-  and the R-tree — about a microsecond per query, the shortest timing here —
-  moves most. At 100,000 zones in one district it measured 102–114× in the runs
-  committed on 28 September (every contender 2–4× slower in absolute time, IQRs
-  of 16–58% on that row), 97–229× in the set before that, 206× and 236× in two
-  uncommitted clean-clone runs, and 223–235× in the runs below. The quadtree's
-  ratio has stayed within 26–35×. Read ~100× as the R-tree's floor on this
-  machine and the tables as one session's measurement.
+  <!-- results:runs -->4<!-- /results:runs --> independent runs of one session.
+  Between sessions they do not, and the R-tree — about a microsecond per query,
+  the shortest timing here — moves most. At 100,000 zones in one district it
+  measured 102–114× in the runs committed on 28 September (every contender 2–4×
+  slower in absolute time, IQRs of 16–58% on that row), 97–229× in the set
+  before that, 206×, 236× and 200× in three uncommitted clean-clone runs (the
+  last on 1 October, quadtree 31×), and 223–235× in the runs below. The
+  quadtree's ratio has stayed within 26–35×. Read ~100× as the R-tree's floor on
+  this machine and the tables as one session's measurement.
 - **Measured, theoretical, simulated.** Everything on this page is measured.
   Bounds — O(log n + k) expected, O(min(n, (k + 1) log n)) for the interval
   tree — are theory, stated and checked against the code in

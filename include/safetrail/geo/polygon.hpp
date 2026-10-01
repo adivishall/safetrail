@@ -39,11 +39,12 @@ double ring_signed_area(const Ring& r);
 // `make bench` times both on simple rings from 8 to 2048 vertices. When the
 // sweep was fixed to test several neighbours on insertion (it had been calling
 // some degenerate self-intersecting rings simple -- docs/DEFECT_LOG.md, pass 6)
-// it got ~25% slower, and the crossover moved from ~48-56 vertices to ~64-80:
-// two runs measured 0.96x / 0.89x at 64 and 1.11x / 1.07x at 80. The curve is
-// flat there, so the exact value costs little either way; above it the gap
-// widens (roughly 1.5x at 128, 7x at 2048), which is the range a simplified OSM
-// district boundary actually lives in.
+// it got ~25% slower, and the crossover moved from ~48-56 vertices to ~64-96:
+// two runs measured 0.96x / 0.89x at 64 and 1.11x / 1.07x at 80, and the
+// 2026-10-01 run 0.94x at 80 and 1.02x at 96. The curve is flat there, so the
+// exact value costs little either way; above it the gap widens (roughly 1.3-1.5x
+// at 128, 5-7x at 2048), which is the range a simplified OSM district boundary
+// actually lives in.
 //
 // The exact value is not load-bearing for correctness -- both branches return the
 // same verdict, which the tests assert on rings either side of it -- so it can be
