@@ -181,10 +181,12 @@ not the last word.
 ## 7. Determinism
 
 Same seed → byte-identical output, on one platform, gated by `make determinism`
-and `tests/golden/`. What makes it hold: a fixed-seed PRNG, explicit tie-breaks
-in every ordered structure (heaps, sorts, k-d tree medians, Hungarian ties, the
-sweep's event order), candidates evaluated in zone-id order, and
-`-ffp-contract=off` so the compiler cannot fuse `a*b + c` differently at
+and `tests/golden/`; `make validate` and CI also require the Make build (library
+`-O2`, tests `-O1`) and the CMake Release build (`-O3`, `NDEBUG` — there are no
+`assert`s to lose) to agree byte for byte. What makes it hold: a fixed-seed PRNG,
+explicit tie-breaks in every ordered structure (heaps, sorts, k-d tree medians,
+Hungarian ties, the sweep's event order), candidates evaluated in zone-id order,
+and `-ffp-contract=off` so the compiler cannot fuse `a*b + c` differently at
 different optimisation levels. Across operating systems the evaluation core
 agrees; dispatch travel totals can differ slightly because Apple's libm and
 glibc differ in the last ulp of `asin`/`sin`/`cos`. That boundary is documented

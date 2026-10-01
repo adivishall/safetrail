@@ -221,8 +221,8 @@ check:
 	[ $$fail -eq 0 ] && echo "all headers compile standalone" || exit 1
 
 # Everything that gates a merge: documentation links, warnings as errors, header
-# hygiene, the suite, determinism, the platform's sanitizer run, and the CMake
-# build + ctest.
+# hygiene, the suite, determinism, the platform's sanitizer run, the CMake
+# build + ctest, and the two builds agreeing byte for byte on one seed.
 validate:
 	@python3 tools/check_docs.py
 	@python3 tools/render_results.py --check
@@ -231,6 +231,11 @@ validate:
 	@$(MAKE) --no-print-directory cmake-build
 	@ctest --test-dir $(BUILD)-cmake --output-on-failure -j4 >/dev/null \
 	  && echo "cmake + ctest: pass" || { echo "cmake + ctest: FAIL"; exit 1; }
+	@./$(BUILD)-cmake/safetrail_headless --zones data/zones/shillong_osm.geojson \
+	   --tourists 30 --hours 1 --seed 4242 --show 40 > $(BUILD)/det_cmake.txt
+	@cmp -s $(BUILD)/det_a.txt $(BUILD)/det_cmake.txt \
+	  && echo "determinism across builds: Make (-O2) and CMake (-O3) binaries agree byte for byte" \
+	  || { echo "DETERMINISM FAILURE: Make and CMake binaries diverge"; exit 1; }
 	@echo; echo "VALIDATION PASSED"
 
 manifest:

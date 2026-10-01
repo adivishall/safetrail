@@ -122,6 +122,18 @@ jobs:
       - name: ctest
         run: ctest --test-dir build-cmake --output-on-failure
 
+      # The README's determinism claim is "same seed, byte-identical output".
+      # Two runs of one binary (the test job) show the program is deterministic;
+      # this shows the CMake -O3 build and the make -O2 build agree with each
+      # other, which is what -ffp-contract=off is there to guarantee.
+      - name: Make and CMake builds agree byte for byte
+        run: |
+          make -j$(nproc) build/safetrail_headless CXX=g++ WERROR=1
+          args="--zones data/zones/shillong_osm.geojson --tourists 30 --hours 1 --seed 4242 --show 40"
+          ./build/safetrail_headless $args > /tmp/det_make.txt
+          ./build-cmake/safetrail_headless $args > /tmp/det_cmake.txt
+          cmp /tmp/det_make.txt /tmp/det_cmake.txt && echo "identical"
+
       # Both build systems discover sources by globbing the same patterns, so
       # drift should be impossible by construction. "Should be" is the phrase that
       # precedes every drift, and this repo has drifted before -- the Makefile
