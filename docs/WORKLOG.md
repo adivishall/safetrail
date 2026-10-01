@@ -6,6 +6,43 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-01 — Release validation: every claim against its evidence
+
+**What:** A last pass before release, adding no features. The reconciliation
+step was reviewed against the ten questions it invites, then measured: the new
+`make bench` §18 times the whole `evaluate()` per fix on trajectories with GPS
+jumps. At constant density the cost barely moves while zones grow from 5,000 to
+50,000, and step 9 touches about a third of a zone per fix. The interval tree's
+bound was corrected to O(min(n, (k + 1) log n)) for k results, five documents
+and the header; O(log n + k) is a centred interval tree's. The benchmark's
+result checksum, a plain sum of ids, could not tell {1, 4} from {2, 3}; it now
+mixes each id first. Make and CMake builds are now required to agree byte for
+byte. The current regression tests were rebuilt against the pre-audit commit:
+five fail there as documented, four no longer compile, and TESTING.md now says
+which. That check also showed the hysteresis golden test still passed on the
+pre-audit code, because it compared filter-off with filter-on. It now gates on
+the noise-free target, as `make bench` §10 does, and fails 2 of 11 on the old
+code. The benchmarks were regenerated on a clean commit. Hand-typed figures that
+went stale (quadtree "23–28×", interval tree "14–44×") now describe the shape
+and leave the numbers to the generated tables. The README and RESULTS now say
+the headline range is one session's: the R-tree measured 223–235× today and
+102–114× on 28 September. The persistent index's byte cost per change, the
+untested cross-OS determinism claim, and five interview questions the guide did
+not answer (hysteresis, the failed speedup claim, real GPS telemetry, what
+mutation testing does not prove, what reconciliation costs) were written up.
+
+**Why:** The standard for release is that every statement survives "show me the
+code, the test, the benchmark". Several did not quite.
+
+**Impact:** No engine behaviour changed. From a clean build: 45 test files,
+11,844 checks, 0 failures with `-Werror` (Apple clang 17); stress, determinism,
+header check, static analysis (0 findings), UBSan, CMake + ctest, demo,
+dashboard and `make validate` pass; mutation 22/22. ASan cannot run on this Mac:
+the first binary spun inside ASan's own initialisation, before `main`, and was
+stopped; Linux CI remains authoritative for it. GCC `-Werror` has still not run:
+there is no GCC here, and CI builds this branch only when it is pushed or opened
+as a PR.
+
 ### 2026-09-29 — Re-validated every commit from clean clones; fixed a flaky mutation check
 
 **What:** Checked each commit on the branch on its own (docs references,

@@ -33,8 +33,10 @@ machine on the per-fix path and in the benchmark's own headline.
 a clean build, the regression tests built against the pre-audit code, the
 mutation check, the benchmark harness itself, and every complexity claim read
 against the code that makes it. It found no defect in the engine's behaviour;
-it found two claims that were stronger than the code and two measuring
-instruments weaker than they said.
+it found claims stronger than their evidence — a complexity bound, a
+cross-platform guarantee, a one-session benchmark range — two measuring
+instruments weaker than they said, and one regression test that did not test the
+defect it was named for.
 
 **How to read this file.** Every table is a dated record of what was true *then*.
 Current-state numbers are the ones in the most recent pass, in `README.md` and in
@@ -70,7 +72,16 @@ by a probe rather than a test, the probe's output is quoted.
 | | |
 |---|---|
 | **Before** | Step 9 of the evaluator — observe every zone with open state, whether or not the index returned it — was described as "O(open states), no geometry". Nothing measured it, and a reviewer could reasonably ask whether a per-fix loop over open states gives back what the index wins. |
-| **Fix** | `make bench` §18 times the whole `evaluate()` per fix on fixed trajectories against 1,000–50,000 zones in two regimes. Packed into one district the cost tracks the candidate count (the §1 crowding ceiling: k grows with n); at constant density it stays flat while n grows 10×. Reconciliation is a fraction of a zone per fix, a box distance and a hysteresis update each. [RESULTS.md](RESULTS.md) §18. |
+| **Fix** | `make bench` §18 times the whole `evaluate()` per fix on fixed trajectories against 1,000–50,000 zones in two regimes. Packed into one district the cost tracks the candidate count (the §1 crowding ceiling: k grows with n); at constant density it barely moves while n grows 10×. Reconciliation is a fraction of a zone per fix, a box distance and a hysteresis update each. [RESULTS.md](RESULTS.md) §18. |
+
+### The hysteresis regression test still used the metric pass 6 had discredited
+
+| | |
+|---|---|
+| **Before** | Pass 6 found that the hysteresis A/B scored filter-off against filter-on, which cannot tell a removed flap from a suppressed real crossing, and gave `make bench` §10 a noise-free target. `tests/golden/hysteresis_ab_test.cpp` was not updated: it still asserted "removes >60% of false transitions", and its header promised a check ("never suppress a genuine sustained crossing") that it did not make. |
+| **Problem** | The ground-truth comparison lived only in a benchmark, which nothing gates. Built against the pre-audit code (`6656b74`), the old test passes 6 of 6 — on the very code whose Uncertain leak let the filtered run report more than twice what noise-free fixes give. |
+| **Fix** | The test now runs the noise-free target as well and requires the filtered noisy run to stay within 115% of it under both noise models, and at or above 85% under realistic drift (it measures 96%). White noise keeps no lower bound: losing a third of the target there is the documented price of suppressing ~20,000 flaps. |
+| **Test** | On `6656b74` the new test fails 2 of 11 (filtered/target = 241% and 219%); on the current code it passes 11 of 11. |
 
 ### A regression claim that could no longer be reproduced as stated
 
@@ -80,11 +91,13 @@ by a probe rather than a test, the probe's output is quoted.
 | **Problem** | The current test reads counters the old code does not have and no longer compiles against it; the same holds for the hysteresis, index-independence and persistence-differential tests, which use the `Ambiguous` phase and `check_invariants`. Built against commit `6656b74` (pre-audit): `bbox_around` 7 of 10, `ray_casting` 1 of 35, `sweep_line` 9 of 56, `interval_tree` 7 of 185 and `zone_roundtrip` 7 of 37 fail exactly as documented; the other four do not compile, and their evidence is the mutants that revert each fix. |
 | **Fix** | TESTING.md §5 now says which tests were run against the old code and which rely on the mutation check. |
 
-Also in this pass: the Make build (library `-O2`, tests `-O1`) and the CMake
-Release build (`-O3`, `NDEBUG`; the tree has no `assert`) were compared on the
-same seed and produce byte-identical output; `make validate` and the CI CMake
-job now check that, so the determinism claim covers both build systems rather
-than two runs of one binary.
+### Smaller findings in the same pass
+
+| Finding | Resolution |
+|---|---|
+| The README's headline range ("102–114× over 4 runs", then "223–235×") was the min–max of one session's runs. Runs within a session agree to a few percent; between sessions the R-tree's ratio has moved more than 2× (102–114× on 2026-09-28, every contender 2–4× slower and tree-row IQRs of 16–58%; 223–235× on 2026-10-01, where the canonical run's IQRs on that row were 1–6%). A reader saw one session's spread as the whole uncertainty. | The generated keyline says "in one session"; the README states the earlier session's figure and reads ~100× as the floor; RESULTS.md "Read this first" lists every session on record. Hand-typed figures in README/RESULTS/INTERVIEW prose that went stale with the new run (quadtree "23–28×", interval tree "14–44×" and "0.9–1.3×", end-to-end "~50×") now describe the shape and leave the numbers to the generated tables, or quote the range across sessions. |
+| ARCHITECTURE, TESTING and RESULTS said "the evaluation core agrees across operating systems" in the present tense. The evidence is one comparison of a macOS and a Linux build on 2026-09-05 (WORKLOG), before the pass-6 fixes; nothing gates it. | Stated as what it is: one comparison, not a gate. CI checks determinism within each platform. |
+| Make vs CMake: the Make build (library `-O2`, tests `-O1`) and the CMake Release build (`-O3`, `NDEBUG`; the tree has no `assert`) had never been compared. | Compared on the same seed: byte-identical. `make validate` and the CI CMake job now check it, so the determinism claim covers both build systems rather than two runs of one binary. |
 
 ---
 
