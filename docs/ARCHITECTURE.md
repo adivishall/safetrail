@@ -25,6 +25,8 @@ feeds this path or consumes its output.
    │ 7. dwell / prediction      dwell limit; project forward, retest              O(V)
    │ 8. reconciliation          observe every zone with OPEN state that the
    │                            index did not return, or that went out of force  O(s)
+   │                            (s = open states, bounded by the neighbourhood;
+   │                             a box distance each, no geometry; RESULTS.md §18)
    ▼
  events: ZoneEnter / ZoneExit / ZoneUncertain / ZoneApproaching / DwellExceeded
    │

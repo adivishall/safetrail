@@ -227,6 +227,39 @@ def block_extensions():
     return table(["Extension", "§", "Measured"], out, ["---", "---", "---"])
 
 
+def block_evaluator():
+    body = []
+    for r in rows("evaluator_cost.csv"):
+        body.append([r["regime"], n(r["zones"]), us(r["us_per_fix"]), "%.0f%%" % float(r["iqr_pct"]),
+                     "%.2f" % float(r["candidates_per_fix"]), "%.2f" % float(r["exact_tests_per_fix"]),
+                     "%.2f" % float(r["out_of_window_per_fix"]), "%.2f" % float(r["open_states_mean"]),
+                     r["open_states_max"], n(int(r["enters"]) + int(r["exits"])),
+                     "yes" if r["deterministic"] == "1" else "**NO**"])
+    return table(["regime", "zones", "µs / fix", "IQR", "candidates / fix", "exact tests / fix",
+                  "reconciled / fix (step 9)", "open states, mean", "max", "enter + exit",
+                  "deterministic"], body, ["---"] + ["---:"] * 10)
+
+
+def block_evalfix():
+    """README: the evaluator's per-fix cost in one generated clause."""
+    r = rows("evaluator_cost.csv")
+    dens = [x for x in r if x["regime"] == "constant density"]
+    dist = [x for x in r if x["regime"] == "one district"]
+    if not dens or not dist:
+        return "(run make bench)"
+    return ("the whole `evaluate()` — index, geometry, hysteresis and the observation of every "
+            "zone with open state — costs **%s µs per fix at %s zones and %s µs at %s** when the "
+            "zone density is held constant; packed into one district it costs %s µs at %s zones "
+            "and %s µs at %s, tracking the candidate count (k grows with n, as in §1). "
+            "Reconciliation itself is %.2f–%.2f zones observed per fix outside the candidate "
+            "set, a box distance each, no geometry"
+            % (us(dens[0]["us_per_fix"]), n(dens[0]["zones"]), us(dens[-1]["us_per_fix"]),
+               n(dens[-1]["zones"]), us(dist[0]["us_per_fix"]), n(dist[0]["zones"]),
+               us(dist[-1]["us_per_fix"]), n(dist[-1]["zones"]),
+               min(float(x["out_of_window_per_fix"]) for x in r),
+               max(float(x["out_of_window_per_fix"]) for x in r)))
+
+
 def block_keyline():
     """README first screen: the headline result as one generated sentence."""
     r = next((r for r in rows("index_scaling.csv") if r["zones"] == "100000"), None)
@@ -279,6 +312,8 @@ BLOCKS = {
     "persistent": block_persistent,
     "extensions": block_extensions,
     "headline": block_headline,
+    "evaluator": block_evaluator,
+    "evalfix": block_evalfix,
     "runs": lambda: "%d" % nruns("index_scaling.csv"),
 }
 

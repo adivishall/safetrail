@@ -243,6 +243,34 @@ Sharing grows with history, a query against the past costs what one against the
 present does (a different root pointer, no replay), and each mutation copies one
 root-to-node path — a validity change copies nothing.
 
+## 18. The evaluator per fix — including reconciliation
+
+Sections 1–3 time the index on its own. This times the whole
+`fence::Evaluator::evaluate()` — query box, index, validity, exact geometry,
+hysteresis, transition diff, and the reconciliation step that observes every
+zone with open state whether or not the index returned it — on one fixed set of
+trajectories replayed from scratch each pass: 100 walkers, one fix a second for
+5 minutes, 5 m or 35 m accuracy at random, and a 1.5 km jump every 150 s (the
+GPS-gap case step 9 exists for), against the OpenStreetMap zones plus n
+synthetic polygons in two regimes — packed into one district (k grows with n,
+as in §1) and at constant density (k held, as in §2). It is `make bench`
+section 18 and sits here because it is the hot loop, not an extension.
+
+<!-- results:evaluator -->
+(run make bench)
+<!-- /results:evaluator -->
+
+µs/fix tracks candidates/fix: the exact geometry on k candidates is the cost of
+a fix, so the district rows grow with n — the same crowding ceiling as §1 — and
+the constant-density rows stay flat while n grows 10×, which is the index doing
+its job. Reconciliation is the step-9 column: the zones a walker has open state
+with that the index did *not* return this fix, a fraction of a zone per fix, each
+a bounding-box distance and a hysteresis update, no geometry. The open-state
+columns are the per-walker memory: one state per in-force candidate plus the
+few unsettled out-of-window ones, bounded by the neighbourhood rather than by n
+or by every zone the walker has ever been near. The gate is determinism: two
+replays must produce identical events.
+
 ---
 
 ## Extensions (§10–17)

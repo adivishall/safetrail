@@ -85,6 +85,7 @@ What the numbers say, and why:
 - **Persistence is cheap**: one root-to-leaf path per change (≈15 nodes on a
   5,000-zone index), zero for a rule change, and a query against the past costs
   the same as one against the present. (§9)
+- **Reconciliation does not undo the index**: <!-- results:evalfix -->(run make bench)<!-- /results:evalfix -->. (§18)
 
 ## How correctness is established (evidence)
 

@@ -14,6 +14,8 @@
 //   7. R-tree bulk loading       STR packing vs repeated insertion
 //   8. Interval tree             stabbing vs a linear scan; AVL height under churn
 //   9. Persistent quadtree       path copying vs full copies; cost per mutation
+//  18. Evaluator per fix         the whole evaluate() -- index, geometry,
+//                                hysteresis, reconciliation -- as zones grow
 // EXTENSIONS -- built on the core, not part of the headline claim
 //  10. Hysteresis A/B    11. Routing    12. Dispatch    13. Adaptive sampling
 //  14. Index churn       15. Serialisation    16. Self-intersection
@@ -1262,6 +1264,194 @@ static void bench_snap(FILE* csv) {
 }
 
 
+
+// ── 18. The evaluator per fix ────────────────────────────────────────────────
+//
+// Sections 1-3 time the index. This times fence::Evaluator::evaluate() end to
+// end -- query box, index, validity, exact geometry, hysteresis, transitions,
+// and the reconciliation step that observes every zone with open state whether
+// or not the index returned it -- on one fixed set of trajectories, replayed
+// from scratch each pass, against a growing zone set. If the per-fix cost were
+// hiding an O(n) term, or if reconciliation re-ran geometry over every zone a
+// walker had ever been near, the row for 50,000 zones would show it.
+//
+// Walkers: 100, one fix per second for 5 minutes, ~1.4 m/s with a random
+// heading drift, accuracy 5 m or 35 m (multipath) at random, and a 1.5 km jump
+// every 150 s -- the GPS-gap case step 9 of the evaluator exists for; the
+// motion window is cleared on a jump as a tracker would. Zones: the OSM set
+// plus n synthetic polygons built the way the simulator builds them. The gate
+// is determinism: two replays must produce the same event checksum.
+namespace {
+struct Walk {
+  std::vector<std::vector<geo::LatLon>> pos;     // [walker][tick]
+  std::vector<std::vector<double>>      acc;     // [walker][tick]
+  std::vector<std::vector<uint8_t>>     jump;    // [walker][tick]: window reset
+  size_t walkers = 0, ticks = 0;
+};
+
+Walk make_walk(size_t walkers, size_t ticks, uint64_t seed) {
+  const geo::Bbox roam{25.50, 91.80, 25.62, 91.95};
+  sim::Rng rng(seed);
+  Walk w;
+  w.walkers = walkers; w.ticks = ticks;
+  w.pos.assign(walkers, {}); w.acc.assign(walkers, {}); w.jump.assign(walkers, {});
+  for (size_t i = 0; i < walkers; ++i) {
+    geo::LatLon p{rng.range(roam.min_lat, roam.max_lat), rng.range(roam.min_lon, roam.max_lon)};
+    double heading = rng.range(0.0, 360.0);
+    for (size_t k = 0; k < ticks; ++k) {
+      bool jumped = false;
+      if (k > 0 && k % 150 == 0) {
+        p = geo::offset(p, rng.range(0.0, 360.0), 1500.0);
+        jumped = true;
+      } else if (k > 0) {
+        heading += rng.normal() * 15.0;
+        p = geo::offset(p, heading, 1.4);
+      }
+      if (!roam.contains(p)) {                       // walked out of the area: turn back
+        heading += 180.0;
+        p = geo::offset(p, heading, 3.0);
+      }
+      w.pos[i].push_back(p);
+      w.acc[i].push_back(rng.uniform() < 0.2 ? 35.0 : 5.0);
+      w.jump[i].push_back(jumped ? 1 : 0);
+    }
+  }
+  return w;
+}
+
+struct EvalRun {
+  fence::Evaluator::Counters counters{};
+  double open_states_mean = 0.0;
+  size_t open_states_max = 0;
+  uint64_t enters = 0, exits = 0, uncertain = 0;
+};
+
+// One full replay. `run` is filled only when non-null (the untimed pass), so the
+// timed passes do nothing but evaluate.
+uint64_t replay(const index::SpatialIndex& ix, const fence::ZoneStore& zones, const Walk& w,
+                EvalRun* run) {
+  fence::Evaluator ev(ix, zones);
+  std::vector<track::Tourist> ts(w.walkers);
+  for (size_t i = 0; i < w.walkers; ++i) ts[i].id = track::TouristId(i);
+  std::vector<fence::Event> out;
+  uint64_t s = 0, states = 0;
+  size_t states_max = 0;
+  for (size_t k = 0; k < w.ticks; ++k) {
+    const int64_t now = int64_t(k + 1) * 1000;
+    for (size_t i = 0; i < w.walkers; ++i) {
+      track::Tourist& t = ts[i];
+      if (w.jump[i][k]) t.pings.clear();
+      t.last_fix = {w.pos[i][k], w.acc[i][k], now};
+      track::Ping ping; ping.fix = t.last_fix;
+      t.pings.push(ping);
+      out.clear();
+      ev.evaluate(t, now, out);
+      for (const auto& e : out)
+        s += mix64((uint64_t(e.kind) + 1) * 0x100000001B3ull + uint64_t(e.zone) * 0x9E3779B1ull +
+                   uint64_t(e.t_ms));
+      if (run) {
+        states += t.zone_states.size();
+        if (t.zone_states.size() > states_max) states_max = t.zone_states.size();
+        for (const auto& e : out) {
+          run->enters    += e.kind == fence::EventKind::ZoneEnter;
+          run->exits     += e.kind == fence::EventKind::ZoneExit;
+          run->uncertain += e.kind == fence::EventKind::ZoneUncertain;
+        }
+      }
+    }
+  }
+  if (run) {
+    run->counters = ev.counters();
+    run->open_states_mean = double(states) / double(w.walkers * w.ticks);
+    run->open_states_max = states_max;
+  }
+  return s;
+}
+}  // namespace
+
+// The zone set for one row. `area_scale` stretches the box the synthetic zones
+// are drawn in: 1 packs them into the walkers' own area (k grows with n, as in
+// section 1); sqrt(n / 5000) holds the density constant (k stays put, section 2).
+static fence::ZoneStore evaluator_zones(size_t n, double area_scale, std::string* err) {
+  fence::ZoneStore zones;
+  if (!zones.load_geojson("data/zones/shillong_osm.geojson", err)) return zones;
+  sim::Rng rng(4242);
+  const double lat0 = 25.48, lon0 = 91.78, lat_span = 0.16 * area_scale, lon_span = 0.19 * area_scale;
+  for (size_t i = 0; i < n; ++i) {                   // as Simulator::add_synthetic_zones
+    const double clat = rng.range(lat0, lat0 + lat_span), clon = rng.range(lon0, lon0 + lon_span);
+    const double r = rng.range(0.0004, 0.0025);
+    geo::Ring ring;
+    const int verts = 6 + int(rng.below(10));
+    for (int v = 0; v < verts; ++v) {
+      const double a = 6.283185307 * double(v) / double(verts);
+      ring.push_back({clat + r * std::sin(a), clon + r * std::cos(a) * 1.1});
+    }
+    fence::Zone z;
+    z.kind = fence::ZoneKind::Caution;
+    z.severity = uint8_t(1 + rng.below(5));
+    z.synthetic = true;
+    z.shape = geo::Polygon(std::move(ring));
+    zones.add(std::move(z));
+  }
+  return zones;
+}
+
+static bool bench_evaluator(FILE* csv) {
+  printf("\n\033[1m18. EVALUATOR PER FIX\033[0m  [core path]   the whole evaluate(), incl. "
+         "reconciliation; 100 walkers x 300 s, us/fix\n");
+  printf("  %-16s %7s  %8s  %6s  %9s  %9s  %11s  %9s  %5s  %6s\n", "regime", "zones", "us/fix",
+         "IQR", "cands/fix", "exact/fix", "reconc./fix", "open mean", "max", "determ");
+  printf("  ─────────────────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "regime,synthetic_zones,zones,walkers,ticks,evaluations,us_per_fix,iqr_pct,"
+                        "candidates_per_fix,exact_tests_per_fix,out_of_window_per_fix,"
+                        "open_states_mean,open_states_max,enters,exits,uncertain,deterministic\n");
+  const Walk walk = make_walk(100, 300, 20261001);
+  bool all_ok = true;
+  const struct { const char* name; bool fixed_density; std::vector<size_t> sizes; } regimes[] = {
+      {"one district", false, {1000, 5000, 20000}},
+      {"constant density", true, {5000, 20000, 50000}}};
+  for (const auto& rg : regimes) {
+    for (size_t n : rg.sizes) {
+      std::string err;
+      const fence::ZoneStore zones =
+          evaluator_zones(n, rg.fixed_density ? std::sqrt(double(n) / 5000.0) : 1.0, &err);
+      if (!err.empty()) { printf("  cannot load zones: %s\n", err.c_str()); return false; }
+      Items items;
+      for (index::ZoneId id : zones.all_ids()) items.emplace_back(id, zones.get(id)->shape.bbox());
+      index::Quadtree qt;
+      qt.build(items);
+
+      EvalRun run;
+      const uint64_t a = replay(qt, zones, walk, &run), b = replay(qt, zones, walk, nullptr);
+      const bool det = a == b;
+      all_ok = all_ok && det;
+      const size_t evals = walk.walkers * walk.ticks;
+      const auto m = measure({{"evaluator", [&] { return replay(qt, zones, walk, nullptr); }, evals}});
+      const auto& c = run.counters;
+      const double per = double(c.evaluations ? c.evaluations : 1);
+      printf("  %-16s %7zu  %8.3f  %5.1f%%  %9.2f  %9.2f  %11.3f  %9.2f  %5zu  %6s\n", rg.name,
+             zones.size(), m[0].stat.median, m[0].stat.iqr_pct(),
+             double(c.candidates_examined) / per, double(c.exact_tests_run) / per,
+             double(c.out_of_window_observations) / per, run.open_states_mean,
+             run.open_states_max, ok_str(det));
+      if (csv)
+        fprintf(csv, "%s,%zu,%zu,%zu,%zu,%zu,%.4f,%.1f,%.3f,%.3f,%.4f,%.3f,%zu,%llu,%llu,%llu,%d\n",
+                rg.name, n, zones.size(), walk.walkers, walk.ticks, evals, m[0].stat.median,
+                m[0].stat.iqr_pct(), double(c.candidates_examined) / per,
+                double(c.exact_tests_run) / per, double(c.out_of_window_observations) / per,
+                run.open_states_mean, run.open_states_max, (unsigned long long)run.enters,
+                (unsigned long long)run.exits, (unsigned long long)run.uncertain, det ? 1 : 0);
+    }
+  }
+  printf("\n  us/fix tracks cands/fix: the exact geometry on k candidates is the cost, so the\n");
+  printf("  district rows grow with n (k grows with n, as in section 1) and the constant-\n");
+  printf("  density rows do not. reconc./fix is step 9: zones with open state observed\n");
+  printf("  outside the candidate set, one box distance and a hysteresis update each, no\n");
+  printf("  geometry. open mean/max = per-walker zone states (one per in-force candidate\n");
+  printf("  plus the few unsettled out-of-window ones) -- bounded by the neighbourhood.\n");
+  return all_ok;
+}
+
 static FILE* open_csv(const std::string& dir, const char* name) {
   return dir.empty() ? nullptr : std::fopen((dir + "/" + name).c_str(), "w");
 }
@@ -1297,7 +1487,7 @@ int main(int argc, char** argv) {
   printf("═════════════════════════════════════════════════════════════════════════════\n");
 
   FILE* f = nullptr;
-  bool g1 = true, g2 = true, g3 = true, g5 = true, g6 = true, g8 = true;
+  bool g1 = true, g2 = true, g3 = true, g5 = true, g6 = true, g8 = true, g18 = true;
   if (want(1)) { f = open_csv(out, "index_scaling.csv"); g1 = bench_scaling(f);    close_csv(f); }
   if (want(2)) { f = open_csv(out, "index_density.csv"); g2 = bench_density(f);    close_csv(f); }
   if (want(3)) { f = open_csv(out, "end_to_end.csv");    g3 = bench_end_to_end(f); close_csv(f); }
@@ -1312,6 +1502,7 @@ int main(int argc, char** argv) {
     bench_versioned(f, f2);
     close_csv(f); close_csv(f2);
   }
+  if (want(18)) { f = open_csv(out, "evaluator_cost.csv"); g18 = bench_evaluator(f); close_csv(f); }
 
   if (want(10) || want(11) || want(12) || want(13) || want(14) || want(15) || want(16) || want(17))
     printf("\n\033[1m── extensions ──────────────────────────────────────────────────────────────\033[0m\n");
@@ -1324,11 +1515,11 @@ int main(int argc, char** argv) {
   if (want(16)) { f = open_csv(out, "self_intersection.csv"); bench_selfintersect(f); close_csv(f); }
   if (want(17)) { f = open_csv(out, "node_snap.csv");         bench_snap(f);          close_csv(f); }
 
-  const bool all = g1 && g2 && g3 && g5 && g6 && g8;
+  const bool all = g1 && g2 && g3 && g5 && g6 && g8 && g18;
   printf("\n═════════════════════════════════════════════════════════════════════════════\n");
   printf("  correctness gates: scaling %s  density %s  end-to-end %s  equivalence %s  "
-         "containment %s  interval %s\n", ok_str(g1), ok_str(g2), ok_str(g3), ok_str(g5),
-         ok_str(g6), ok_str(g8));
+         "containment %s  interval %s  evaluator %s\n", ok_str(g1), ok_str(g2), ok_str(g3),
+         ok_str(g5), ok_str(g6), ok_str(g8), ok_str(g18));
   if (!out.empty()) printf("  csv written to %s/\n", out.c_str());
   printf("\n");
   return all ? 0 : 1;
