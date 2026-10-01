@@ -15,11 +15,13 @@ is not part of the bullet.
 
 1. **Built a C++17 geofencing engine on hand-written spatial and temporal indexes
    (quadtree, STR R-tree, AVL interval tree, persistent quadtree); on a synthetic
-   100k-zone benchmark, range queries ran ~100–115× faster than a linear scan,
+   100k-zone benchmark, range queries ran 100–235× faster than a linear scan,
    with identical results.**
    <sub>`make bench` §1, `bench/results/index_scaling.csv` and
-   `bench/results/variation/` (R-tree 102–114× over four runs); identical results
-   enforced by result checksums on every timed pass and
+   `bench/results/variation/`: R-tree 223–235× over the four runs of 2026-10-01,
+   102–114× over the four of 2026-09-28 (in git history) — the range is across
+   sessions, see RESULTS.md, "Read this first"; identical results enforced by
+   result checksums on every timed pass and
    `tests/index/differential_test.cpp`.</sub>
 
 2. **Tested correctness with randomized differential tests against a
@@ -61,7 +63,7 @@ is not part of the bullet.
 ## Short forms
 
 - *Hand-built quadtree, STR R-tree, AVL interval tree and persistent quadtree in
-  C++17; ~100–115× faster range queries than a linear scan on a synthetic
+  C++17; 100–235× faster range queries than a linear scan on a synthetic
   100k-zone benchmark, with identical results.*
 - *Differential and mutation testing (22/22 injected bugs caught) found 8 latent
   defects in code that already passed its tests.*
@@ -79,8 +81,8 @@ three bullets are plenty.
   brute force, not an external library.
 - **A single speedup figure as a constant, or as a guarantee.** Quote the range;
   one laptop, synthetic zones, and ratios moved by more than 2× between sessions
-  (97–229× in one set of runs). The bounds are O(log n + k) expected, O(n) worst
-  case.
+  (102–114× in one, 223–235× in another). If one number is needed, use the
+  floor: "over 100×". The bounds are O(log n + k) expected, O(n) worst case.
 - **Mutation score as proof of correctness.** 22/22 means those 22 hand-written
   bugs are caught; it says nothing about bugs unlike them.
 - **"Tested on real users."** Real OpenStreetMap geography, simulated movement.

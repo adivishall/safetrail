@@ -26,8 +26,9 @@ Add the result and its limit:
 "Checking every zone for every fix is O(n·V). A spatial index returns just the
 zones whose bounding boxes overlap the fix's uncertainty disc, then exact
 geometry decides those. At 100,000 zones in one district the R-tree answers the
-filter query about 100–115 times faster than scanning and the quadtree about 27–28
-times — ranges, because they move between runs — and I can explain the
+filter query between about 100 and 235 times faster than scanning, depending on
+the session, and the quadtree 27 to 34 times — ranges, because they move between
+runs, and I quote the floor when I need one number — and I can explain the
 ceiling: about a hundred zones genuinely overlap each
 query, and no index can return fewer answers than exist. Hold the density
 constant so each query overlaps one zone and the same code is hundreds of times
@@ -95,7 +96,11 @@ constants while the distance function uses a sphere — so I replaced it with th
 exact bounding box of a spherical cap and a sampled property test. Then a zone
 not returned is a *certain* Outside observation, fed through the same hysteresis
 as any other (so one wild fix cannot force an exit); a zone out of force is
-closed immediately. Cost: O(open states) per fix, with no geometry.
+closed immediately. Cost: O(open states) per fix, with no geometry — and
+measured, because an argument is not a measurement: RESULTS.md §18 times the
+whole `evaluate()` with GPS jumps in the trajectories, and at constant density
+the per-fix cost barely moves while zones grow from 5,000 to 50,000; step 9
+observes about a third of a zone per fix outside the candidate set.
 
 ## The hardest bug
 
@@ -149,9 +154,10 @@ item that straddles a split stays high in the tree, and identical boxes defeat i
 forced upward, but envelopes overlap, so a query may descend several branches.
 
 Measured on identical data they return identical candidates (they must), and the
-STR-packed R-tree reaches them through fewer nodes: roughly 100–115× faster than
-brute force at 100,000 dense zones (97–229× in an earlier set of runs — it varies
-most) against the quadtree's 27–28×. STR itself is
+STR-packed R-tree reaches them through fewer nodes: 100–235× faster than brute
+force at 100,000 dense zones depending on the session (it varies most; the four
+runs within one session agree to about 5%) against the quadtree's 27–34×. STR
+itself is
 worth ~6× over building the same R-tree by insertion — same O(n log n) build, a
 smaller tree with less overlap. So: R-tree for a mostly-static zone set built in
 bulk; quadtree where updates are frequent, where persistence matters, or where a
@@ -182,7 +188,7 @@ oracle that keeps a full table per version now checks every historical query.
 | index removal (all three) | O(n) | yes — there is no id → node map; measured in RESULTS.md §4 |
 | interval tree stab, k results | O(min(n, (k + 1) log n)) | yes — AVL height; not O(log n + k), each result can cost a root-to-leaf path |
 | interval tree insert / remove | O(log n) | yes — total-order key keeps delete to one descent even with shared start times |
-| persistent mutation | O(depth) new nodes | yes, by construction; measured per mutation type |
+| persistent mutation | O(depth) new nodes | yes for nodes, by construction; measured per mutation type. Each copied node copies its item list, so bytes also grow with the straddlers on the path |
 | exact containment | O(V) per candidate | yes |
 | polygon validation | O(V log V) Shamos–Hoey | yes — AVL status tree; pairwise O(V²) below 80 vertices |
 
@@ -289,7 +295,26 @@ fix: a zone that is deleted or out of force is closed (with an exit if it was
 Inside); an in-force zone the index did not return is fed a certain Outside
 observation through the hysteresis machine; settled states are dropped.
 `tests/fence/state_reconciliation_test.cpp`: before the fix, a walk across 60
-zones in 1 km steps produced 60 entries and zero exits.
+zones in 1 km steps produced 60 entries and zero exits. What the fix costs per
+fix is measured in RESULTS.md §18.
+
+**How does the hysteresis filter work?**
+One small state machine per (person, zone) pair — `fence::HysteresisState`, five
+phases: Outside, Ambiguous, EnteringPending, Inside, ExitingPending. Its input is
+the geometry's verdict plus the signed distance to the boundary; its output is
+the containment the evaluator is willing to act on. Three mechanisms compose. A
+dead band, as in a Schmitt trigger: an entry needs a fix 15 m inside the
+boundary, an exit one 25 m outside, so drift between the two changes nothing. A
+confirmation run: three consecutive agreeing fixes; a fix that disagrees
+abandons the pending transition, and that is counted as a suppressed flap. A
+dwell minimum: an entry is confirmed no sooner than 5 s after it started, so
+clipping a corner is not an incident. Uncertain — the accuracy disc straddles the edge — is the subtle case:
+it is reported but never acted on. It cannot end Inside, it cancels a pending
+exit, and from Outside it moves to Ambiguous, which clears only the way Inside
+does. The price is latency: an exit is confirmed three fixes after the first
+clearly-outside one, an entry after three fixes and at least 5 s. `make bench`
+§10 measures the trade against noise-free ground truth on the same
+trajectories.
 
 **Why was the flap filter wrong?**
 `HysteresisState` filtered Inside ↔ Outside with margins, a confirmation count
@@ -360,8 +385,25 @@ refit, a skipped rebalance, history filtered by today's rules, a reconciliation
 never run, an Uncertain fix completing an exit — and each must make a named test
 fail. It found two real gaps in the tests themselves before reaching 22/22: the
 quadtree audit could not tell a quadtree from an arbitrary tree of boxes, and a
-duplicate-vertex screen in the sweep was redundant (removed). The mutants are
-hand-picked, so 22/22 is evidence, not proof.
+duplicate-vertex screen in the sweep was redundant (removed). What it does *not*
+prove: the mutants are hand-picked, so 22/22 says those 22 faults are caught and
+nothing about faults unlike them; a mutant that happens to be equivalent would
+count as a survivor, not a gap; and a wrong requirement survives every mutant,
+because the tests encode the same requirement. It is evidence about the tests,
+not proof about the code.
+
+**Why did the original speedup claim fail?**
+The old harness timed each index as the median of 7 passes of 2,000 queries —
+about 2 ms of work for a tree — and ran the contenders one after another. A 2 ms
+window is at the mercy of the scheduler and of which core the work lands on, and
+running contenders in sequence lets a slow minute land on one side of the ratio
+only. The README quoted ~240–260× for the R-tree; re-running the same harness on
+the same machine gave 138× with ±40% spreads, and nothing recorded what the
+original had been measured under. The rebuilt protocol (above) quotes paired
+ratios with their IQR, as a range over repeated runs. Even so, the R-tree's
+ratio still moves by more than 2× between sessions on this laptop while the
+quadtree's moves by about a quarter, so I quote the range, and its low end when
+one number is needed.
 
 **Why is the R-tree faster even at constant density, where each query has about one answer?**
 Both return the same ~1 result; the difference is how many boxes each tests to
@@ -381,8 +423,9 @@ the quadtree is depth 9 against the R-tree's 5 (`bench/results/index_density.csv
 In one district k grows with n: at 100,000 zones about 98 overlap each 450 m
 query, and each must be found and returned, while brute force costs about n box
 tests no matter what. Speedup ≈ n / (log n + c·k) with k ∝ n is bounded. The
-quadtree levels off around 23–28×; the R-tree goes higher because it reaches the
-k answers through fewer box tests (the straddler effect above).
+quadtree's ratio stops growing after a few thousand zones (27–34× at 100,000,
+across sessions); the R-tree goes higher because it reaches the k answers
+through fewer box tests (the straddler effect above).
 
 **Why isn't O(log n + k) a worst-case guarantee here?**
 Neither spatial tree bounds the work per query. The quadtree partitions space:
@@ -402,10 +445,11 @@ Per fix, validity is checked in O(1) on a handful of candidates the spatial inde
 already chose — nothing beats that. The interval tree answers the question with
 no spatial filter: `VersionedIndex::active_at(t)`, "every zone in force at t",
 by the rules of time t. There it gives a guaranteed O(min(n, (k + 1) log n))
-stab and O(log n) deletion under churn, and it is 14–44× faster than a scan when
-windows are selective (RESULTS.md §8). When hundreds of windows contain every
-instant it is no faster than a scan (0.9–1.3×) — the bound says so: k log n has
-passed n.
+stab and O(log n) deletion under churn, and it is an order of magnitude or more
+faster than a scan when windows are selective (14–61× across two sessions,
+RESULTS.md §8). When hundreds of windows contain every instant it loses to the
+scan at 1,000 windows and roughly ties at 10,000 — (k + 1) log n has passed n —
+and is at most about 2× ahead at 100,000, where k is about 1% of n.
 
 **What happens at longitude 180?**
 The loader refuses non-finite coordinates and anything outside ±90° / ±180°, so
@@ -426,6 +470,24 @@ that made short edges 11 cm thick. Orientation treats |cross| ≤ 1e-14 deg² as
 collinear. Every caller shares `src/geo/segment.cpp`, so validation, containment
 and the sweep cannot disagree about where an edge is. Exact adaptive predicates
 would remove the tolerances; they are not implemented.
+
+**What would change for real GPS telemetry?**
+Everything upstream of the evaluator here is simulated, so the first job would be
+to measure, not to change code: record traces with ground truth (a surveyed walk
+across known boundaries) and rerun the §10 comparison on them, because the 15 m /
+25 m margins and the three-fix confirmation are tuned to my noise model, not to
+real receivers. Then three code changes I already know about. Fixes are assumed
+to arrive in time order — the ping window is newest-first and the dwell clock
+reads timestamps as given — so late and out-of-order fixes need sequencing per
+person before they reach the evaluator. The speed behind the query radius is
+the window's net displacement over its time span, so one jump inflates it for as
+long as the pre-jump fix stays in the 64-fix window — about a minute at one fix a
+second; it needs a robust estimator (a median of segment speeds, or rejecting
+segments faster than a person can move). And reported accuracy from real
+devices is often optimistic in urban canyons, so the accuracy disc would need a
+floor or a calibration per device class. What would not change: the
+conservative-filter argument, reconciliation and the oracle-based tests do not
+depend on where the fixes come from.
 
 **What would you change to make it multi-threaded?**
 The work splits by person: each `Tourist` owns its zone states, and the index and

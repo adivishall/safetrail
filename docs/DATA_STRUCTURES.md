@@ -142,7 +142,12 @@ new version without destroying the old; every version stays queryable.
   `shared_ptr<const Node>`. An insert copies the root-to-leaf path it touches
   and shares the other three children at every level — O(depth) new nodes, not
   O(n). Removal follows the single path the insert rule put the zone on
-  (guided by the zone's box), so it is O(depth) too.
+  (guided by the zone's box), so it is O(depth) too. The bound is on *nodes*:
+  each copied node also copies its own item list, so the bytes written per
+  change are O(depth + items held on that path). Leaves hold at most 8 items;
+  an internal node holds the boxes that straddle its split lines, and nothing
+  bounds those — the same straddler pile-up that costs the quadtree query time
+  makes those copies larger.
 - **Validity by an append-only log per zone** of `(version, Validity)` records;
   lookup at a version is a binary search. A validity-only change shares the
   entire tree and allocates **zero** nodes. Snapshotting the validity table per
@@ -161,7 +166,7 @@ depth; no id twice; item count equals the zones the history says were present.
 
 | Operation | Bound |
 |---|---|
-| add / remove / replace | O(depth) new nodes (≤ 19 / 15 / 34 at depth cap 14, counting a split's four children) |
+| add / remove / replace | O(depth) new nodes (≤ 19 / 15 / 34 at depth cap 14, counting a split's four children); bytes O(depth + items on the path) |
 | validity change | 0 nodes, one record |
 | query at version | O(log n + k) expected + O(log h) per candidate (h = that zone's changes) |
 | version_at(t) | O(log V), binary search over commit times |
@@ -203,7 +208,7 @@ force (closed immediately). See [ARCHITECTURE.md](ARCHITECTURE.md).
 | Index remove (all three) | O(n) | ✓ (it is the bound) | RESULTS.md §4 |
 | Interval tree stab, k results | O(min(n, (k + 1) log n)) | ✓ AVL height | RESULTS.md §8 |
 | Interval tree insert/remove | O(log n) | ✓ AVL | RESULTS.md §8 |
-| Persistent mutation | O(depth) new nodes | ✓ by construction | RESULTS.md §9 |
+| Persistent mutation | O(depth) new nodes; bytes also grow with the items on the path | ✓ for nodes, by construction | RESULTS.md §9 |
 | Ray casting / winding | O(V) | ✓ | RESULTS.md §3 |
 | Shamos–Hoey validation | O(V log V) | ✓ AVL status tree | RESULTS.md §16 |
 

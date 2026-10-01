@@ -141,9 +141,11 @@ Stated here so they are not discovered:
   the read-only index and zone store.
 - **Simulated tourists.** Real OSM geography, synthetic movement with a GPS error
   model. No field data.
-- **Cross-OS determinism has one known gap:** dispatch travel totals can differ
-  across operating systems because libm's `asin`/`sin`/`cos` differ in the last
-  ulp. The evaluation core agrees.
+- **Cross-OS determinism has one known gap and is not gated:** dispatch travel
+  totals can differ across operating systems because libm's `asin`/`sin`/`cos`
+  differ in the last ulp. The evaluation core matched byte for byte the one time
+  a macOS and a Linux build were compared (WORKLOG, 2026-09-05); CI checks
+  determinism within each platform, not across them.
 
 ## What would change at production scale
 

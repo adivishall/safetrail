@@ -189,10 +189,12 @@ and `tests/golden/`; `make validate` and CI also require the Make build (library
 explicit tie-breaks in every ordered structure (heaps, sorts, k-d tree medians,
 Hungarian ties, the sweep's event order), candidates evaluated in zone-id order,
 and `-ffp-contract=off` so the compiler cannot fuse `a*b + c` differently at
-different optimisation levels. Across operating systems the evaluation core
-agrees; dispatch travel totals can differ slightly because Apple's libm and
-glibc differ in the last ulp of `asin`/`sin`/`cos`. That boundary is documented
-rather than closed — closing it would mean shipping transcendental functions.
+different optimisation levels. Across operating systems nothing is gated: the
+one comparison of a macOS and a Linux build (WORKLOG, 2026-09-05, before the
+pass-6 fixes) found the evaluation core byte-identical and dispatch travel totals
+different in the last digits, because Apple's libm and glibc differ in the last
+ulp of `asin`/`sin`/`cos`. That boundary is documented rather than closed —
+closing it would mean shipping transcendental functions.
 
 ## 8. What the suite does not cover
 
