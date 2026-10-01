@@ -209,10 +209,13 @@ Churn: ten rounds of deleting and reinserting a tenth of the set.
 
 Selective windows are where the `max_high` augmentation earns its keep. With
 hundreds of windows containing every instant the tree must still visit and
-report each one, and a sequential scan is as fast: the same O(k) ceiling as the
-spatial indexes. Height stays under the AVL bound for the *live* size after
-churn. (This is also why the engine does **not** use the interval tree per tick:
-it checks validity in O(1) on the few candidates the spatial index returned.)
+report each one, and a sequential scan is as fast. The bound says exactly this:
+reporting k windows costs O(min(n, (k + 1) log n)) — a worst-case guarantee from
+the AVL height, but not O(log n + k), because the prune admits a subtree as soon
+as any window in it reaches past t, so each result can cost a root-to-leaf path.
+Height stays under the AVL bound for the *live* size after churn. (This is also
+why the engine does **not** use the interval tree per tick: it checks validity in
+O(1) on the few candidates the spatial index returned.)
 
 ## 9. Persistent quadtree — path copying
 

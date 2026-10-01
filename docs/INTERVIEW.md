@@ -180,7 +180,7 @@ oracle that keeps a full table per version now checks every historical query.
 |---|---|---|
 | quadtree / R-tree range query | O(log n + k) expected | no — O(n) worst (identical or heavily overlapping boxes) |
 | index removal (all three) | O(n) | yes — there is no id → node map; measured in RESULTS.md §4 |
-| interval tree stab | O(log n + k) | yes — AVL |
+| interval tree stab, k results | O(min(n, (k + 1) log n)) | yes — AVL height; not O(log n + k), each result can cost a root-to-leaf path |
 | interval tree insert / remove | O(log n) | yes — total-order key keeps delete to one descent even with shared start times |
 | persistent mutation | O(depth) new nodes | yes, by construction; measured per mutation type |
 | exact containment | O(V) per candidate | yes |
@@ -391,16 +391,21 @@ nodes, so a query can test O(n) boxes while k is small; `max_depth` bounds the
 depth but not the items per node. The R-tree is height-balanced, but sibling
 envelopes can overlap, so a query can descend every branch. O(log n + k) is the
 expected cost on spread data. The AVL interval tree is the structure with a
-guaranteed bound.
+guaranteed bound — and I should be precise about it: O(min(n, (k + 1) log n))
+for reporting k intervals, because the max-high prune admits a subtree as soon as
+any interval in it reaches past the query, so each result can cost a path. An
+earlier version of these docs called it O(log n + k), which is the centred
+interval tree's bound, not this traversal's.
 
 **Why is the interval tree useful if it isn't on the per-fix path?**
 Per fix, validity is checked in O(1) on a handful of candidates the spatial index
 already chose — nothing beats that. The interval tree answers the question with
 no spatial filter: `VersionedIndex::active_at(t)`, "every zone in force at t",
-by the rules of time t. There it gives a guaranteed O(log n + k) and O(log n)
-deletion under churn, and it is 14–44× faster than a scan when windows are
-selective (RESULTS.md §8). When hundreds of windows contain every instant it is
-no faster than a scan (0.9–1.3×) — the same O(k) ceiling.
+by the rules of time t. There it gives a guaranteed O(min(n, (k + 1) log n))
+stab and O(log n) deletion under churn, and it is 14–44× faster than a scan when
+windows are selective (RESULTS.md §8). When hundreds of windows contain every
+instant it is no faster than a scan (0.9–1.3×) — the bound says so: k log n has
+passed n.
 
 **What happens at longitude 180?**
 The loader refuses non-finite coordinates and anything outside ±90° / ±180°, so

@@ -141,7 +141,8 @@ class VersionedIndex {
 
   // Every zone in force at t, ignoring position -- and in force according to the
   // rules as they stood at t, not today's. THIS is where the interval tree earns
-  // its place: O(log n + k) via the subtree-max-high pruning. Every historical
+  // its place: O(min(n, (k + 1) log n)) via the subtree-max-high pruning (see
+  // ds/interval_tree.hpp for why that is the bound). Every historical
   // validity interval is retained in the tree; the version filter selects the one
   // record per zone that was actually in effect, so a stab returns each zone at
   // most once.

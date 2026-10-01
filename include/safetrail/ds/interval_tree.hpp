@@ -3,9 +3,20 @@
 // with every node caching the maximum high endpoint in its subtree.
 //
 // That augmentation is the whole trick: it lets a search prune an entire subtree
-// the moment `subtree_max_high <= query_low`, which turns overlap queries from
-// O(n) into O(log n + k). std::multimap cannot do this -- there is no hook to
-// maintain a subtree aggregate -- which is why this is hand-written.
+// the moment `subtree_max_high <= query_low`. std::multimap cannot do this --
+// there is no hook to maintain a subtree aggregate -- which is why this is
+// hand-written.
+//
+// What the bound actually is. Finding ONE overlapping interval is O(log n).
+// Reporting all k of them with this traversal (descend left while the subtree's
+// max_high says it could hold one; descend right while low < query_high) costs
+// O(min(n, (k + 1) log n)) in the worst case, not O(log n + k): every reported
+// interval can light up a different root-to-leaf path, and the nodes on those
+// paths are visited whether or not they overlap. With AVL height <= 1.44 log n
+// that is a guarantee, and it is never worse than the scan; it is also why the
+// tree only wins when the query is selective (RESULTS.md section 8). A centred
+// interval tree or a priority search tree would give O(log n + k); neither is
+// needed here, because the per-tick path does not use this structure at all.
 //
 // Used by index/versioned_index.hpp for active_at(t): which zones were in force
 // at time t, by the rules of time t [GAP 3]. It is deliberately NOT the per-fix
@@ -87,16 +98,18 @@ class IntervalTree {
     return found;
   }
 
-  // Entries overlapping [low, high). O(log n + k). An empty or inverted range
-  // overlaps nothing -- without the guard, [10, 5) would "overlap" [0, 20).
+  // Entries overlapping [low, high): O(min(n, (k + 1) log n)), see the top of the
+  // file. An empty or inverted range overlaps nothing -- without the guard,
+  // [10, 5) would "overlap" [0, 20).
   void overlapping(Timestamp low, Timestamp high, std::vector<T>& out) const {
     if (low >= high) return;
     descend(root_, low, high, out);
   }
-  // Entries containing a single instant. O(log n + k). Every interval is
-  // half-open with high <= INT64_MAX, so none contains INT64_MAX itself; the
-  // early return is also what keeps `at + 1` from overflowing (signed overflow
-  // is UB, and kForever == INT64_MAX is a value callers really pass).
+  // Entries containing a single instant; same bound as overlapping(). Every
+  // interval is half-open with high <= INT64_MAX, so none contains INT64_MAX
+  // itself; the early return is also what keeps `at + 1` from overflowing
+  // (signed overflow is UB, and kForever == INT64_MAX is a value callers really
+  // pass).
   void stabbing(Timestamp at, std::vector<T>& out) const {
     if (at == INT64_MAX) return;
     descend(root_, at, at + 1, out);

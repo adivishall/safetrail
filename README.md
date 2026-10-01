@@ -31,7 +31,7 @@ those two things true, and showing that they are.
 | **Brute force** | which zone boxes meet this box? (the oracle) | O(n) | a scanned vector, kept forever as the baseline |
 | **Quadtree** | same, partitioning **space** | O(log n + k) expected; O(n) worst | root fitted to data, doubling expansion, collapse on delete |
 | **R-tree** | same, partitioning **items** | O(log n + k) expected; O(n) worst | quadratic split, **STR bulk loading**, condensing delete |
-| **AVL interval tree** | which rules are in force at t? | O(log n + k) worst case | max-high augmentation, total-order key |
+| **AVL interval tree** | which rules are in force at t? | O(log n) to find one; O(min(n, k·log n)) to report k, worst case | max-high augmentation, total-order key |
 | **Persistent quadtree** | what were the rules at 14:32? | O(depth) new nodes per change | path copying + append-only validity log |
 
 k is the number of results. No spatial library, no
@@ -144,8 +144,9 @@ change at production scale.
 - **Simulated people, real geography.** OpenStreetMap zones around Shillong,
   Meghalaya; synthetic movement with a GPS error model. No field data.
 - **Removal is O(n)** in every spatial index (no id → node map); the quadtree and
-  R-tree have O(n) worst-case queries on adversarial data. Only the interval tree
-  has a guaranteed query bound.
+  R-tree have O(n) worst-case queries on adversarial data. The interval tree's
+  guarantee is O(min(n, k·log n)) for reporting k results — a bound, but not the
+  O(log n + k) a centred interval tree would give.
 - **Tolerance-based geometry**, not exact predicates (on-edge tolerance ~0.1 mm).
 - **No antimeridian support.** Zones crossing ±180° are refused at load, and
   query boxes do not wrap, so a fix at 179.99° cannot see a zone at −179.99°.

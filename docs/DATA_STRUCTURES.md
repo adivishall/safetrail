@@ -119,7 +119,8 @@ heights; `max_high` equal to the true subtree maximum; live count = `size()`.
 
 | Operation | Bound |
 |---|---|
-| stab / overlap query | **O(log n + k), guaranteed** — the only structure here with a worst-case bound on the query |
+| find one overlapping interval | **O(log n), guaranteed** |
+| stab / overlap query, all k results | **O(min(n, (k + 1) log n)), guaranteed** — never worse than the scan, but not O(log n + k): each reported interval can cost a root-to-leaf path, because the `max_high` prune admits a subtree as soon as *any* interval in it reaches past the query. A centred interval tree would close that gap; it is not built, because the per-tick path never stabs this tree |
 | insert, remove | **O(log n), guaranteed** |
 
 **Where it is used, precisely.** In `VersionedIndex::active_at(t)` — "every
@@ -200,7 +201,7 @@ force (closed immediately). See [ARCHITECTURE.md](ARCHITECTURE.md).
 | Quadtree query | O(log n + k) expected, O(n) worst | ✗ — partitions space, not data | RESULTS.md §1–3 |
 | R-tree query | O(log n + k) expected, O(n) worst | ✗ — boxes may overlap | RESULTS.md §1–3, §7 |
 | Index remove (all three) | O(n) | ✓ (it is the bound) | RESULTS.md §4 |
-| Interval tree stab | O(log n + k) | ✓ AVL | RESULTS.md §8 |
+| Interval tree stab, k results | O(min(n, (k + 1) log n)) | ✓ AVL height | RESULTS.md §8 |
 | Interval tree insert/remove | O(log n) | ✓ AVL | RESULTS.md §8 |
 | Persistent mutation | O(depth) new nodes | ✓ by construction | RESULTS.md §9 |
 | Ray casting / winding | O(V) | ✓ | RESULTS.md §3 |

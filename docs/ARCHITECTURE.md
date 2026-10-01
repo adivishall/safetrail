@@ -73,7 +73,7 @@ through `index::VersionedIndex`:
   t* (spatial filter on the version current at t, then each candidate's validity
   as of that version);
 - `active_at(t)` — every zone in force at t, no spatial filter: this is where the
-  interval tree's O(log n + k) stab is the right tool;
+  interval tree's stab — O(min(n, (k + 1) log n)), a guarantee — is the right tool;
 - `changes_between`, `history_for`, `validity_at` — the audit trail.
 
 The simulator builds it at load time and the dashboard's investigation panel
@@ -124,8 +124,9 @@ Stated here so they are not discovered:
 - **Removal is O(n)** in every spatial index (no id → node map). Measured in
   RESULTS.md §4; fine for a read-heavy zone set, not for heavy churn.
 - **The quadtree and R-tree have O(n) worst-case queries.** Every zone with the
-  same box defeats the quadtree; heavily overlapping boxes defeat the R-tree. Only
-  the interval tree has a guaranteed query bound.
+  same box defeats the quadtree; heavily overlapping boxes defeat the R-tree. The
+  interval tree's guarantee is O(min(n, (k + 1) log n)) per stab, not
+  O(log n + k).
 - **A speed estimate poisoned by a GPS jump inflates the query radius** (up to the
   10 km clamp) for as long as the jump sits in the 64-fix window, and pruning
   collapses for that tourist meanwhile. Correct, and slow; a robust estimator
