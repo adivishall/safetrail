@@ -154,13 +154,13 @@ without it, and no test could tell it was there).
 
 | Defect ([DEFECT_LOG.md](DEFECT_LOG.md), pass 6) | Test that fails on the old code |
 |---|---|
-| State machine lost zones that left the candidate window — missed exits and silent re-entries | `tests/fence/state_reconciliation_test.cpp` (9 of 18 checks) |
-| Hysteresis let Uncertain through: exit/enter flap pairs and an Uncertain event per accuracy alternation | `tests/fence/hysteresis_test.cpp` (first version: 7 of 13; 150 events where 1 is right) |
+| State machine lost zones that left the candidate window — missed exits and silent re-entries | `tests/fence/state_reconciliation_test.cpp` (an API-compatible first version: 9 of 18 checks; the current test reads counters the old code lacks and does not compile against it, so the live evidence is the "never reconciles" and "ignores validity windows" mutants) |
+| Hysteresis let Uncertain through: exit/enter flap pairs and an Uncertain event per accuracy alternation | `tests/fence/hysteresis_test.cpp` (first version: 7 of 13; 150 events where 1 is right; the current test uses the new `Ambiguous` phase and is pinned by the two hysteresis mutants) |
 | Index query box 0.11% too narrow east-west | `tests/geo/bbox_around_test.cpp` (7 of 10) |
 | Boundary 11 cm thick on a 1 m edge | `tests/geo/ray_casting_test.cpp` |
 | Sweep line called degenerate self-intersecting rings simple | `tests/geo/sweep_line_test.cpp` (9 of 56: all 8 pinned rings and the fuzz) |
 | Interval-tree two-child delete broke strict order on duplicates; `at + 1` overflow | `tests/ds/interval_tree_test.cpp` (7) |
-| Persistent index: O(n) removal allocations, versions for absent ids, duplicate re-adds, unsorted commit times, lost out-of-domain boxes | `tests/index/persistence_differential_test.cpp` (API-level; each fix confirmed by a mutant) |
+| Persistent index: O(n) removal allocations, versions for absent ids, duplicate re-adds, unsorted commit times, lost out-of-domain boxes | `tests/index/persistence_differential_test.cpp` (uses `check_invariants` and `contains_zone`, which the old code lacks; each fix confirmed by a mutant) |
 | Loader: undefined double→integer conversions on hostile files; out-of-domain coordinates | `tests/fence/zone_roundtrip_test.cpp` (all 7 hostile files loaded; UBSan reported 3 of the conversions) |
 
 ## 6. Sanitizers, warnings, static analysis

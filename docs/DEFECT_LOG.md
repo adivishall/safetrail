@@ -29,6 +29,13 @@ project's flagship structure, pass 5 in a complexity claim and in a brute-force
 oracle that had been invalid for as long as it existed, pass 6 in the state
 machine on the per-fix path and in the benchmark's own headline.
 
+**Pass 7** is the release validation of the integrated branch: every target from
+a clean build, the regression tests built against the pre-audit code, the
+mutation check, the benchmark harness itself, and every complexity claim read
+against the code that makes it. It found no defect in the engine's behaviour;
+it found two claims that were stronger than the code and two measuring
+instruments weaker than they said.
+
 **How to read this file.** Every table is a dated record of what was true *then*.
 Current-state numbers are the ones in the most recent pass, in `README.md` and in
 [RESULTS.md](RESULTS.md) / [TESTING.md](TESTING.md); earlier figures are history,
@@ -36,6 +43,48 @@ not claims, and are left in place because the point of the ledger is the
 trajectory. In pass 6, every "Test" cell names a test that was run against the
 pre-fix code and **failed**, then passed after the fix; where a defect was found
 by a probe rather than a test, the probe's output is quoted.
+
+---
+
+## Pass 7 — Release validation (2026-10-01)  ·  status: ✅ done
+
+### The interval tree's query bound was overstated
+
+| | |
+|---|---|
+| **Before** | README, DATA_STRUCTURES, INTERVIEW, ARCHITECTURE and `ds/interval_tree.hpp` gave the stabbing query as O(log n + k) worst case — "the only structure here with a guaranteed query bound". |
+| **Problem** | The traversal is the augmented-BST one: prune a subtree when its `max_high <= low`, descend right while `low < high`. That finds *one* overlapping interval in O(log n), but reporting all k costs O(min(n, (k + 1) log n)) in the worst case: the prune admits a subtree as soon as *any* interval in it reaches past the query, so each reported interval can light up its own root-to-leaf path, and every node on those paths is visited whether or not it overlaps. O(log n + k) is the bound of a centred interval tree or a priority search tree, neither of which this is. The measurement already had the right shape — §8 shows an order of magnitude when k is tens and nothing when k is hundreds — the claim did not. |
+| **Fix** | The bound corrected in all five places. It is still a guarantee (AVL height ≤ 1.44 log n) and still never worse than the scan; what changed is the exponent on k. |
+| **Test** | A claim, not behaviour: no test. `make bench` §8 is the evidence either way. |
+
+### The benchmark's result checksum could not tell some different answers apart
+
+| | |
+|---|---|
+| **Before** | `fold()` summed `(id + 1) × c` over the result ids, order-independently. |
+| **Problem** | Two result sets of equal size and equal id-sum collide — {1, 4} and {2, 3} — so the "identical results" gate on every timed section could pass two indexes returning different candidates. The exact set-for-set comparison in §5 and `tests/index/differential_test.cpp` were unaffected; the gate the headline tables rely on was weaker than the protocol said. |
+| **Fix** | Each id goes through a 64-bit bit mixer (splitmix64's finaliser) before the sum. The checksum stays inside the timed pass, as it must to keep the work alive; it costs the same few instructions for every contender. |
+
+### The reconciliation step had an argument and no measurement
+
+| | |
+|---|---|
+| **Before** | Step 9 of the evaluator — observe every zone with open state, whether or not the index returned it — was described as "O(open states), no geometry". Nothing measured it, and a reviewer could reasonably ask whether a per-fix loop over open states gives back what the index wins. |
+| **Fix** | `make bench` §18 times the whole `evaluate()` per fix on fixed trajectories against 1,000–50,000 zones in two regimes. Packed into one district the cost tracks the candidate count (the §1 crowding ceiling: k grows with n); at constant density it stays flat while n grows 10×. Reconciliation is a fraction of a zone per fix, a box distance and a hysteresis update each. [RESULTS.md](RESULTS.md) §18. |
+
+### A regression claim that could no longer be reproduced as stated
+
+| | |
+|---|---|
+| **Before** | TESTING.md said `state_reconciliation_test` fails 9 of 18 checks on the old code. |
+| **Problem** | The current test reads counters the old code does not have and no longer compiles against it; the same holds for the hysteresis, index-independence and persistence-differential tests, which use the `Ambiguous` phase and `check_invariants`. Built against commit `6656b74` (pre-audit): `bbox_around` 7 of 10, `ray_casting` 1 of 35, `sweep_line` 9 of 56, `interval_tree` 7 of 185 and `zone_roundtrip` 7 of 37 fail exactly as documented; the other four do not compile, and their evidence is the mutants that revert each fix. |
+| **Fix** | TESTING.md §5 now says which tests were run against the old code and which rely on the mutation check. |
+
+Also in this pass: the Make build (library `-O2`, tests `-O1`) and the CMake
+Release build (`-O3`, `NDEBUG`; the tree has no `assert`) were compared on the
+same seed and produce byte-identical output; `make validate` and the CI CMake
+job now check that, so the determinism claim covers both build systems rather
+than two runs of one binary.
 
 ---
 
