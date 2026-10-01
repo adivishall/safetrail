@@ -157,11 +157,13 @@ without it, and no test could tell it was there).
 | State machine lost zones that left the candidate window — missed exits and silent re-entries | `tests/fence/state_reconciliation_test.cpp` (an API-compatible first version: 9 of 18 checks; the current test reads counters the old code lacks and does not compile against it, so the live evidence is the "never reconciles" and "ignores validity windows" mutants) |
 | Hysteresis let Uncertain through: exit/enter flap pairs and an Uncertain event per accuracy alternation | `tests/fence/hysteresis_test.cpp` (first version: 7 of 13; 150 events where 1 is right; the current test uses the new `Ambiguous` phase and is pinned by the two hysteresis mutants) |
 | Index query box 0.11% too narrow east-west | `tests/geo/bbox_around_test.cpp` (7 of 10) |
-| Boundary 11 cm thick on a 1 m edge | `tests/geo/ray_casting_test.cpp` |
+| Boundary 11 cm thick on a 1 m edge | `tests/geo/ray_casting_test.cpp` (1 of 35) |
 | Sweep line called degenerate self-intersecting rings simple | `tests/geo/sweep_line_test.cpp` (9 of 56: all 8 pinned rings and the fuzz) |
-| Interval-tree two-child delete broke strict order on duplicates; `at + 1` overflow | `tests/ds/interval_tree_test.cpp` (7) |
+| Interval-tree two-child delete broke strict order on duplicates; `at + 1` overflow | `tests/ds/interval_tree_test.cpp` (7 of 185) |
 | Persistent index: O(n) removal allocations, versions for absent ids, duplicate re-adds, unsorted commit times, lost out-of-domain boxes | `tests/index/persistence_differential_test.cpp` (uses `check_invariants` and `contains_zone`, which the old code lacks; each fix confirmed by a mutant) |
-| Loader: undefined double→integer conversions on hostile files; out-of-domain coordinates | `tests/fence/zone_roundtrip_test.cpp` (all 7 hostile files loaded; UBSan reported 3 of the conversions) |
+| Loader: undefined double→integer conversions on hostile files; out-of-domain coordinates | `tests/fence/zone_roundtrip_test.cpp` (7 of 37: all 7 hostile files loaded; UBSan reported 3 of the conversions) |
+| Hysteresis experiment scored filter-off vs filter-on, with no ground truth | `tests/golden/hysteresis_ab_test.cpp` (2 of 11: the filtered noisy run reported 241% and 219% of the noise-free target; the earlier version of this test, which checked only off vs on, passed 6 of 6 on the same old code — pass 7) |
+| Benchmark headline from 2 ms windows, not reproducible | no unit test: the protocol in `apps/safetrail_bench.cpp` (≥ 20 ms samples, interleaved rounds, paired ratios) and its checksum gates, run by `make bench`; `make bench-variation` measures the spread |
 
 ## 6. Sanitizers, warnings, static analysis
 
