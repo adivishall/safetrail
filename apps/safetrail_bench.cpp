@@ -32,9 +32,10 @@
 //   * Reported: median, and the interquartile range as a percentage of it.
 //     Speedups are PAIRED: the median over rounds of (baseline / contender)
 //     measured back to back in the same round, which cancels slow rounds.
-//   * Every pass returns a checksum of its results (order-independent). The
-//     checksums of contenders doing the same job must be equal -- that is both
-//     a correctness gate and what stops the optimiser deleting the work.
+//   * Every pass returns a checksum of its results (order-independent: a sum of
+//     bit-mixed ids). The checksums of contenders doing the same job must be
+//     equal -- that is both a correctness gate and what stops the optimiser
+//     deleting the work. Section 5 is the exact set-for-set comparison.
 //   * On macOS the process asks for the performance cores (QoS
 //     user-interactive); Apple Silicon otherwise runs default-QoS work on
 //     efficiency cores at will, which roughly doubled absolute times in testing.
@@ -157,10 +158,18 @@ static double median_ms(int reps, const std::function<void()>& f) {
 }
 
 // Order-independent fold of a result set: equal sets give equal checksums
-// however the index happened to order them.
+// however the index happened to order them. Each id goes through a bit mixer
+// (splitmix64's finaliser) before the sum: a plain sum of ids let {1, 4} and
+// {2, 3} -- two different answers -- hash alike, which made the gate below weaker
+// than it claimed to be.
+static uint64_t mix64(uint64_t x) {
+  x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ull;
+  x ^= x >> 27; x *= 0x94D049BB133111EBull;
+  return x ^ (x >> 31);
+}
 static uint64_t fold(const std::vector<index::ZoneId>& ids) {
   uint64_t s = ids.size();
-  for (index::ZoneId id : ids) s += (uint64_t(id) + 1) * 0x9E3779B97F4A7C15ull;
+  for (index::ZoneId id : ids) s += mix64(uint64_t(id) + 0x9E3779B97F4A7C15ull);
   return s;
 }
 
