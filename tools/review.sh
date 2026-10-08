@@ -6,9 +6,11 @@
 #   tools/review.sh 5      one step on its own (1-9); reuses the last run's files
 #
 # Nothing here is typed in: every number is read back from the program that just
-# produced it. The scenario is fixed (seed 7), so two runs print the same thing.
-# Outputs go to build/review/ (ignored by git); the committed benchmark results
-# and the docs are not touched.
+# produced it, except step 8, which shows the committed results of `make bench`
+# and says so (a timing taken live in front of a viewer varies with the machine's
+# state and proves nothing the committed tables do not). The scenario is fixed
+# (seed 7), so two runs print the same thing. Outputs go to build/review/
+# (ignored by git); the committed benchmark results and the docs are not touched.
 set -u -o pipefail
 cd "$(dirname "$0")/.."
 
@@ -211,13 +213,38 @@ fi
 
 # ── 8. Performance ───────────────────────────────────────────────────────────
 if want 8; then
-  head_ "8. Performance: brute force vs quadtree vs R-tree, measured now"
-  cmd "$BENCH --only 1"
-  $BENCH --only 1 | plain | awk '/^1\./ {f=1} f && /^═/ {exit} f' || die "benchmark section 1 failed"
-  say "  Medians of 11 interleaved rounds, paired ratios; 'equal' is the checksum gate that"
-  say "  the three returned the same results. The committed tables (docs/RESULTS.md) come"
-  say "  from 'make bench' on this machine; ratios move between sessions, so they are"
-  say "  quoted as ranges there."
+  head_ "8. Performance: brute force vs quadtree vs R-tree  (committed results of make bench)"
+  CSV=bench/results/index_scaling.csv
+  [ -f "$CSV" ] || die "$CSV is missing: run 'make bench' (2-3 minutes) to produce it"
+  cmd "cat bench/results/environment.txt   # when, which commit, which machine"
+  grep -E '^(date|commit|cpu|power|load)' bench/results/environment.txt | sed 's/^/  /'
+  say ""
+  cmd "bench/results/index_scaling.csv + variation/run*/   # section 1 of make bench"
+  files=$CSV
+  for f in bench/results/variation/run*/index_scaling.csv; do [ -f "$f" ] && files="$files $f"; done
+  # The main run's values; the ratio ranges are min-max over every run of that session.
+  awk -F, '
+    FNR == 1 { nfiles++; next }
+    { z = $1 + 0
+      if (nfiles == 1) { order[++n] = z; brute[z] = $2; quad[z] = $3; rt[z] = $4; q[z] = $5; r[z] = $6; k[z] = $7 }
+      if (!(z in qlo) || $5 + 0 < qlo[z]) qlo[z] = $5 + 0;  if (!(z in qhi) || $5 + 0 > qhi[z]) qhi[z] = $5 + 0
+      if (!(z in rlo) || $6 + 0 < rlo[z]) rlo[z] = $6 + 0;  if (!(z in rhi) || $6 + 0 > rhi[z]) rhi[z] = $6 + 0 }
+    END {
+      printf "  %8s  %9s  %9s  %9s  %-20s  %-20s  %7s\n", "zones", "brute us", "quad us", "rtree us", "quadtree x (range)", "R-tree x (range)", "k/query"
+      for (i = 1; i <= n; i++) { z = order[i]
+        printf "  %8d  %9.3f  %9.3f  %9.3f  %-20s  %-20s  %7.2f\n", z, brute[z], quad[z], rt[z],
+          sprintf("%.1f (%.1f-%.1f)", q[z], qlo[z], qhi[z]), sprintf("%.1f (%.1f-%.1f)", r[z], rlo[z], rhi[z]), k[z] }
+      printf "  ranges: min-max over the %d runs of that session (make bench, make bench-variation)\n", nfiles }' $files
+  say ""
+  say "  Section 1 of 'make bench': 2,000 random 450 m queries in one 39 x 35 km district,"
+  say "  medians of 11 interleaved rounds, paired ratios against this project's own brute"
+  say "  force; every row's checksum gate passed. k/query is how many zones genuinely overlap"
+  say "  each query: at 100,000 zones about 98 do, every index must return them all, and"
+  say "  that caps the speedup. Ratios move between sessions on this machine (the R-tree's"
+  say "  by more than 2x; docs/RESULTS.md 'Read this first' lists every session), which is"
+  say "  why the docs quote ranges and a floor, never one number."
+  say "  To measure now: ./build/safetrail_bench --only 1 (about 15 s). To regenerate every"
+  say "  table and chart: make bench (2-3 min), then make bench-variation for the ranges."
   pause
 fi
 
@@ -237,7 +264,8 @@ if want 9; then
   say "    make validate    everything that gates a merge, in one command"
   say ""
   cmd "make dashboard"
-  make -s dashboard | plain | tail -1 || die "dashboard generation failed"
+  make -s dashboard | plain | grep 'frames, self-contained' || die "dashboard generation failed"
+  [ -s dashboard.html ] || die "dashboard.html was not written"
 fi
 
 if [ "$ONLY" = 0 ]; then

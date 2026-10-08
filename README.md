@@ -133,7 +133,7 @@ fix; the measurement defect is pinned by the benchmark's own gates
 
 ```bash
 make review       # the project walkthrough: every index, identical answers,
-                  # transitions, noise, history, a live benchmark, tests,
+                  # transitions, noise, history, the benchmark results, tests,
                   # dashboard (PAUSE=1 to step through it while presenting)
 make test         # 45 test files, ~11,800 checks (~20 s once built)
 make demo         # the engine on real OSM zones: event stream + counters

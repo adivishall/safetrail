@@ -3,10 +3,12 @@
 One command carries the whole story: `make review` runs the engine under each
 index, proves the fast indexes give the brute-force answer, shows one tourist's
 enter/exit history, the hour with and without the noise filter, the persistent
-index, a live benchmark, the test suite, and finally writes the dashboard. With
-`PAUSE=1` it waits for Enter between steps so you narrate at your own pace.
-Every number on screen is read back from the program that just produced it, and
-the scenario is seeded, so a rehearsal and the real thing print the same output.
+index, the committed benchmark results, the test suite, and finally writes the
+dashboard. With `PAUSE=1` it waits for Enter between steps so you narrate at
+your own pace. Every number on screen is read back from the program that just
+produced it — except step 8, which shows the committed `make bench` results and
+says so — and the scenario is seeded, so a rehearsal and the real thing print the
+same output.
 
 ## Before the review (10 minutes, once)
 
@@ -16,9 +18,8 @@ make review                     # warms the build (~1.5 min first time; ~50 s af
 open dashboard.html             # check it opens; leave the tab open
 ```
 
-Then: terminal font at 16–18 pt, dark theme, window wide enough for 100
-columns; close other heavy apps (the benchmark in step 8 is timed live);
-plug in the charger. Open [REVIEW_SLIDES.html](REVIEW_SLIDES.html) in a second
+Then: terminal font at 16–18 pt, dark theme, window wide enough for 110
+columns; close other heavy apps; plug in the charger. Open [REVIEW_SLIDES.html](REVIEW_SLIDES.html) in a second
 browser tab if you want slides (→ to advance, F for fullscreen); the dashboard
 does most of the visual work, so slides are optional.
 
@@ -41,7 +42,7 @@ screen, what to say, and the question it tends to raise.
 | 2:45–3:30 | **5. Transitions** — one real tourist and one real zone | an UNCERTAIN → ENTER → EXIT sequence with signed distances and ±accuracy | *"Here is one person and one forest zone: uncertain while the accuracy disc straddles the edge, ENTER after 15 m inside and three agreeing fixes, EXIT after 25 m outside and three fixes. Uncertain is reported but never acted on — that single rule used to be wrong, and it produced 60% of the demo's events."* | *What if the index stops returning a zone the person is inside?* → Every open (person, zone) state is observed every fix whether or not the index returned it; a zone not returned by a provably conservative filter is a certain Outside, still fed through the same filter. Before that fix, a walk across 60 zones produced 60 entries and zero exits. |
 | 3:30–4:00 | **6. Noise** — the same hour with `--no-hysteresis`, then `bench --only 10` | 602 entries with the filter vs 17,906 without; the A/B table: filtered 502 vs noise-free target 521 under realistic drift | *"Same trajectories, same noise, filter off: thirty times the entries, all flaps. The honest check is the last table: against noise-free truth on the same paths, the filter reports 96% of the real transitions."* | *Doesn't the filter hide real crossings?* → Under white noise it keeps 66% of the target — the documented price of suppressing ~20,000 false transitions; under realistic drift 96%. The old benchmark could not tell the two apart; this one can. |
 | 4:00–4:30 | **7. History** — `bench --only 9` | sharing 13.0× at 5,001 versions; ~15 nodes per add or remove; 0 for a rule change; past query ≈ present query | *"What were the rules at 00:45? A persistent quadtree: each change copies one root-to-leaf path and shares the rest, so 5,001 versions cost 71,000 nodes instead of 930,000. A query against the past is the same traversal from an older root."* | *Why not copy the tree per version?* → O(zones) per change. Path copying is O(depth), and a validity change allocates nothing because validity is an append-only log per zone. The dashboard's persistent-index panel draws it: copied path highlighted, shared subtrees dim. |
-| 4:30–5:00 | **8. Performance** — `bench --only 1`, measured live (~15 s) | the scaling table: brute force linear in n; quadtree ~30×; R-tree in the hundreds at 100,000 zones; `k/query` 98.45; `equal ok` on every row | *"Measured now, medians of 11 interleaved rounds, paired ratios. Look at k: about 98 zones genuinely overlap each query at 100,000, and every index must return all of them — that caps the speedup. The index removes the scan, not the answer. At constant density the same code is hundreds of times faster."* | *Why does the number differ from the README?* → Ratios move between sessions on this laptop (the R-tree's by more than 2×), which is why the docs quote ranges and the floor. The committed tables come from `make bench` on this machine; this is today's sample. |
+| 4:30–5:00 | **8. Performance** — the committed `make bench` results: `environment.txt` (date, commit, machine, power, load) and section 1 with its run-to-run ranges | brute force linear in n; quadtree ~30× at 100,000 zones; R-tree in the hundreds; `k/query` 98.45; the range next to every ratio | *"Measured on this machine with `make bench`: medians of 11 interleaved rounds, paired ratios against our own brute force, a checksum gate on every row. Look at k: about 98 zones genuinely overlap each query at 100,000, and every index must return all of them — that caps the speedup. The index removes the scan, not the answer. At constant density the same code is hundreds of times faster."* | *Can you run it now?* → Yes: `./build/safetrail_bench --only 1` takes about 15 s; `make bench` regenerates every table in 2–3 minutes. Ratios move between sessions on this laptop (the R-tree's by more than 2×: ~100× in one session, over 200× in two others), which is why the docs quote ranges and the floor rather than one number. |
 | (after) | **9. Engineering** — `make test`, `make determinism`, `make dashboard` | 45 test files, `ALL TESTS PASS`; `determinism: identical output`; then open `dashboard.html` | *"Forty-five test files, each structure against its oracle; same seed, byte-identical output; and the dashboard is one HTML file with no server."* | *What else is checked?* → `make mutation` (22/22), UBSan here and ASan + UBSan in Linux CI, Clang Static Analyzer (0 findings), `-Werror` on clang and g++ in CI, Make and CMake builds required to agree byte for byte. |
 
 ## On the dashboard (1–2 minutes, if there is time)
