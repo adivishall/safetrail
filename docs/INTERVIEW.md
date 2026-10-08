@@ -446,7 +446,7 @@ already chose — nothing beats that. The interval tree answers the question wit
 no spatial filter: `VersionedIndex::active_at(t)`, "every zone in force at t",
 by the rules of time t. There it gives a guaranteed O(min(n, (k + 1) log n))
 stab and O(log n) deletion under churn, and it is an order of magnitude or more
-faster than a scan when windows are selective (14–61× across two sessions,
+faster than a scan when windows are selective (14–64× across three sessions,
 RESULTS.md §8). When hundreds of windows contain every instant it loses to the
 scan at 1,000 windows and roughly ties at 10,000 — (k + 1) log n has passed n —
 and is at most about 2× ahead at 100,000, where k is about 1% of n.

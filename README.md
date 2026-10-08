@@ -30,7 +30,7 @@ injected bugs must each be caught by a test (22/22). That process found **ten
 real defects** in code that was passing its tests.
 
 - **Result (measured):** at 100,000 zones in one district,
-  <!-- results:keyline -->the R-tree answers the index query **223× faster** than a linear scan (223–235× over 4 runs in one session) and the quadtree **33.5×** (33.5–34.4×), returning identical results<!-- /results:keyline -->.
+  <!-- results:keyline -->the R-tree answers the index query **224× faster** than a linear scan (211–224× over 4 runs in one session) and the quadtree **33.7×** (31.7–33.7×), returning identical results<!-- /results:keyline -->.
   The R-tree's ratio moves between sessions: an earlier session on the same
   laptop measured 102–114×, so read ~100× as the floor
   ([why](docs/RESULTS.md#read-this-first)).
@@ -70,16 +70,16 @@ draws each index's actual structure on the same data.</sub>
 
 Speedups are **paired ratios against this project's own brute force**, shown with
 their range over independent runs. Absolute times are one laptop's
-(<!-- results:machine -->Apple M4, Battery power, load average 3.63 at the start, commit f267de0<!-- /results:machine -->; see
+(<!-- results:machine -->Apple M4, Battery power, load average 2.61 at the start, commit a29ef13<!-- /results:machine -->; see
 [RESULTS.md](docs/RESULTS.md) for the protocol). Every number is generated from
 `bench/results/*.csv`.
 
 <!-- results:headline -->
 | Workload | Brute force / naive | Quadtree speedup (range over runs) | R-tree speedup (range over runs) |
 |---|---:|---:|---:|
-| Range query, 100,000 zones in one district (k ≈ 98) | 244 µs | 33.5× (33.5–34.4×) | 223× (223–235×) |
-| Range query, 100,000 zones at constant density (k ≈ 1) | 218 µs | 551× (546–575×) | 1048× (961–1048×) |
-| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 262 µs | 1509× (1497–1540×) | 2100× (ratio of medians) |
+| Range query, 100,000 zones in one district (k ≈ 98) | 239 µs | 33.7× (31.7–33.7×) | 224× (211–224×) |
+| Range query, 100,000 zones at constant density (k ≈ 1) | 216 µs | 543× (423–543×) | 1042× (845–1042×) |
+| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 262 µs | 1461× (1461–1552×) | 2088× (ratio of medians) |
 <!-- /results:headline -->
 
 What the numbers say, and why:
@@ -107,7 +107,7 @@ What the numbers say, and why:
 - **Persistence is cheap**: one root-to-leaf path per change (≈15 nodes on a
   5,000-zone index), zero for a rule change, and a query against the past costs
   the same as one against the present. (§9)
-- **Reconciliation does not undo the index**: <!-- results:evalfix -->the whole `evaluate()` — index, geometry, hysteresis and the observation of every zone with open state — costs **4.88 µs per fix at 5,038 zones and 5.46 µs at 50,038** when the zone density is held constant; packed into one district it costs 2.25 µs at 1,038 zones and 17.1 µs at 20,038, tracking the candidate count (k grows with n, as in §1). Reconciliation itself is 0.08–1.42 zones observed per fix outside the candidate set, a box distance each, no geometry<!-- /results:evalfix -->. (§18)
+- **Reconciliation does not undo the index**: <!-- results:evalfix -->the whole `evaluate()` — index, geometry, hysteresis and the observation of every zone with open state — costs **4.93 µs per fix at 5,038 zones and 5.52 µs at 50,038** when the zone density is held constant; packed into one district it costs 2.19 µs at 1,038 zones and 17.0 µs at 20,038, tracking the candidate count (k grows with n, as in §1). Reconciliation itself is 0.08–1.42 zones observed per fix outside the candidate set, a box distance each, no geometry<!-- /results:evalfix -->. (§18)
 
 ## How correctness is established (evidence)
 

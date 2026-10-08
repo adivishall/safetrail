@@ -101,8 +101,8 @@
     if box(zone) meets box(fix):
       exact point-in-polygon  # O(V) per candidate</pre>
       <p style="margin-top:18px">In the review scenario (5,038 zones, 40 people, one hour):
-        <b>711 million</b> box tests. At 100,000 zones one query costs about
-        <b>240 µs</b> on this laptop — before any geometry.</p>
+        <b>711 million</b> box tests. At 100,000 zones one query costs
+        <b>240–560 µs</b> on this laptop, depending on the session — before any geometry.</p>
     </div>
     <div class="box">
       <h3>…and why it is kept forever</h3>
@@ -233,7 +233,7 @@
   <h2>Measured against our own brute force, as paired ratios</h2>
   <div class="cols">
     <div>
-      <!-- results:html-headline --><table><thead><tr><th>Workload</th><th>Brute force / naive</th><th>Quadtree speedup (range over runs)</th><th>R-tree speedup (range over runs)</th></tr></thead><tbody><tr><td>Range query, 100,000 zones in one district (k ≈ 98)</td><td>244 µs</td><td>33.5× (33.5–34.4×)</td><td>223× (223–235×)</td></tr><tr><td>Range query, 100,000 zones at constant density (k ≈ 1)</td><td>218 µs</td><td>551× (546–575×)</td><td>1048× (961–1048×)</td></tr><tr><td>Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon</td><td>262 µs</td><td>1509× (1497–1540×)</td><td>2100× (ratio of medians)</td></tr></tbody></table><!-- /results:html-headline -->
+      <!-- results:html-headline --><table><thead><tr><th>Workload</th><th>Brute force / naive</th><th>Quadtree speedup (range over runs)</th><th>R-tree speedup (range over runs)</th></tr></thead><tbody><tr><td>Range query, 100,000 zones in one district (k ≈ 98)</td><td>239 µs</td><td>33.7× (31.7–33.7×)</td><td>224× (211–224×)</td></tr><tr><td>Range query, 100,000 zones at constant density (k ≈ 1)</td><td>216 µs</td><td>543× (423–543×)</td><td>1042× (845–1042×)</td></tr><tr><td>Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon</td><td>262 µs</td><td>1461× (1461–1552×)</td><td>2088× (ratio of medians)</td></tr></tbody></table><!-- /results:html-headline -->
       <p class="dim" style="margin-top:12px">Ranges are over repeated runs in one session. Between
         sessions the R-tree's ratio has moved by more than 2× on this laptop (about 100× in
         September, over 200× in October); read ~100× as the floor. Candidate counts are

@@ -18,9 +18,10 @@ is not part of the bullet.
    100k-zone benchmark, range queries ran 100–235× faster than a linear scan,
    with identical results.**
    <sub>`make bench` §1, `bench/results/index_scaling.csv` and
-   `bench/results/variation/`: R-tree 223–235× over the four runs of 2026-10-01,
-   102–114× over the four of 2026-09-28 (in git history) — the range is across
-   sessions, see RESULTS.md, "Read this first"; identical results enforced by
+   `bench/results/variation/`: R-tree 211–224× over the four runs of 2026-10-09,
+   223–235× over the four of 2026-10-01 and 102–114× over the four of 2026-09-28
+   (both in git history) — the range is across sessions, see RESULTS.md, "Read
+   this first"; identical results enforced by
    result checksums on every timed pass and
    `tests/index/differential_test.cpp`.</sub>
 

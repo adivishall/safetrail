@@ -23,8 +23,8 @@ exist to make that decision fast without changing it.
 It compares the query box with every zone box — O(n) per fix, then exact
 geometry on the few that overlap. In the review scenario that is 141,130 queries
 × 5,038 zones = 711 million box tests in one simulated hour; at 100,000 zones one
-query costs about 240 µs on this laptop (RESULTS.md §1). Multiply by people and
-seconds and it does not scale. It is kept anyway, as the oracle (§Correctness).
+query costs 240–560 µs on this laptop depending on the session (RESULTS.md §1).
+Multiply by people and seconds and it does not scale. It is kept anyway, as the oracle (§Correctness).
 
 **What is a quadtree?**
 A tree that recursively splits *space* into four quadrants. Here an item descends
