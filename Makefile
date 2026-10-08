@@ -5,6 +5,9 @@
 #                    then regenerates every results table in the docs
 #   make demo        run the engine on real OSM zones, print the event stream
 #   make dashboard   write dashboard.html (self-contained; open it in a browser)
+#   make review      the project review: brute force -> quadtree/R-tree -> same
+#                    answer -> transitions -> noise -> history -> benchmark ->
+#                    tests -> dashboard, from real runs (PAUSE=1 to step through)
 #
 #   make validate    everything that gates a merge, in one command (see below)
 #   make stress      the randomised tests at 10x their default size
@@ -60,7 +63,7 @@ TEST_BIN := $(patsubst tests/%.cpp,$(BUILD)/test/%,$(TEST_SRC))
 
 APPS     := $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench
 
-.PHONY: all demo dashboard bench bench-variation test stress check validate sanitize asan ubsan \
+.PHONY: all demo dashboard review bench bench-variation test stress check validate sanitize asan ubsan \
         mutation analyze cmake-build rebuild clean help manifest determinism
 
 all: $(APPS)
@@ -85,6 +88,12 @@ $(BUILD)/%: apps/%.cpp $(LIB)
 # ── Running things ───────────────────────────────────────────────────────────
 demo: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 40 --hours 1 --synthetic 5000 --show 12
+
+# The project review, as one deterministic run that tells the story in order and
+# ends with the dashboard. tools/review.sh has the steps; PAUSE=1 waits for Enter
+# between them. Writes only to build/review/ and dashboard.html.
+review: $(APPS)
+	@PAUSE=$(PAUSE) tools/review.sh
 
 # A single self-contained HTML file -- no server, no network, no Leaflet.
 dashboard: $(BUILD)/safetrail_headless
@@ -253,4 +262,4 @@ clean:
 	@rm -rf $(BUILD) $(BUILD)-cmake
 
 help:
-	@sed -n '3,15p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '3,18p' Makefile | sed 's/^# \{0,1\}//'

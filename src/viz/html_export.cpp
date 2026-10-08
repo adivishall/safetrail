@@ -46,8 +46,8 @@ static const char* kShell = R"HTML(<!doctype html>
   header{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;
          gap:20px;align-items:baseline;flex-wrap:wrap}
   h1{font-size:15px;margin:0;letter-spacing:.5px}
-  .sub{color:var(--dim);font-size:11px}
-  #wrap{display:grid;grid-template-columns:1fr 340px;height:calc(100vh - 92px)}
+  .sub{color:var(--dim);font-size:12px}
+  #wrap{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 92px)}
   @media(max-width:900px){#wrap{grid-template-columns:1fr;height:auto}}
   #stage{position:relative;overflow:hidden}
   canvas{display:block;width:100%;height:100%}
@@ -64,39 +64,39 @@ static const char* kShell = R"HTML(<!doctype html>
       background:var(--panel);border-radius:0 4px 4px 0}
   .ev.enter{border-left-color:var(--r)} .ev.appr{border-left-color:var(--o)}
   .ev.unc{border-left-color:var(--u)}  .ev.dwell{border-left-color:var(--b)}
-  .ev .k{font-weight:700;font-size:11px;letter-spacing:.4px}
-  .ev .m{color:var(--dim);font-size:11px}
-  .lg{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+  .ev .k{font-weight:700;font-size:12px;letter-spacing:.4px}
+  .ev .m{color:var(--dim);font-size:12px}
+  .lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim)}
   .rule{display:flex;justify-content:space-between;gap:8px;padding:3px 6px;
-        border-radius:3px;font-size:11px;margin-bottom:2px;background:var(--panel)}
+        border-radius:3px;font-size:12px;margin-bottom:2px;background:var(--panel)}
   .rule.off{opacity:.38}
   .rule b{font-weight:600}
-  .chg{font-size:11px;padding:3px 6px;margin-bottom:2px;border-left:2px solid var(--b);
+  .chg{font-size:12px;padding:3px 6px;margin-bottom:2px;border-left:2px solid var(--b);
        background:var(--panel);color:var(--dim)}
   .chg.future{opacity:.35}
   .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
-  table{width:100%;border-collapse:collapse;font-size:11px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
   td{padding:2px 0} td:last-child{text-align:right;color:var(--b)}
-  h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
-     margin:14px 0 6px;font-weight:600}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+     margin:16px 0 6px;font-weight:600}
   .inc{border-left:3px solid var(--r);background:var(--panel);border-radius:0 4px 4px 0;
        padding:6px 9px;margin-bottom:5px}
   .inc.s4{border-left-color:var(--o)} .inc.s3{border-left-color:var(--b)}
   .inc.s2{border-left-color:var(--dim)}
   .inc .big{font-size:17px;font-weight:700;line-height:1.2}
-  .inc .m{color:var(--dim);font-size:11px}
+  .inc .m{color:var(--dim);font-size:12px}
   .saved{color:var(--g);font-weight:700}
-  .mk{background:var(--panel);border-radius:5px;padding:9px;font-size:11px;line-height:1.5}
+  .mk{background:var(--panel);border-radius:5px;padding:9px;font-size:12px;line-height:1.5}
   .mk code{word-break:break-all;color:var(--b)}
   .mk .ok{color:var(--g);font-weight:700} .mk .bad{color:var(--r);font-weight:700}
-  table.exp{font-size:10.5px} table.exp th{color:var(--dim);font-weight:600;text-align:right;padding:2px 4px;border-bottom:1px solid var(--line)}
+  table.exp{font-size:11.5px} table.exp th{color:var(--dim);font-weight:600;text-align:right;padding:2px 4px;border-bottom:1px solid var(--line)}
   table.exp th:first-child{text-align:left}
   table.exp td{padding:2px 4px;text-align:right;color:var(--fg)} table.exp td:first-child{text-align:left;color:var(--dim)}
   table.exp tr.hl td{color:var(--fg);font-weight:700;background:rgba(88,166,255,.08)}
   table.exp .qt{color:var(--b)} table.exp .rt{color:var(--g)} table.exp .bf{color:var(--r)}
-  .note{font-size:10px;color:var(--dim);margin-top:5px;line-height:1.5}
+  .note{font-size:11px;color:var(--dim);margin-top:5px;line-height:1.5}
   .why b.bf{color:var(--r)} .why b.qt{color:var(--b)} .why b.rt{color:var(--g)}
-  .concept{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:2px 6px;margin-bottom:2px;background:var(--panel);border-radius:3px}
+  .concept{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:2px 6px;margin-bottom:2px;background:var(--panel);border-radius:3px}
   .concept b{color:var(--b);font-weight:600}
 </style>
 <header>
@@ -106,7 +106,7 @@ static const char* kShell = R"HTML(<!doctype html>
     <span><i class="sw" style="background:var(--r)"></i>restricted</span>
     <span><i class="sw" style="background:var(--o)"></i>caution</span>
     <span><i class="sw" style="background:var(--g)"></i>safe</span>
-    <span><i class="sw" style="background:var(--u)"></i>uncertain [GAP 1]</span>
+    <span><i class="sw" style="background:var(--u)"></i>uncertain</span>
   </span>
 </header>
 <div id="wrap">
@@ -115,14 +115,14 @@ static const char* kShell = R"HTML(<!doctype html>
     <h2>main experiment · brute force vs quadtree vs R-tree</h2><div id="experiment"></div>
     <h2>why the index works</h2><div id="why"></div>
     <h2>tracked tourist</h2><div id="track"><div class="m" style="color:var(--dim)">click a dot on the map to track a tourist</div></div>
-    <h2>open incidents [GAP 5]</h2><div id="incidents"></div>
+    <h2>open incidents</h2><div id="incidents"></div>
     <h2>counters</h2><table id="stats"></table>
     <h2>rules in force <span id="asof" style="color:var(--b)"></span></h2>
     <div id="rules"></div>
-    <h2>zone change log [GAP 3]</h2><div id="changes"></div>
-    <h2>persistent index [GAP 3]</h2><div id="versions"></div>
+    <h2>zone change log</h2><div id="changes"></div>
+    <h2>persistent index</h2><div id="versions"></div>
     <h2>course concepts demonstrated</h2><div id="concepts"></div>
-    <h2>evidence log [GAP 9]</h2><div id="evidence"></div>
+    <h2>evidence log</h2><div id="evidence"></div>
     <h2>event stream</h2><div id="events"></div>
   </aside>
 </div>
@@ -327,16 +327,16 @@ function panel() {
   for (const s of D.frames[frame].state) { if (s === 2) ins++; else if (s === 1) unc++; }
   const rows = [
     ['tourists', D.frames[frame].lat.length], ['inside a zone', ins],
-    ['uncertain [GAP 1]', unc], ['zones', D.stats.zones],
+    ['uncertain', unc], ['zones', D.stats.zones],
     ['index', D.stats.index], ['candidates/query', D.stats.avg_candidates.toFixed(2)],
     ['pruning', D.stats.pruning.toFixed(0) + 'x'],
-    ['flaps suppressed [GAP 8]', D.stats.flaps],
-    ['alerts', D.stats.alerts], ['incidents [GAP 5]', D.stats.incidents],
+    ['flaps suppressed', D.stats.flaps],
+    ['alerts', D.stats.alerts], ['incidents', D.stats.incidents],
     ['anomalies', D.stats.anomalies], ['responders dispatched', D.stats.dispatched],
     ['greedy travel', (D.stats.greedy_m | 0).toLocaleString() + ' m'],
-    ['optimal travel [Phase 8]', (D.stats.optimal_m | 0).toLocaleString() + ' m'],
+    ['optimal travel (Hungarian)', (D.stats.optimal_m | 0).toLocaleString() + ' m'],
     ['saved by Hungarian', Math.max(0, (D.stats.greedy_m - D.stats.optimal_m) | 0).toLocaleString() + ' m'],
-    ['index versions [GAP 3]', D.versions], ['node sharing', D.sharing.toFixed(1) + 'x'],
+    ['index versions', D.versions], ['node sharing', D.sharing.toFixed(1) + 'x'],
   ];
   document.getElementById('stats').innerHTML =
     rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
@@ -575,7 +575,7 @@ function experimentPanel() {
 
 // ── Why the index works (item 10): the three strategies in one line each ──────
 function whyPanel() {
-  document.getElementById('why').innerHTML = `<div class="why note" style="font-size:11px">
+  document.getElementById('why').innerHTML = `<div class="why note" style="font-size:12px">
     <div><b class="bf">brute force</b> tests <i>every</i> zone against the query — O(n).</div>
     <div><b class="qt">quadtree</b> descends only the space quadrants the query can
       overlap and skips the rest — O(log n + k).</div>
@@ -597,7 +597,7 @@ function conceptsPanel() {
   ];
   document.getElementById('concepts').innerHTML =
     rows.map(r => `<div class="concept"><b>${r[0]}</b><span>${r[1]}</span></div>`).join('') +
-    `<div class="note">Full mapping: docs/COURSE_MAPPING.md.</div>`;
+    `<div class="note">Full mapping: docs/course/COURSE_MAPPING.md.</div>`;
 }
 
 // ── GAP 3 made visible: path copying across consecutive versions ─────────────
@@ -649,7 +649,7 @@ function versionsPanel() {
     html += `<div style="background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px">
       <svg width="${w}" height="${h}" style="display:block">
         <rect x="0" y="0" width="${w}" height="${h}" fill="#0e1116"/>${cells}</svg>
-      <div class="m" style="font-size:10px;margin-top:3px">v${v.version} @ ${fmt(v.at)}<br>${note}</div>
+      <div class="m" style="font-size:11px;margin-top:3px">v${v.version} @ ${fmt(v.at)}<br>${note}</div>
     </div>`;
   }
   html += '</div>';

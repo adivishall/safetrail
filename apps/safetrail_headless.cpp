@@ -135,10 +135,10 @@ int main(int argc, char** argv) {
   printf("\n\033[1mevents by kind\033[0m\n");
   printf("  zone entries         %6llu\n", (unsigned long long)sum.enters);
   printf("  zone exits           %6llu\n", (unsigned long long)sum.exits);
-  printf("  uncertain  [GAP 1]   %6llu   position too noisy to call\n", (unsigned long long)sum.uncertain);
-  printf("  approaching [GAP 2]  %6llu   predicted before crossing\n", (unsigned long long)sum.approaching);
+  printf("  uncertain            %6llu   position too noisy to call\n", (unsigned long long)sum.uncertain);
+  printf("  approaching          %6llu   predicted before crossing\n", (unsigned long long)sum.approaching);
   printf("  dwell exceeded       %6llu\n", (unsigned long long)sum.dwell);
-  printf("  cohesion    [GAP 4]  %6llu   group splits / stragglers\n", (unsigned long long)sum.cohesion_events);
+  printf("  cohesion             %6llu   group splits / stragglers\n", (unsigned long long)sum.cohesion_events);
   printf("  anomalies            %6llu   stationary / signal-lost / off-route\n", (unsigned long long)sum.anomalies);
 
   printf("\n\033[1mengine counters\033[0m\n");
@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
   printf("  exact geometry tests      %10llu\n", (unsigned long long)c.exact_tests_run);
   printf("  fixes rejected as noise   %10llu   accuracy worse than %.0fm\n",
          (unsigned long long)c.fixes_rejected_noise, geo::UncertainPoint::UNUSABLE_ACCURACY_M);
-  printf("  \033[1mflaps suppressed [GAP 8]  %10llu\033[0m   drift-induced false transitions\n",
+  printf("  \033[1mflaps suppressed          %10llu\033[0m   drift-induced false transitions\n",
          (unsigned long long)c.flaps_suppressed);
   printf("  out-of-window observations%10llu   open state, zone no longer a candidate\n",
          (unsigned long long)c.out_of_window_observations);
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
          naive, ist.avg_candidates(),
          ist.avg_candidates() > 0 ? double(naive) / ist.avg_candidates() : 0.0);
 
-  printf("\n\033[1malert correlation [GAP 5]\033[0m\n");
+  printf("\n\033[1malert correlation\033[0m\n");
   printf("  alerts raised        %6llu\n", (unsigned long long)cst.alerts_ingested);
   printf("  incidents opened     %6llu\n", (unsigned long long)cst.incidents_opened);
   printf("  alerts absorbed      %6llu   operator cards NOT shown\n",
@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
                (long long)e.t_ms, int(e.kind), e.tourist, e.zone);
       evlog.append(std::string(rec_line));
     }
-    printf("\n\033[1mevidence log [GAP 9]\033[0m  tamper-evident, offline-verifiable\n");
+    printf("\n\033[1mevidence log\033[0m  tamper-evident, offline-verifiable\n");
     printf("  events committed     %6llu\n", (unsigned long long)evlog.size());
     printf("  merkle root          %s\n", evidence::to_hex(evlog.root()).substr(0, 32).c_str());
     if (evlog.size() > 0) {
