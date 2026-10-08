@@ -8,8 +8,8 @@ between markers --
     ...generated...
     <!-- /results:NAME -->
 
--- in docs/RESULTS.md and README.md, and this script regenerates them from the
-CSVs that `make bench` writes. `make bench` runs it; `--check` (run by
+-- in docs/RESULTS.md, README.md and the review slides, and this script
+regenerates them from the CSVs that `make bench` writes. `make bench` runs it; `--check` (run by
 `make validate` and CI) fails if a committed doc disagrees with the committed
 CSVs, so the two cannot drift.
 
@@ -27,7 +27,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RES = os.path.join(ROOT, "bench", "results")
-DOCS = [os.path.join(ROOT, "docs", "RESULTS.md"), os.path.join(ROOT, "README.md")]
+DOCS = [os.path.join(ROOT, "docs", "RESULTS.md"), os.path.join(ROOT, "README.md"),
+        os.path.join(ROOT, "docs", "REVIEW_SLIDES.html")]
 
 
 def rows(name, base=RES):
@@ -82,6 +83,17 @@ def table(header, body, align=None):
 
 def nruns(name):
     return len(runs(name))
+
+
+def html_table(header, body):
+    """The same table for an HTML page (the review slides)."""
+    th = "".join("<th>%s</th>" % h for h in header)
+    trs = "".join("<tr>" + "".join("<td>%s</td>" % c for c in r) + "</tr>" for r in body)
+    return "<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (th, trs)
+
+
+def html_bold(text):
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
 
 
 # ── blocks ────────────────────────────────────────────────────────────────────
@@ -272,8 +284,8 @@ def block_keyline():
                band("index_scaling.csv", "zones", "100000", "quad_speedup")))
 
 
-def block_headline():
-    """README: the three questions a reader asks first, 100,000 zones."""
+def headline_rows():
+    """The three questions a reader asks first, 100,000 zones: (header, body)."""
     def get(name, key_col, key):
         return next((r for r in rows(name) if r[key_col] == key), None)
     fa, fd = get("index_scaling.csv", "zones", "100000"), get("index_density.csv", "zones", "100000")
@@ -295,8 +307,13 @@ def block_headline():
                      us(e["naive_us"]) + " µs",
                      "%s× (%s)" % (x(float(e["quad_vs_naive"])), band("end_to_end.csv", "vertices", "128", "quad_vs_naive")),
                      "%s× (ratio of medians)" % x(rt_naive)])
-    return table(["Workload", "Brute force / naive", "Quadtree speedup (range over runs)",
-                  "R-tree speedup (range over runs)"], body, ["---", "---:", "---:", "---:"])
+    return (["Workload", "Brute force / naive", "Quadtree speedup (range over runs)",
+             "R-tree speedup (range over runs)"], body)
+
+
+def block_headline():
+    header, body = headline_rows()
+    return table(header, body, ["---", "---:", "---:", "---:"])
 
 
 BLOCKS = {
@@ -312,6 +329,8 @@ BLOCKS = {
     "persistent": block_persistent,
     "extensions": block_extensions,
     "headline": block_headline,
+    "html-headline": lambda: html_table(*headline_rows()),
+    "html-keyline": lambda: html_bold(block_keyline()),
     "evaluator": block_evaluator,
     "evalfix": block_evalfix,
     "runs": lambda: "%d" % nruns("index_scaling.csv"),

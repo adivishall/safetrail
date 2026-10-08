@@ -177,7 +177,10 @@ jobs:
           make dashboard CXX=g++
           mkdir -p _site
           cp dashboard.html _site/index.html
-          cp docs/course/slides.html _site/slides.html
+          cp docs/REVIEW_SLIDES.html _site/slides.html
+          mkdir -p _site/images _site/bench/plots
+          cp docs/images/*.png _site/images/
+          cp bench/plots/index_scaling.svg _site/bench/plots/
 
       - name: Upload benchmark CSVs
         uses: actions/upload-artifact@v4

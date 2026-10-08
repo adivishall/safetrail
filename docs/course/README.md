@@ -5,6 +5,12 @@ folder were written for that submission — viva preparation, a slide deck, a de
 script, the team brief and the original design — and are kept as a record, not
 maintained. They are frozen as of 2026-09-12.
 
+**For the project review, use the maintained material instead:**
+[REVIEW_DEMO.md](../REVIEW_DEMO.md) (the 5-minute live demo, built on
+`make review`), [REVIEW_QA.md](../REVIEW_QA.md) (questions and answers from the
+code as it is) and [REVIEW_SLIDES.html](../REVIEW_SLIDES.html) (ten slides,
+numbers generated from the committed benchmark results).
+
 Numbers quoted in them come from that date's benchmark run on one laptop and
 predate the 2026-09-28 audit, which fixed ten defects and replaced the timing
 methodology ([DEFECT_LOG.md](../DEFECT_LOG.md)). For anything current, use:

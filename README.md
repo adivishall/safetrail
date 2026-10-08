@@ -1,33 +1,47 @@
 # SafeTrail
 
-**A C++17 geofencing engine built on hand-written spatial and temporal data
-structures — and the testing it takes to trust them.**
+**An efficient geofencing engine in C++17, built on hand-written spatial and
+temporal data structures, measured against brute force, and tested until the
+fast answer is provably the same as the slow one.**
 
-Given up to 100,000 hazard-zone polygons and a stream of noisy GPS fixes,
-SafeTrail decides, fix after fix, whether each person is **inside, outside or
-uncertain** relative to every zone near them, and emits an event only when that
-changes. Zones switch on and off over time, and every past configuration stays
-queryable for incident review.
+**What it is.** Given up to 100,000 hazard-zone polygons and a stream of noisy
+GPS fixes, SafeTrail decides, fix after fix, whether each person is **inside,
+outside or uncertain** relative to every zone near them, and emits an event only
+when that changes. Zones switch on and off over time, and every past
+configuration stays queryable.
 
-The challenge is doing that **fast without ever changing the answer**. Checking
-every zone against every fix costs O(n·V) per fix. A spatial index cuts the
-candidates to the few zones near the fix, and exact geometry then decides those
-few. That split is only correct if the index never drops a zone the geometry
-would have accepted, and if the per-zone state machine stays truthful when zones
-drift in and out of the candidate set. Most of the engineering here is making
-those two things true, and showing that they are.
+**Why.** Checking every zone against every fix is O(n) per fix — 711 million
+box tests in one simulated hour of the demo scenario. Repeated containment is the
+whole cost of geofencing, and a spatial index is the data-structures answer to it.
 
-- **Key result (measured):** at 100,000 zones in one district,
+**What I built.** Five structures behind one interface, with no spatial library
+and no dependencies beyond a C++17 compiler: a brute-force scan (kept as the
+oracle), a **quadtree**, an **STR-packed R-tree**, an **AVL interval tree** for
+"which rules are in force at t", and a **persistent quadtree** for "what were the
+rules at 14:32". Around them: exact point-in-polygon geometry under GPS
+uncertainty, a hysteresis state machine that turns noisy positions into
+trustworthy transitions, a benchmark harness, and a one-file dashboard.
+
+**What makes it interesting.** The index is only allowed to make the answer
+faster, never different. Every structure is compared with a brute-force oracle on
+randomized hostile workloads with its invariants audited after every operation;
+the whole engine must emit bit-identical events under all four indexes; and 22
+injected bugs must each be caught by a test (22/22). That process found **ten
+real defects** in code that was passing its tests.
+
+- **Result (measured):** at 100,000 zones in one district,
   <!-- results:keyline -->the R-tree answers the index query **223× faster** than a linear scan (223–235× over 4 runs in one session) and the quadtree **33.5×** (33.5–34.4×), returning identical results<!-- /results:keyline -->.
   The R-tree's ratio moves between sessions: an earlier session on the same
   laptop measured 102–114×, so read ~100× as the floor
   ([why](docs/RESULTS.md#read-this-first)).
-- **Correctness (evidence):** every index is compared with a brute-force oracle
-  on randomized hostile workloads, with invariant audits after every operation;
-  the whole engine must emit identical events under all four indexes; 22 of 22
-  injected bugs are caught. This process found ten real defects.
-- **Run it:** `make test && make demo && make dashboard` — a C++17 compiler and
-  `make`, nothing else.
+- **Run it:** `make review` — the whole story from real runs in about a minute,
+  ending with the dashboard. Or piece by piece: `make test && make demo && make
+  dashboard`. A C++17 compiler and `make`, nothing else.
+
+> **Project review:** [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) is the 5-minute live
+> demo built on `make review`; [REVIEW_QA.md](docs/REVIEW_QA.md) answers the
+> questions it raises from the code; [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html)
+> is ten slides whose numbers are generated from the committed benchmark results.
 
 | Structure | Answers | Bound (theoretical) | Implementation |
 |---|---|---|---|
@@ -118,6 +132,9 @@ fix; the measurement defect is pinned by the benchmark's own gates
 ## Run it
 
 ```bash
+make review       # the project walkthrough: every index, identical answers,
+                  # transitions, noise, history, a live benchmark, tests,
+                  # dashboard (PAUSE=1 to step through it while presenting)
 make test         # 45 test files, ~11,800 checks (~20 s once built)
 make demo         # the engine on real OSM zones: event stream + counters
 make dashboard    # writes dashboard.html; just open it
@@ -180,6 +197,7 @@ change at production scale.
 | [TESTING.md](docs/TESTING.md) | oracles, differential tests, invariants, mutation results, sanitizers |
 | [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | what breaks point-in-polygon and polygon validation, and the tolerances |
 | [DEFECT_LOG.md](docs/DEFECT_LOG.md) | every real defect found, its fix, and the test that pins it |
+| [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) · [REVIEW_QA.md](docs/REVIEW_QA.md) · [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html) | the 5-minute live demo on `make review`, the questions it raises, and ten slides |
 | [INTERVIEW.md](docs/INTERVIEW.md) · [RESUME.md](docs/RESUME.md) | the project explained at 30 s / 60 s / 3 min, and résumé bullets with sources |
 | [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) · [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) · [DEPLOYMENT.md](docs/DEPLOYMENT.md) | why the extensions exist; where the dashboard's data comes from; CI and Pages |
 | [docs/course/](docs/course/README.md) | the original course submission (viva prep, slides), archived |
