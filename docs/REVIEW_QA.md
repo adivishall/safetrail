@@ -284,7 +284,10 @@ Tolerance-based geometry rather than exact predicates. No antimeridian support:
 zones crossing ±180° are refused and query boxes do not wrap. A GPS jump
 inflates the speed estimate and so the query radius for about a minute,
 collapsing pruning for that person (correct, slow). Single-threaded, in-memory,
-one process. Benchmarks from one laptop, quoted as ranges.
+one process. Benchmarks from one laptop, quoted as ranges. No production-scale
+load test has been run: every number here is a single-threaded, per-query or
+per-fix cost, so throughput for thousands of concurrent users is not
+demonstrated, only reasoned about (next question).
 
 **How would you scale this to millions of users?** ★
 It stops being one process. In order: an id → node map in each index so removal
