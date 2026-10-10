@@ -1,0 +1,4 @@
+-Wconversion
+-Wsign-conversion
+-Wdouble-promotion
+-Wnull-dereference

@@ -33,7 +33,7 @@ void BruteForceIndex::query(const geo::Bbox& q, std::vector<ZoneId>& out) const 
 IndexStats BruteForceIndex::stats() const {
   st_.node_count = items_.size();
   st_.max_depth = 1;
-  st_.bytes = items_.size() * sizeof(items_[0]);
+  st_.bytes = sizeof(*this) + items_.capacity() * sizeof(items_[0]);
   return st_;
 }
 void BruteForceIndex::reset_counters() { st_.queries = 0; st_.candidates_returned = 0; }

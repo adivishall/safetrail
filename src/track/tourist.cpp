@@ -9,6 +9,11 @@ ZoneState& Tourist::state_for(ZoneId z) {
   return zone_states.back();
 }
 
+ZoneState* Tourist::find_state(ZoneId z) {
+  for (auto& s : zone_states) if (s.zone == z) return &s;
+  return nullptr;
+}
+
 const ZoneState* Tourist::peek_state(ZoneId z) const {
   for (const auto& s : zone_states) if (s.zone == z) return &s;
   return nullptr;

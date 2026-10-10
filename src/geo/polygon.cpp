@@ -56,8 +56,8 @@ bool ring_self_intersects_pairwise(const Ring& r) {
 // ── ...and the dispatch ──────────────────────────────────────────────────────
 //
 // Below the threshold the pairwise scan wins on constants; above it the sweep's
-// O(V log V) wins on growth. The number is measured, not guessed -- section 12 of
-// `make bench` times both on rings from 8 to 4096 vertices and prints where they
+// O(V log V) wins on growth. The number is measured, not guessed -- section 16 of
+// `make bench` times both on rings from 8 to 2048 vertices and prints where they
 // cross. Both answer the same question and are asserted to give the same verdict
 // on randomised rings at sizes either side of it.
 bool ring_self_intersects(const Ring& r) {

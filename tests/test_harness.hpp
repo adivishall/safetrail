@@ -15,6 +15,13 @@ inline void near(double a, double b, double tol, const std::string& what) {
   ok(std::fabs(a - b) <= tol, what + "  (" + std::to_string(a) + " vs " +
                                   std::to_string(b) + ")");
 }
+// Randomised tests multiply their seed / iteration counts by this. `make stress`
+// sets SAFETRAIL_STRESS=10; the default run keeps the whole suite fast.
+inline int stress() {
+  const char* s = std::getenv("SAFETRAIL_STRESS");
+  const int v = s ? std::atoi(s) : 1;
+  return v < 1 ? 1 : v;
+}
 inline int report(const char* name) {
   printf("%s %-42s %d checks, %d failed\n",
          failures ? "\033[31m[FAIL]\033[0m" : "\033[32m[ ok ]\033[0m", name, checks, failures);

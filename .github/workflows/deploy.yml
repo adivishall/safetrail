@@ -6,7 +6,14 @@
 #
 # ── What gates what, and why ─────────────────────────────────────────────────
 #
+#   warnings     GATE. Every build job compiles with WERROR=1 against the shared
+#                flag list in tools/build/*.flags; clang (Linux and macOS) also
+#                enforces the -Wconversion family.
 #   tests        GATE. A correctness regression must not reach the page.
+#   stress       GATE. The randomised differential / property tests at 10x size.
+#   mutation     GATE. tools/mutation_check.py injects known bugs into the core;
+#                every one must make a test fail, or the tests are not testing.
+#   analysis     GATE. Clang Static Analyzer over the library and apps.
 #   sanitizers   GATE. Memory errors and UB are correctness failures; running
 #                them "advisory" meant a real regression could ship green, which
 #                is the same as not running them. The whole suite runs under
@@ -27,6 +34,10 @@
 # `|| true` appears exactly once below, on the benchmark step, and that is
 # deliberate rather than incidental -- it used to be on steps whose failure meant
 # something.
+# Runner images are pinned (ubuntu-24.04 ships g++ 13; macos-15 ships Apple
+# clang) so that a compiler upgrade -- and whatever new -Werror diagnostics it
+# brings -- is a deliberate change to this file, not something that happens to a
+# commit because GitHub moved "latest".
 name: build-test-deploy
 
 on:
@@ -47,20 +58,49 @@ concurrency:
 jobs:
   # ── Correctness gates ───────────────────────────────────────────────────────
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Compiler version
         run: g++ --version
+      - name: Documentation references resolve
+        run: python3 tools/check_docs.py
+      - name: Results tables match the committed benchmark CSVs
+        run: python3 tools/render_results.py --check
       - name: Header hygiene (every header compiles standalone)
-        run: make check CXX=g++
-      - name: Unit, golden and integration tests
-        run: make -j$(nproc) test CXX=g++
+        run: make check CXX=g++ WERROR=1
+      - name: Unit, property, differential and golden tests
+        run: make -j$(nproc) test CXX=g++ WERROR=1
       - name: Deterministic replay (same seed twice, byte-identical)
-        run: make determinism CXX=g++
+        run: make determinism CXX=g++ WERROR=1
+
+  # The same suite built by clang on Linux: clang enforces the -Wconversion
+  # family (see the Makefile), and a second compiler is a second opinion on UB
+  # and portability. Then the randomised tests at 10x, and static analysis.
+  clang:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compiler version
+        run: clang++ --version
+      - name: Tests under clang with -Werror
+        run: make -j$(nproc) test CXX=clang++ WERROR=1
+      - name: Stress (randomised tests at 10x)
+        run: make -j$(nproc) stress CXX=clang++ WERROR=1
+      - name: Clang Static Analyzer
+        run: make analyze CXX=clang++
+
+  # Do the tests catch broken code? Each mutant in tools/mutation_check.py is a
+  # realistic bug in the core; the job fails if any survives.
+  mutation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Mutation check
+        run: CXX=g++ python3 tools/mutation_check.py
 
   sanitize:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Whole suite under AddressSanitizer + UndefinedBehaviorSanitizer
@@ -72,15 +112,27 @@ jobs:
   # The other build system, on the same tree. Catches Make/CMake drift and any
   # warning that only one of the two sets of flags surfaces.
   cmake:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Configure
-        run: cmake -B build-cmake -DCMAKE_BUILD_TYPE=Release -S .
+        run: cmake -B build-cmake -DCMAKE_BUILD_TYPE=Release -DSAFETRAIL_WERROR=ON -S .
       - name: Build
         run: cmake --build build-cmake -j$(nproc)
       - name: ctest
         run: ctest --test-dir build-cmake --output-on-failure
+
+      # The README's determinism claim is "same seed, byte-identical output".
+      # Two runs of one binary (the test job) show the program is deterministic;
+      # this shows the CMake -O3 build and the make -O2 build agree with each
+      # other, which is what -ffp-contract=off is there to guarantee.
+      - name: Make and CMake builds agree byte for byte
+        run: |
+          make -j$(nproc) build/safetrail_headless CXX=g++ WERROR=1
+          args="--zones data/zones/shillong_osm.geojson --tourists 30 --hours 1 --seed 4242 --show 40"
+          ./build/safetrail_headless $args > /tmp/det_make.txt
+          ./build-cmake/safetrail_headless $args > /tmp/det_cmake.txt
+          cmp /tmp/det_make.txt /tmp/det_cmake.txt && echo "identical"
 
       # Both build systems discover sources by globbing the same patterns, so
       # drift should be impossible by construction. "Should be" is the phrase that
@@ -102,16 +154,18 @@ jobs:
   # macOS as well as Linux: the project claims to build easily on both, and
   # libc++ vs libstdc++ is where portability assumptions surface.
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
       - name: Build and test with clang++
-        run: make -j$(sysctl -n hw.ncpu) test CXX=clang++
+        run: make -j$(sysctl -n hw.ncpu) test CXX=clang++ WERROR=1
+      - name: Whole suite under UBSan (ASan cannot run on this platform; see Makefile)
+        run: make -j$(sysctl -n hw.ncpu) ubsan CXX=clang++
 
   # ── Artifact generation ─────────────────────────────────────────────────────
   build:
-    needs: [test, sanitize, cmake, macos]
-    runs-on: ubuntu-latest
+    needs: [test, clang, mutation, sanitize, cmake, macos]
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -123,7 +177,11 @@ jobs:
           make dashboard CXX=g++
           mkdir -p _site
           cp dashboard.html _site/index.html
-          cp slides.html _site/slides.html
+          # the review deck, with its repo-relative chart path made site-relative
+          sed 's|\.\./bench/plots/|bench/plots/|g' docs/REVIEW_SLIDES.html > _site/slides.html
+          mkdir -p _site/images _site/bench/plots
+          cp docs/images/*.png _site/images/
+          cp bench/plots/index_scaling.svg _site/bench/plots/
 
       - name: Upload benchmark CSVs
         uses: actions/upload-artifact@v4
@@ -140,7 +198,7 @@ jobs:
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

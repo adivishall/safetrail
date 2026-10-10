@@ -1,6 +1,7 @@
 #include "safetrail/index/quadtree.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 #include "safetrail/index/brute_force.hpp"
 #include "safetrail/index/geohash.hpp"
@@ -143,13 +144,17 @@ bool remove_node(Quadtree::Node* n, ZoneId id, size_t cap) {
   return false;
 }
 
-void walk(const Quadtree::Node* n, size_t depth, size_t& nodes, size_t& maxd,
+// `bytes` is the structure's real footprint: every node, plus the CAPACITY (not
+// the size) of every item vector, since that is what is actually allocated.
+// Allocator bookkeeping is not included; it is platform-specific.
+void walk(const Quadtree::Node* n, size_t depth, size_t& nodes, size_t& maxd, size_t& bytes,
           std::vector<geo::Bbox>* boxes) {
   ++nodes;
   maxd = std::max(maxd, depth);
+  bytes += sizeof(Quadtree::Node) + n->items.capacity() * sizeof(n->items[0]);
   if (boxes) boxes->push_back(n->region);
   if (!n->leaf())
-    for (int i = 0; i < 4; ++i) walk(n->kids[i].get(), depth + 1, nodes, maxd, boxes);
+    for (int i = 0; i < 4; ++i) walk(n->kids[i].get(), depth + 1, nodes, maxd, bytes, boxes);
 }
 
 }  // namespace
@@ -157,6 +162,7 @@ void walk(const Quadtree::Node* n, size_t depth, size_t& nodes, size_t& maxd,
 void Quadtree::build(const std::vector<std::pair<ZoneId, geo::Bbox>>& items) {
   root_ = std::make_unique<Node>();
   count_ = 0;
+  root_widened_ = false;
 
   // Fit the root to the DATA, not to the whole planet.
   //
@@ -244,7 +250,10 @@ void Quadtree::expand_root_to_cover(const geo::Bbox& box) {
   // non-finite coordinate, say), fall back to widening so the index stays
   // CORRECT even in the pathological case. Correct-but-poorly-pruned beats
   // missing results.
-  if (!fully_contains(root_->region, box)) root_->region.expand(box);
+  if (!fully_contains(root_->region, box)) {
+    root_->region.expand(box);
+    root_widened_ = true;
+  }
 }
 
 void Quadtree::insert(ZoneId id, const geo::Bbox& box) {
@@ -266,21 +275,57 @@ void Quadtree::query(const geo::Bbox& q, std::vector<ZoneId>& out) const {
 }
 
 IndexStats Quadtree::stats() const {
-  size_t nodes = 0, depth = 0;
-  walk(root_.get(), 0, nodes, depth, nullptr);
+  size_t nodes = 0, depth = 0, bytes = sizeof(*this);
+  walk(root_.get(), 0, nodes, depth, bytes, nullptr);
   st_.node_count = nodes;
   st_.max_depth = depth;
-  st_.bytes = nodes * sizeof(Node) + count_ * sizeof(std::pair<ZoneId, geo::Bbox>);
+  st_.bytes = bytes;
   return st_;
 }
 void Quadtree::reset_counters() { st_.queries = 0; st_.candidates_returned = 0; }
 
 void Quadtree::collect_node_boxes(std::vector<geo::Bbox>& out) const {
-  size_t nodes = 0, depth = 0;
-  walk(root_.get(), 0, nodes, depth, &out);
+  size_t nodes = 0, depth = 0, bytes = 0;
+  walk(root_.get(), 0, nodes, depth, bytes, &out);
 }
 
 geo::Bbox Quadtree::root_region() const { return root_->region; }
+
+namespace {
+// Equal up to rounding. A doubling expansion reuses the old root as a quadrant
+// of the new one, and the new root's midpoint -- (min + max) / 2 of a doubled
+// extent -- can land an ulp away from the old root's edge.
+bool near_box(const geo::Bbox& a, const geo::Bbox& b, double tol) {
+  return std::fabs(a.min_lat - b.min_lat) <= tol && std::fabs(a.max_lat - b.max_lat) <= tol &&
+         std::fabs(a.min_lon - b.min_lon) <= tol && std::fabs(a.max_lon - b.max_lon) <= tol;
+}
+
+bool audit(const Quadtree::Node* n, size_t& items, bool check_tiling) {
+  for (const auto& it : n->items)
+    if (!fully_contains(n->region, it.second)) return false;
+  items += n->items.size();
+  if (n->leaf()) {
+    for (int i = 1; i < 4; ++i) if (n->kids[i]) return false;
+    return true;
+  }
+  const double tol = 1e-9 * std::fmax(n->region.max_lat - n->region.min_lat,
+                                      n->region.max_lon - n->region.min_lon);
+  for (int i = 0; i < 4; ++i) {
+    if (!n->kids[i] || !fully_contains(n->region, n->kids[i]->region)) return false;
+    if (check_tiling && !near_box(n->kids[i]->region, quadrant(n->region, i), tol)) return false;
+    if (!audit(n->kids[i].get(), items, true)) return false;
+  }
+  return true;
+}
+}  // namespace
+
+bool Quadtree::check_invariants() const {
+  size_t items = 0;
+  // The last-resort widening in expand_root_to_cover deliberately gives up
+  // tiling at the root (and only there) to stay correct on input that doubling
+  // cannot reach, such as infinite coordinates.
+  return root_ && audit(root_.get(), items, !root_widened_) && items == count_;
+}
 
 std::unique_ptr<SpatialIndex> make_index(IndexKind kind) {
   switch (kind) {

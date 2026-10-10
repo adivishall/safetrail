@@ -45,12 +45,23 @@ static bool fully_contains(const geo::Bbox& o, const geo::Bbox& i) {
 // children we did not descend into are copied as shared_ptr, which is a refcount
 // bump, not a deep copy. So one insert allocates O(depth) nodes and shares
 // everything else with the previous version.
+//
+// Every item is stored at a node whose region FULLY CONTAINS its box -- that is
+// what makes query_node's "skip a subtree whose region misses the query" sound.
+// The root starts as the whole lat/lon domain; a box that pokes outside it (a
+// zone straddling the antimeridian stored as lon > 180, say) widens the ROOT's
+// region, which the root copy is free to do because the root is copied on every
+// insert anyway. Its children then no longer tile it, but an item that fits no
+// child stays at the root and is still found. Previously such a box was stored
+// at the root without widening it, and every query pruned it away.
 static std::shared_ptr<const VersionedIndex::Node> insert_copy(
-    const VersionedIndex::Node* n, ZoneId id, const geo::Bbox& box, size_t& allocated) {
+    const VersionedIndex::Node* n, ZoneId id, const geo::Bbox& box, size_t& allocated,
+    bool at_root) {
   using Node = VersionedIndex::Node;
   auto copy = std::make_shared<Node>();
   ++allocated;
   copy->region = n->region;
+  if (at_root && !fully_contains(copy->region, box)) copy->region.expand(box);
   copy->depth = n->depth;
   copy->items = n->items;
   for (int i = 0; i < 4; ++i) copy->kids[i] = n->kids[i];   // ← structural sharing
@@ -58,7 +69,7 @@ static std::shared_ptr<const VersionedIndex::Node> insert_copy(
   if (!n->leaf()) {
     for (int i = 0; i < 4; ++i)
       if (fully_contains(copy->kids[i]->region, box)) {
-        copy->kids[i] = insert_copy(copy->kids[i].get(), id, box, allocated);
+        copy->kids[i] = insert_copy(copy->kids[i].get(), id, box, allocated, false);
         return copy;
       }
     copy->items.emplace_back(id, box);       // straddles a split, stays here
@@ -90,29 +101,40 @@ static std::shared_ptr<const VersionedIndex::Node> insert_copy(
 }
 
 // Removal also path-copies: the old version must keep seeing the zone.
+//
+// The descent is GUIDED by the zone's box, not a search. The insert rule
+// (descend into the first child whose region fully contains the box, else stay)
+// is deterministic, and a split redistributes by the same rule, so a zone can
+// only ever be on one root-to-node path: the one the box itself selects. So this
+// copies exactly that path -- O(depth) new nodes, the same as an insert.
+//
+// The version this replaced searched depth-first and copied every node it
+// visited, including whole subtrees that turned out not to hold the id: O(n)
+// allocations in the worst case, discarded immediately but still counted in
+// share_stats(), and a new version minted even when the id was absent.
 static std::shared_ptr<const VersionedIndex::Node> remove_copy(
-    const VersionedIndex::Node* n, ZoneId id, size_t& allocated, bool& found) {
+    const VersionedIndex::Node* n, ZoneId id, const geo::Bbox& box, size_t& allocated,
+    bool& found) {
   using Node = VersionedIndex::Node;
-  auto copy = std::make_shared<Node>();
-  ++allocated;
-  copy->region = n->region;
-  copy->depth = n->depth;
-  copy->items = n->items;
-  for (int i = 0; i < 4; ++i) copy->kids[i] = n->kids[i];
-
-  for (size_t i = 0; i < copy->items.size(); ++i)
-    if (copy->items[i].first == id) {
+  for (size_t i = 0; i < n->items.size(); ++i)
+    if (n->items[i].first == id) {
+      auto copy = std::make_shared<Node>(*n);          // shares all four children
+      ++allocated;
       copy->items.erase(copy->items.begin() + long(i));
       found = true;
       return copy;
     }
-  if (!copy->leaf())
-    for (int i = 0; i < 4; ++i) {
-      bool f = false;
-      auto nk = remove_copy(copy->kids[i].get(), id, allocated, f);
-      if (f) { copy->kids[i] = nk; found = true; return copy; }
+  if (n->leaf()) return nullptr;
+  for (int i = 0; i < 4; ++i)
+    if (fully_contains(n->kids[i]->region, box)) {
+      auto nk = remove_copy(n->kids[i].get(), id, box, allocated, found);
+      if (!found) return nullptr;
+      auto copy = std::make_shared<Node>(*n);
+      ++allocated;
+      copy->kids[i] = std::move(nk);
+      return copy;
     }
-  return copy;
+  return nullptr;
 }
 
 static void query_node(const VersionedIndex::Node* n, const geo::Bbox& q,
@@ -184,18 +206,43 @@ bool VersionedIndex::validity_at(ZoneId id, Timestamp t, Validity* out) const {
   return true;
 }
 
+bool VersionedIndex::contains_zone(ZoneId id) const {
+  return id < history_.size() && !history_[id].empty() && history_[id].back().present;
+}
+
+Timestamp VersionedIndex::monotone(Timestamp at) const {
+  return at < version_times_.back() ? version_times_.back() : at;
+}
+
 VersionId VersionedIndex::add_zone(ZoneId id, const geo::Bbox& box, Validity v, Timestamp at) {
-  auto root = insert_copy(roots_.back().get(), id, box, nodes_allocated_);
+  at = monotone(at);
+  std::shared_ptr<const Node> base = roots_.back();
+  const bool replacing = contains_zone(id);
+  if (replacing) {
+    // Remove the old geometry and insert the new one into the SAME version, so
+    // no version ever holds the zone twice (or not at all).
+    bool found = false;
+    auto without = remove_copy(base.get(), id, live_box_[id], nodes_allocated_, found);
+    if (found) base = std::move(without);
+  }
+  auto root = insert_copy(base.get(), id, box, nodes_allocated_, /*at_root=*/true);
   const VersionId ver = commit(std::move(root), at);
+  if (live_box_.size() <= id) live_box_.resize(size_t(id) + 1);
+  live_box_[id] = box;
   push_record(id, v, /*present=*/true, ver);
-  changelog_.push_back({ver, at, id, Change::Kind::Added});
+  changelog_.push_back({ver, at, id, replacing ? Change::Kind::Replaced : Change::Kind::Added});
   return ver;
 }
 
 VersionId VersionedIndex::remove_zone(ZoneId id, Timestamp at) {
+  if (!contains_zone(id)) return latest_version();          // absent: nothing to record
+  at = monotone(at);
   bool found = false;
-  auto root = remove_copy(roots_.back().get(), id, nodes_allocated_, found);
-  const VersionId ver = commit(std::move(root), at);
+  auto root = remove_copy(roots_.back().get(), id, live_box_[id], nodes_allocated_, found);
+  // `found` is guaranteed by the insert rule (see remove_copy); an absent path
+  // would be a broken invariant, which check_invariants() reports. Committing the
+  // unchanged root keeps the version sequence and the history consistent.
+  const VersionId ver = commit(found ? std::move(root) : roots_.back(), at);
   push_record(id, Validity{}, /*present=*/false, ver);
   changelog_.push_back({ver, at, id, Change::Kind::Removed});
   return ver;
@@ -205,6 +252,9 @@ VersionId VersionedIndex::update_validity(ZoneId id, Validity v, Timestamp at) {
   // Geometry is unchanged, so the new version SHARES the entire tree with the
   // previous one -- zero new nodes. Exactly the case persistence is good at.
   // The validity change costs one appended record, not a copy of the rule set.
+  // A zone that is not present has no validity to change.
+  if (!contains_zone(id)) return latest_version();
+  at = monotone(at);
   const VersionId ver = commit(roots_.back(), at);
   push_record(id, v, /*present=*/true, ver);
   changelog_.push_back({ver, at, id, Change::Kind::ValidityChanged});
@@ -281,6 +331,47 @@ VersionedIndex::ShareStats VersionedIndex::share_stats() const {
   return s;
 }
 
+// ── Structural audit ─────────────────────────────────────────────────────────
+static bool audit_node(const VersionedIndex::Node* n, std::vector<ZoneId>& ids) {
+  for (const auto& it : n->items) {
+    if (!fully_contains(n->region, it.second)) return false;   // pruning would miss it
+    ids.push_back(it.first);
+  }
+  if (n->leaf()) {
+    for (int i = 1; i < 4; ++i) if (n->kids[i]) return false;  // all four or none
+    return true;
+  }
+  for (int i = 0; i < 4; ++i) {
+    const VersionedIndex::Node* k = n->kids[i].get();
+    if (!k || k->depth != n->depth + 1) return false;
+    if (!fully_contains(n->region, k->region)) return false;
+    if (!audit_node(k, ids)) return false;
+  }
+  return true;
+}
+
+bool VersionedIndex::check_invariants() const {
+  if (roots_.size() != version_times_.size()) return false;
+  if (!std::is_sorted(version_times_.begin(), version_times_.end())) return false;
+  std::vector<ZoneId> ids;
+  for (VersionId v = 0; v < roots_.size(); ++v) {
+    ids.clear();
+    if (!audit_node(roots_[v].get(), ids)) return false;
+    std::sort(ids.begin(), ids.end());
+    if (std::adjacent_find(ids.begin(), ids.end()) != ids.end()) return false;
+    size_t present = 0;
+    for (ZoneId z = 0; z < history_.size(); ++z) {
+      const ValidityRecord* r = record_as_of(z, v);
+      if (r && r->present) {
+        ++present;
+        if (!std::binary_search(ids.begin(), ids.end(), z)) return false;
+      }
+    }
+    if (present != ids.size()) return false;
+  }
+  return true;
+}
+
 // ── viz_versions: flatten a small window of versions with shared/new flags ─────
 // A sorted std::vector of pointers stands in for a set here deliberately: the
 // windowed trees are small, and the project's hand-written-structures rule is
@@ -310,7 +401,7 @@ static int flatten_viz(const VersionedIndex::Node* n,
   node.shared = std::binary_search(prev_sorted.begin(), prev_sorted.end(),
                                    static_cast<const void*>(n));
   for (int i = 0; i < 4; ++i) node.kids[i] = kids[i];
-  vv.nodes[idx] = node;
+  vv.nodes[size_t(idx)] = node;
   if (node.shared) ++vv.shared_nodes; else ++vv.new_nodes;
   return idx;
 }

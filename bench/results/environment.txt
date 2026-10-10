@@ -1,0 +1,9 @@
+date:     2026-10-08T21:59Z
+commit:   a29ef13
+compiler: Apple clang version 17.0.0 (clang-1700.4.4.1)
+flags:    -std=c++17 -O2 -ffp-contract=off
+os:       Darwin 27.0.0 arm64
+cpu:      Apple M4
+cores:    10
+power:    Battery Power
+load:     2.61 3.34 3.04

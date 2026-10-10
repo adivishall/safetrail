@@ -9,13 +9,42 @@ Bbox Bbox::empty() {
   return {inf, inf, -inf, -inf};
 }
 
-// Latitude degrees are ~constant in metres; longitude degrees shrink by cos(lat).
-// Ignoring that cosine is the classic bug that makes east-west queries too narrow.
+// The bounding box of the spherical cap {p : distance_m(c, p) <= radius_m}.
+//
+// This box is the index's FILTER, and the contract of filter-then-refine is that
+// the filter is conservative with respect to the refinement: every point the
+// exact test could accept must be inside the box. So the box is derived on the
+// same sphere distance_m() measures on (kEarthR in point.cpp), not from a pair
+// of "metres per degree" constants.
+//
+// It used to be radius/110574 in latitude and radius/(111320 cos lat) in
+// longitude -- WGS84 metres-per-degree figures, on a different earth model from
+// the haversine distance the geometry uses. Latitude came out slightly too wide
+// (harmless), longitude 0.11% too NARROW: a zone whose edge sat 99.9% of the
+// query radius due east of a fix was dropped by the index while the exact test
+// would have called it Uncertain. tests/geo/bbox_around_test.cpp samples points
+// inside the disc and asserts every one lands in the box.
+//
+// The longitude half-width is not radius/(R cos lat) either: a great circle
+// bulges poleward, so the easternmost point within distance r is slightly off
+// the parallel and the exact half-width is asin(sin(r/R) / cos(lat)). When the
+// cap reaches a pole, every longitude is inside it.
 Bbox Bbox::around(const LatLon& c, double radius_m) {
-  const double dlat = radius_m / 110574.0;
-  const double coslat = std::cos(c.lat * 3.14159265358979323846 / 180.0);
-  const double dlon = radius_m / (111320.0 * (std::fabs(coslat) < 1e-9 ? 1e-9 : coslat));
-  return {c.lat - dlat, c.lon - dlon, c.lat + dlat, c.lon + dlon};
+  constexpr double kEarthR = 6371008.8;                 // must match point.cpp
+  constexpr double kPi = 3.14159265358979323846;
+  constexpr double kDeg = 180.0 / kPi;
+  // A relative pad of 1e-9 absorbs rounding in asin/sin/cos; at a 10 km query it
+  // is 10 micrometres, far below anything that could change a candidate set.
+  const double r = radius_m > 0.0 ? radius_m : 0.0;
+  const double delta = (r / kEarthR) * (1.0 + 1e-9);   // angular radius, radians
+  const double phi = c.lat / kDeg;
+
+  const double min_lat = c.lat - delta * kDeg, max_lat = c.lat + delta * kDeg;
+  if (max_lat >= 90.0 || min_lat <= -90.0 || std::cos(phi) <= std::sin(delta))
+    return {min_lat < -90.0 ? -90.0 : min_lat, -180.0, max_lat > 90.0 ? 90.0 : max_lat, 180.0};
+
+  const double dlon = std::asin(std::sin(delta) / std::cos(phi)) * kDeg * (1.0 + 1e-9);
+  return {min_lat, c.lon - dlon, max_lat, c.lon + dlon};
 }
 
 Bbox Bbox::of(const LatLon* pts, size_t n) {
