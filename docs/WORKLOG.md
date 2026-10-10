@@ -6,6 +6,34 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-11 — Presentation kit for the guide review (`docs/presentation/`)
+
+**What:** Nine documents and one PDF under `docs/presentation/`, written for
+presenting the project live: a master checklist (`00_START_HERE.md`), a spoken
+script in a 5-minute and a 10-minute version, a click-by-click runbook for the
+nine `make review` steps with the exact expected output of each, the dashboard
+controls and the slides, a presenter's explanation of the whole system at two
+levels tied to the source files, a 46-question Q&A bank with short and deep
+answers, sources and the qualification that prevents an overclaim, a link sheet
+(every GitHub and Pages URL checked, stale live pages flagged), a 15-minute
+checklist, a failure playbook with a fixed fallback order, and a rehearsal
+self-assessment. `SafeTrail_review_slides.pdf` is the review deck printed by
+headless Chrome from a temporary landscape copy (1440 × 900 px pages; 10 pages,
+verified with pypdf), kept as the shareable offline backup; the HTML deck stays
+the primary. Nothing outside the new folder changed except this entry. Verified
+while writing: `make review` (33 s, all nine steps), `tools/review.sh 5` and
+`8` on their own, `make help`, the dashboard controls, every relative link and
+source citation in the kit (`tools/check_docs.py`, and `make validate` passed in
+30 s with the kit in place), the live site's titles
+(still the 17 September deploy of `main`), and the PR / CI state (#3 open,
+run 38035618082 green on 76b63af).
+
+**Why:** The review material in `docs/` says what the project is; the kit says
+what to do with it in the room, including when something breaks, in enough
+detail to follow when nervous.
+
+**Impact:** No code, test, benchmark or existing document changed.
+
 ### 2026-10-09 — Project-review readiness: `make review`, review docs, dashboard polish
 
 **What:** Prepared the repository to be demonstrated live. `make review`
