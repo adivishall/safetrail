@@ -29,10 +29,13 @@
 #                of them is a claim about one of them, so libc++ gates too.
 #   benchmarks   INFORMATIONAL. Timings on shared CI runners are noisy, so gating
 #                on them would produce flaky failures that teach people to ignore
-#                red builds. They still run, and their CSVs are uploaded.
+#                red builds. They run in their own job (`bench`), whose CSVs are
+#                uploaded as an artifact and never reach the published site.
 #
-# `|| true` appears exactly once below, on the benchmark step, and that is
-# deliberate rather than incidental -- it used to be on steps whose failure meant
+# Exactly one step below may fail without failing the run: the benchmark step,
+# via `continue-on-error`. When it fails, the run says so (a warning annotation)
+# and uploads no benchmark artifact, so a failed measurement never looks like a
+# successful one. No step uses `|| true`; it used to hide failures that meant
 # something.
 # Runner images are pinned (ubuntu-24.04 ships g++ 13; macos-15 ships Apple
 # clang) so that a compiler upgrade -- and whatever new -Werror diagnostics it
@@ -51,9 +54,22 @@ permissions:
   pages: write
   id-token: write
 
+# Concurrency: one group per pull request, and one per branch for push and
+# manual runs.
+#   pull_request     group pages-<PR number>, cancel-in-progress: a newer push to
+#                    the same PR cancels its superseded run. Other PRs and main
+#                    are in other groups, so a PR run can never cancel them.
+#   push, dispatch   group pages-refs/heads/<branch>, no cancel-in-progress: a
+#                    running main run, and so its deploy, always finishes. A newer
+#                    main run waits for the whole running run, benchmark included.
+#                    GitHub keeps at most one pending run per group and cancels it
+#                    in favour of any newer one, so only the newest queued main
+#                    run deploys next; this is not a queue of every commit.
+# The single shared `pages` group this replaces let a pull-request run cancel a
+# running main run (36990828476, 2 Oct 2026).
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: pages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ── Correctness gates ───────────────────────────────────────────────────────
@@ -162,15 +178,52 @@ jobs:
       - name: Whole suite under UBSan (ASan cannot run on this platform; see Makefile)
         run: make -j$(sysctl -n hw.ncpu) ubsan CXX=clang++
 
-  # ── Artifact generation ─────────────────────────────────────────────────────
+  # ── Informational benchmark ─────────────────────────────────────────────────
+  # Its own job and workspace, because `make bench` rewrites committed evidence:
+  # bench/results/*.csv and environment.txt, the chart bench/plots/index_scaling.svg,
+  # and the generated tables in README.md, docs/RESULTS.md and
+  # docs/REVIEW_SLIDES.html. Run where the site was assembled, it published this
+  # runner's timings under "one laptop" captions. Here it can only make an artifact.
+  # The step timeout matters beyond this job: the next main run waits for this
+  # run to finish (see Concurrency above), so a hung benchmark must not hold it.
+  bench:
+    needs: [test, clang, mutation, sanitize, cmake, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run the benchmarks (shared-runner timings, informational)
+        id: bench
+        continue-on-error: true
+        timeout-minutes: 15
+        run: make bench CXX=g++
+
+      - name: Report a failed benchmark
+        if: steps.bench.outcome != 'success'
+        run: |
+          echo "::warning title=make bench failed::make bench exited non-zero or timed out. Either the build or run failed, or one of the benchmark's own result-checksum checks reported MISMATCH (see the step log). No benchmark-results artifact is uploaded for this run."
+
+      - name: Upload benchmark CSVs
+        if: steps.bench.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench/results/*.csv
+            bench/results/environment.txt
+          if-no-files-found: error
+
+  # ── The site, from committed evidence only ─────────────────────────────────
+  # A clean checkout of this run's commit. Nothing here runs a benchmark or
+  # re-renders a table: the dashboard reads bench/results/index_scaling.csv as
+  # committed, and slides.html is docs/REVIEW_SLIDES.html as committed (chart path
+  # made site-relative). It does not wait for `bench`.
   build:
     needs: [test, clang, mutation, sanitize, cmake, macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-
-      - name: Run the benchmarks
-        run: make bench CXX=g++ || true   # informational; timings on shared CI runners are noisy
 
       - name: Generate the dashboard from real OSM data
         run: |
@@ -183,12 +236,21 @@ jobs:
           cp docs/images/*.png _site/images/
           cp bench/plots/index_scaling.svg _site/bench/plots/
 
-      - name: Upload benchmark CSVs
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results
-          path: bench/results/*.csv
-          if-no-files-found: ignore
+      - name: The site uses committed evidence only
+        run: |
+          # make dashboard writes only ignored files (dashboard.html, build/), so
+          # any tracked file that differs from this commit means a step rewrote
+          # evidence before publishing.
+          git diff --exit-code --stat HEAD
+          sed 's|\.\./bench/plots/|bench/plots/|g' docs/REVIEW_SLIDES.html | cmp - _site/slides.html
+          cmp bench/plots/index_scaling.svg _site/bench/plots/index_scaling.svg
+          # The dashboard copies the committed scaling CSV into its benchmark
+          # table field for field; an empty or different table means it did not
+          # read the committed file.
+          rows=$(awk -F, 'NR > 1 && NF >= 7 { printf "%s{\"zones\":%s,\"brute\":%s,\"quad\":%s,\"rtree\":%s,\"qgain\":%s,\"rgain\":%s,\"cand\":%s}", sep, $1, $2, $3, $4, $5, $6, $7; sep = "," }' bench/results/index_scaling.csv)
+          test -n "$rows"
+          grep -qF "\"experiment\":[$rows]" _site/index.html
+          echo "site built from $(git rev-parse --short HEAD) as committed"
 
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
