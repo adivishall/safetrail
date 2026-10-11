@@ -232,8 +232,9 @@ The short list:
 - Live dashboard (GitHub Pages, rebuilt by each successful run on `main`): https://adivishall.github.io/safetrail/
 - Live slides (the review deck): https://adivishall.github.io/safetrail/slides.html
 
-Once the deploy-workflow fix recorded in the WORKLOG on 11 October has deployed,
-both live pages take their benchmark numbers from the committed results, so
+The deploy-workflow fix (pull request #4, merge commit `60d8bec`) was deployed
+by run 38153391670 on 11 October, and the live pages were then checked against
+that commit: both take their benchmark numbers from the committed results, so
 slide 8's table and chart and the dashboard's "main experiment" table match the
 demo, the PDF and RESULTS.md (239 µs, 33.7× and 224× at 100,000 zones). Deploys
 before it showed a CI runner's timings there instead. **Before sending either

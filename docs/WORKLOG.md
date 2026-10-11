@@ -6,6 +6,29 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-11 — Deploy fix verified on the live site
+
+**What:** Recorded in the presentation kit (`00`, `05`) that the deploy-workflow
+fix was deployed and checked, and corrected the last-minute checklist (`06`),
+whose expected `git log -1` result predated pull request #4.
+
+**Why:** Pull request #4 merged as `60d8bec`, and its main run 38153391670
+passed every job: the six gates, `bench` (benchmark step succeeded, artifact
+uploaded), `build` (guard: "site built from 60d8bec as committed") and `deploy`.
+Pages deployment 6998053191 deployed `60d8bec` successfully. Checked afterwards
+against that commit:
+- the live `slides.html` is byte-identical to `docs/REVIEW_SLIDES.html` after
+  the workflow's chart-path rewrite, and its slide 8 row is 239 µs, 33.7×
+  (31.7–33.7×) and 224× (211–224×);
+- the chart and the three screenshots are byte-identical to the committed files;
+- the dashboard's embedded benchmark table equals the committed CSV row for row
+  (`brute` 238.5808 at 100,000 zones);
+- in a browser, the deck's images and chart load and the dashboard renders with
+  no console errors.
+
+**Impact:** Documentation only. The kit keeps the instruction to check slide 8
+before sharing a live link, because every later push to `main` redeploys.
+
 ### 2026-10-11 — Pages deploy: main deploys never cancelled mid-run; benchmark numbers from committed results
 
 **What:** Two changes to `.github/workflows/deploy.yml`, and the documents that

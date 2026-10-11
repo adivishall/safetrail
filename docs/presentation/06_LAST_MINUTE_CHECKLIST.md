@@ -18,7 +18,7 @@ actually supports on 2026-10-11.
       cd "/Users/adivishal/Projects/Data Structures CP"
       ```
 - [ ] `git branch --show-current` → `main` (pull request #3 is merged into it).
-- [ ] `git log -1 --oneline` → the commit you expect: merge commit `e794816` or a later documentation-only commit (the code is unchanged since `76b63af`, when this kit was written).
+- [ ] `git log -1 --oneline` → the commit you expect: merge commit `60d8bec` (pull request #4) or a later commit that changes only documentation or the CI workflow (the code is unchanged since `76b63af`, when this kit was written).
 - [ ] `git status --short` → empty. A modified `src/`, `include/`, `apps/`, `Makefile` or `tools/` file is a problem — do **not** fix it now, note it, present from what is built.
 - [ ] `make` → prints nothing (nothing to build). If it starts compiling, let it finish (about a minute); do not interrupt it.
 

@@ -9,8 +9,8 @@ GitHub API, and they open normally in a browser. The repository is
 ## The one thing to know about the live site
 
 GitHub Pages deploys from successful workflow runs on `main`: every push to
-`main` starts one, and so does "Run workflow" on the Actions tab. Once the
-deploy-workflow fix recorded in the WORKLOG on 11 October is merged, a
+`main` starts one, and so does "Run workflow" on the Actions tab. Since the
+deploy-workflow fix (pull request #4, merged 11 October as `60d8bec`), a
 pull-request run never touches a main deploy, and a newer main run waits for a
 running one to finish rather than cancelling it (see 07).
 
@@ -22,8 +22,13 @@ first deploy that includes the fix, slide 8's table and chart and the
 dashboard's "main experiment" table show the committed laptop results, as the
 demo, the PDF and every document do (239 µs, 33.7× and 224× at 100,000 zones).
 Deploys before it, including those of `e794816` and `b7d6ced`, showed a CI
-runner's timings in those three places. **Before sharing a live link, check that
-slide 8 of the live deck shows 239 µs.**
+runner's timings in those three places. Verified after run 38153391670 deployed
+`60d8bec` (Pages deployment 6998053191): the live `slides.html` is byte-identical
+to the committed deck with its chart path made site-relative, the chart and the
+three screenshots are byte-identical to the committed files, and the dashboard's
+benchmark table equals `bench/results/index_scaling.csv`. Later deploys rebuild
+the site, so **before sharing a live link, check that slide 8 of the live deck
+shows 239 µs.**
 
 Pull request #3 was merged on 11 October 2026 as merge commit `e794816`, and run
 38134207816 deployed it. Checked after that deploy:
