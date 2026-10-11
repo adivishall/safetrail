@@ -207,7 +207,7 @@ correctness is established, how the benchmark is run, and the limitations.
 
 **Action:** Enter; about twenty seconds.
 
-> Forty-five test files, 11,844 checks, every structure against an independent oracle. Determinism is gated: the same seed must give byte-identical output, and the Make and CMake builds must agree byte for byte, which is why floating-point contraction is switched off. Not run here because they take minutes: the mutation check, 22 of 22; the sanitizers; the static analyser, zero findings. All eight CI jobs, including the Pages deploy, are green on this code.
+> Forty-five test files, 11,844 checks, every structure against an independent oracle. Determinism is gated: the same seed must give byte-identical output, and the Make and CMake builds must agree byte for byte, which is why floating-point contraction is switched off. Not run here because they take minutes: the mutation check, 22 of 22; the sanitizers; the static analyser, zero findings. Every CI gate and the Pages deploy are green on this code.
 
 **Point out:** `ALL TESTS PASS`, the determinism line, `720 frames`.
 **Transition:** *"The dashboard puts the structures on the real map."*

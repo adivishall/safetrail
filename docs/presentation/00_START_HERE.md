@@ -69,7 +69,7 @@ Confirm you are where you think you are:
 ```bash
 git status --short | wc -l        # 0 means a clean tree
 git branch --show-current         # main
-git log -1 --oneline              # e794816 Merge pull request #3 ..., or a later docs-only commit
+git log -1 --oneline              # e794816 Merge pull request #3 ..., or a later commit changing only docs or CI
 ```
 
 ### 1.3 Build
@@ -232,16 +232,16 @@ The short list:
 - Live dashboard (GitHub Pages, rebuilt by each successful run on `main`): https://adivishall.github.io/safetrail/
 - Live slides (the review deck): https://adivishall.github.io/safetrail/slides.html
 
-One caveat on both live pages. The workflow's build job runs `make bench` on
-GitHub's shared CI runner before it builds the site, so slide 8's table and
-chart and the dashboard's "main experiment" table are generated from that run
-and change with every deploy (the deploy of the merge commit, for example, showed brute force 329 µs, quadtree 36.0× and R-tree 198× at 100,000 zones, instead of the committed 239 µs, 33.7×
-and 224×). Slide 8 is still captioned one laptop (Apple M4), and the dashboard
-table one laptop. So attach the PDF in this folder and the `dashboard.html` file
-(one self-contained file, about 1.6 MB, opens offline) as the authoritative
-copies, present slide 8 from the local deck or the PDF, and if you send either
-live link, add the sentence given in [05_LINKS_AND_RESOURCES.md](05_LINKS_AND_RESOURCES.md)
-under "What to send the teacher".
+Once the deploy-workflow fix recorded in the WORKLOG on 11 October has deployed,
+both live pages take their benchmark numbers from the committed results, so
+slide 8's table and chart and the dashboard's "main experiment" table match the
+demo, the PDF and RESULTS.md (239 µs, 33.7× and 224× at 100,000 zones). Deploys
+before it showed a CI runner's timings there instead. **Before sending either
+live link, open slide 8 of the live deck and check that it shows 239 µs.** If it
+does not, send only the PDF and see [07_DEMO_FAILURE_PLAYBOOK.md](07_DEMO_FAILURE_PLAYBOOK.md).
+Attach the PDF in this folder and the `dashboard.html` file (one self-contained
+file, about 1.6 MB, opens offline) in any case, so the teacher has copies that do
+not need the network.
 
 ---
 

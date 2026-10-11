@@ -28,9 +28,30 @@ This is set up and runs on every push to `main`.
 `.github/workflows/deploy.yml` does, on GitHub's Ubuntu runners:
 
 ```
-checkout → make test  →  make bench  →  make dashboard  →  publish to Pages
-             (gate)      (artifact)     (real OSM data)     (_site/index.html)
+checkout → gates (test, clang, mutation, sanitize, cmake, macos)
+             ├─→ bench   make bench on the runner → benchmark-results artifact (informational)
+             └─→ build   make dashboard from the committed results → _site → deploy (main only)
 ```
+
+The site never contains timings measured on the runner. Its benchmark table,
+slide 8 and the chart come from the committed results: `build` assembles the
+site from a clean checkout, fails if any tracked file differs from the commit,
+and checks that the dashboard embeds the committed scaling CSV. `make bench`,
+which rewrites the CSVs, the chart and the generated tables, runs only in the
+separate `bench` job. (The dashboard's simulation and its live equivalence check
+do run on the runner; they are deterministic.)
+
+Concurrency is one group per pull request, where a newer push cancels the older
+run, and one per branch for pushes and manual runs, without cancelling a running
+run: a running main deploy always finishes. A newer main run waits for the whole
+running run, its benchmark included (that step is limited to 15 minutes).
+GitHub keeps at most one waiting run per group and replaces it with any newer
+one, so the newest waiting main run deploys next and intermediate commits may
+be skipped.
+
+To redeploy, use "Run workflow" on `main`. Do not re-run an older main run: a
+re-run uses its original commit and that commit's workflow file, and runs from
+before this change would publish CI-runner timings again.
 
 Every job below gates the deploy except the benchmark, which deliberately does not:
 
@@ -46,7 +67,7 @@ Every job below gates the deploy except the benchmark, which deliberately does n
 Runner images are pinned (`ubuntu-24.04`, `macos-15`), so the compilers — and
 the warnings `-Werror` turns into failures — only change when the workflow file
 does.
-| *benchmarks* | *informational only.* Timings on shared CI runners are noisy; gating on them produces flaky failures that teach people to ignore red builds. The CSVs are uploaded as an artifact on every run. |
+| *benchmarks* | *informational only.* Timings on shared CI runners are noisy; gating on them produces flaky failures that teach people to ignore red builds. They run in their own `bench` job; the CSVs are uploaded as an artifact when the run completes (a failed run raises a warning and uploads nothing) and never reach the published site. |
 
 If any gate fails, nothing publishes. The generated `dashboard.html`
 becomes the live site.
