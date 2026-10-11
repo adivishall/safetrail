@@ -57,6 +57,15 @@ class RTree final : public SpatialIndex {
   // exactly the structural difference the overlay is there to show.
   void collect_node_boxes(std::vector<geo::Bbox>& out) const;
 
+  // Structural audit: every leaf at the same depth (height balance), every
+  // node's box EXACTLY the union of what it holds (tight -- a loose box costs
+  // pruning, a short one loses results), no empty non-root node, no node over
+  // max_entries, leaves hold only entries and internal nodes only children,
+  // and the entry count equals size(). Minimum fill is deliberately NOT checked:
+  // STR packing legitimately leaves the last node of each slice underfull.
+  // Called after every operation by tests/index/differential_test.cpp.
+  bool check_invariants() const;
+
   struct Node;
 
  private:

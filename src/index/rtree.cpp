@@ -253,9 +253,12 @@ std::vector<std::vector<T>> str_partition(std::vector<T> items, size_t M,
   return groups;
 }
 
-void walk(const RTree::Node* n, size_t depth, size_t& nodes, size_t& maxd) {
+// Real footprint: every node plus the capacity of its entry and child vectors.
+void walk(const RTree::Node* n, size_t depth, size_t& nodes, size_t& maxd, size_t& bytes) {
   ++nodes; maxd = std::max(maxd, depth);
-  if (!n->leaf) for (const auto& k : n->kids) walk(k.get(), depth + 1, nodes, maxd);
+  bytes += sizeof(RTree::Node) + n->entries.capacity() * sizeof(n->entries[0]) +
+           n->kids.capacity() * sizeof(n->kids[0]);
+  if (!n->leaf) for (const auto& k : n->kids) walk(k.get(), depth + 1, nodes, maxd, bytes);
 }
 }  // namespace
 
@@ -342,11 +345,11 @@ void RTree::query(const geo::Bbox& q, std::vector<ZoneId>& out) const {
 
 
 IndexStats RTree::stats() const {
-  size_t nodes = 0, maxd = 0;
-  walk(root_.get(), 0, nodes, maxd);
+  size_t nodes = 0, maxd = 0, bytes = sizeof(*this);
+  walk(root_.get(), 0, nodes, maxd, bytes);
   st_.node_count = nodes;
   st_.max_depth = maxd;
-  st_.bytes = nodes * sizeof(Node) + count_ * sizeof(std::pair<ZoneId, geo::Bbox>);
+  st_.bytes = bytes;
   return st_;
 }
 void RTree::reset_counters() { st_.queries = 0; st_.candidates_returned = 0; }
@@ -362,6 +365,40 @@ static void collect_boxes(const RTree::Node* n, std::vector<geo::Bbox>& out) {
 }
 void RTree::collect_node_boxes(std::vector<geo::Bbox>& out) const {
   collect_boxes(root_.get(), out);
+}
+
+static bool same_box(const geo::Bbox& a, const geo::Bbox& b) {
+  return a.min_lat == b.min_lat && a.min_lon == b.min_lon &&
+         a.max_lat == b.max_lat && a.max_lon == b.max_lon;
+}
+
+// Returns false on any violation; `leaf_depth` is fixed by the first leaf seen.
+static bool audit(const RTree::Node* n, bool is_root, size_t depth, long& leaf_depth,
+                  size_t max_entries, size_t& entries) {
+  if (n->fill() > max_entries) return false;
+  if (!is_root && n->fill() == 0) return false;
+  geo::Bbox want = geo::Bbox::empty();
+  if (n->leaf) {
+    if (!n->kids.empty()) return false;
+    if (leaf_depth < 0) leaf_depth = long(depth);
+    if (long(depth) != leaf_depth) return false;
+    for (const auto& e : n->entries) want.expand(e.second);
+    entries += n->entries.size();
+  } else {
+    if (!n->entries.empty()) return false;
+    for (const auto& k : n->kids) {
+      if (!audit(k.get(), false, depth + 1, leaf_depth, max_entries, entries)) return false;
+      want.expand(k->box);
+    }
+  }
+  return same_box(n->box, want);
+}
+
+bool RTree::check_invariants() const {
+  long leaf_depth = -1;
+  size_t entries = 0;
+  return root_ && audit(root_.get(), true, 0, leaf_depth, max_entries_, entries) &&
+         entries == count_;
 }
 
 }  // namespace safetrail::index

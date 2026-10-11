@@ -3,13 +3,26 @@
 // with every node caching the maximum high endpoint in its subtree.
 //
 // That augmentation is the whole trick: it lets a search prune an entire subtree
-// the moment `subtree_max_high <= query_low`, which turns overlap queries from
-// O(n) into O(log n + k). std::multimap cannot do this -- there is no hook to
-// maintain a subtree aggregate -- which is why this is hand-written.
+// the moment `subtree_max_high <= query_low`. std::multimap cannot do this --
+// there is no hook to maintain a subtree aggregate -- which is why this is
+// hand-written.
 //
-// Two independent uses, worth noting because they are unrelated problems:
-//   - alert/escalation.hpp        which alerts are now overdue
-//   - index/versioned_index.hpp   which zones were in force at time t   [GAP 3]
+// What the bound actually is. Finding ONE overlapping interval is O(log n).
+// Reporting all k of them with this traversal (descend left while the subtree's
+// max_high says it could hold one; descend right while low < query_high) costs
+// O(min(n, (k + 1) log n)) in the worst case, not O(log n + k): every reported
+// interval can light up a different root-to-leaf path, and the nodes on those
+// paths are visited whether or not they overlap. With AVL height <= 1.44 log n
+// that is a guarantee, and it is never worse than the scan; it is also why the
+// tree only wins when the query is selective (RESULTS.md section 8). A centred
+// interval tree or a priority search tree would give O(log n + k); neither is
+// needed here, because the per-tick path does not use this structure at all.
+//
+// Used by index/versioned_index.hpp for active_at(t): which zones were in force
+// at time t, by the rules of time t [GAP 3]. It is deliberately NOT the per-fix
+// temporal filter -- the evaluator checks validity in O(1) on the few candidates
+// the spatial index returned -- and alert escalation deadlines use
+// ds/timer_wheel.hpp, which fits "what has expired by now" better.
 //
 // ── The ordering key, and why it is not just `low` ───────────────────────────
 //
@@ -85,12 +98,20 @@ class IntervalTree {
     return found;
   }
 
-  // Entries overlapping [low, high). O(log n + k).
+  // Entries overlapping [low, high): O(min(n, (k + 1) log n)), see the top of the
+  // file. An empty or inverted range overlaps nothing -- without the guard,
+  // [10, 5) would "overlap" [0, 20).
   void overlapping(Timestamp low, Timestamp high, std::vector<T>& out) const {
+    if (low >= high) return;
     descend(root_, low, high, out);
   }
-  // Entries containing a single instant. O(log n + k).
+  // Entries containing a single instant; same bound as overlapping(). Every
+  // interval is half-open with high <= INT64_MAX, so none contains INT64_MAX
+  // itself; the early return is also what keeps `at + 1` from overflowing
+  // (signed overflow is UB, and kForever == INT64_MAX is a value callers really
+  // pass).
   void stabbing(Timestamp at, std::vector<T>& out) const {
+    if (at == INT64_MAX) return;
     descend(root_, at, at + 1, out);
   }
 
@@ -221,11 +242,6 @@ class IntervalTree {
     return rebalance(root);
   }
 
-  int32_t min_node(int32_t i) const {
-    while (nodes_[size_t(i)].left >= 0) i = nodes_[size_t(i)].left;
-    return i;
-  }
-
   // Detach the node at `i` itself, returning the replacement subtree root.
   int32_t erase_node(int32_t i) {
     Node& n = nodes_[size_t(i)];
@@ -235,18 +251,39 @@ class IntervalTree {
       return child;
     }
     // Two children: replace this node's payload with its in-order successor, then
-    // erase the successor from the right subtree. Copying the payload (rather
+    // unlink the successor from the right subtree. Copying the payload (rather
     // than relinking) keeps the free list and the index arithmetic simple. The
     // successor's `seq` travels with its payload, so the node that takes its
-    // place sits at exactly the successor's position in the total order and the
-    // BST invariant is preserved rather than merely approximately restored.
-    const int32_t succ = min_node(n.right);
-    const Entry se = nodes_[size_t(succ)].e;
-    const uint64_t sseq = nodes_[size_t(succ)].seq;
-    bool found = false;
-    n.right = erase_first(n.right, se.low, se.high, se.value, found);
-    nodes_[size_t(i)].e = se;
-    nodes_[size_t(i)].seq = sseq;
+    // place sits at exactly the successor's position in the total order.
+    //
+    // The successor is unlinked by POSITION (erase_min), not by searching for
+    // its (low, high, value) triple. A triple search is free to land on a
+    // different node with the same triple -- exact duplicates are legal -- and
+    // then the successor survives in the right subtree while its payload and
+    // `seq` are also copied up here: two live nodes with one total-order key,
+    // which check_invariants() rejects. Queries still answered correctly, which
+    // is how that bug hid; tests/ds/interval_tree_test.cpp now audits after
+    // every single removal of an exact duplicate.
+    int32_t succ = -1;
+    const int32_t new_right = erase_min(n.right, succ);
+    nodes_[size_t(i)].right = new_right;
+    nodes_[size_t(i)].e = nodes_[size_t(succ)].e;
+    nodes_[size_t(i)].seq = nodes_[size_t(succ)].seq;
+    release(succ);
+    return rebalance(i);
+  }
+
+  // Unlink the minimum node of the subtree at `i`, returning the new subtree
+  // root and the unlinked node's index in `min_out`. The caller releases it.
+  // Rebalances on the way back up, like any other deletion path.
+  int32_t erase_min(int32_t i, int32_t& min_out) {
+    const int32_t left = nodes_[size_t(i)].left;
+    if (left < 0) {
+      min_out = i;
+      return nodes_[size_t(i)].right;
+    }
+    const int32_t new_left = erase_min(left, min_out);
+    nodes_[size_t(i)].left = new_left;
     return rebalance(i);
   }
 

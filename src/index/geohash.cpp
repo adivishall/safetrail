@@ -22,8 +22,13 @@ uint64_t Geohash::spread(uint32_t v) {
 uint64_t Geohash::morton(const geo::LatLon& p) {
   double flat = (p.lat - kLatMin) / kLatSpan;   // -> [0,1]
   double flon = (p.lon - kLonMin) / kLonSpan;
-  if (flat < 0) flat = 0; else if (flat > 1) flat = 1;
-  if (flon < 0) flon = 0; else if (flon > 1) flon = 1;
+  // Clamping keeps out-of-domain coordinates correct: it is monotone, so the
+  // Morton range of a padded query still brackets every key it must. The
+  // negated comparisons also send NaN to 0 -- converting NaN to uint32_t below
+  // would be undefined behaviour. (A NaN box never intersects a query, so where
+  // its key lands cannot change a result.)
+  if (!(flat >= 0)) flat = 0; else if (flat > 1) flat = 1;
+  if (!(flon >= 0)) flon = 0; else if (flon > 1) flon = 1;
   const uint32_t maxq = (1u << kBits) - 1u;
   const uint32_t qlat = uint32_t(flat * maxq);
   const uint32_t qlon = uint32_t(flon * maxq);

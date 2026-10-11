@@ -98,9 +98,9 @@ for name, (vals, colour) in series.items():
     ly += 22
 
 svg.append(f'<text x="{ML+PW+16}" y="{ly+8}" font-size="10" fill="#888">'
-           'median of 7, ratio to</text>')
+           'median of 11 rounds;</text>')
 svg.append(f'<text x="{ML+PW+16}" y="{ly+22}" font-size="10" fill="#888">'
-           'our own brute force</text>')
+           'fixed-area workload</text>')
 svg.append('</svg>')
 
 os.makedirs(os.path.dirname(OUT), exist_ok=True)

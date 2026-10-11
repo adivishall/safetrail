@@ -1,11 +1,11 @@
 structure,metric,fresh,after_churn,ratio
 quadtree,nodes,557,557,1.000
-quadtree,query_us,0.1342,0.1474,1.098
-quadtree,bytes,129016,129016,1.000
+quadtree,query_us,0.0885,0.0825,0.933
+quadtree,bytes,144304,263864,1.829
 r-tree,nodes,299,470,1.572
-r-tree,query_us,0.1135,0.1118,0.985
-r-tree,bytes,106312,121360,1.142
+r-tree,query_us,0.0716,0.0844,1.178
+r-tree,bytes,108776,163520,1.503
 geohash,nodes,2000,2000,1.000
-geohash,query_us,0.1592,0.1558,0.978
+geohash,query_us,0.1229,0.1245,1.013
 geohash,bytes,88024,88024,1.000
 hash_table,buckets,4096,4096,1.000

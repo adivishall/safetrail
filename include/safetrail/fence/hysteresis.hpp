@@ -39,9 +39,29 @@ struct HysteresisConfig {
 
 // One instance per (tourist, zone) pair currently in play. Deliberately small —
 // there can be tens of thousands live, so no virtuals and no heap.
+//
+// ── The Uncertain band is filtered too ───────────────────────────────────────
+//
+// Uncertain used to pass straight through: from Outside, an Uncertain verdict
+// was reported at once, and the next Outside verdict silently reset it. A fix
+// whose accuracy alternates between open sky (4 m) and multipath (35 m) while
+// the tourist stands 15 m from a boundary therefore produced a fresh
+// ZoneUncertain on every alternation -- 64,168 of them in the two-hour
+// dashboard run, about nine per tourist per minute, which is the flood this
+// module exists to prevent. Worse, an Uncertain verdict arriving while an EXIT
+// was pending was reported as Uncertain, which the evaluator emits as a
+// ZoneExit, and the next inside fix re-entered: an exit/enter flap pair
+// straight through the filter.
+//
+// Now "reported Uncertain" is a phase of its own (Ambiguous) with the same
+// exit rule as Inside: it is left only after `confirm_samples` consecutive
+// fixes clearly outside (beyond exit_margin_m), and it enters Inside through
+// the same EnteringPending confirmation as Outside does. An Uncertain verdict
+// never ends Inside, and it cancels a pending exit rather than completing it.
+// tests/fence/hysteresis_test.cpp pins each transition.
 class HysteresisState {
  public:
-  enum class Phase : uint8_t { Outside, EnteringPending, Inside, ExitingPending };
+  enum class Phase : uint8_t { Outside, Ambiguous, EnteringPending, Inside, ExitingPending };
 
   // Feed one observation. Returns the CONFIRMED containment, which may lag the
   // raw observation by up to confirm_samples ticks. `raw` is what the geometry
@@ -55,6 +75,7 @@ class HysteresisState {
 
  private:
   Phase   phase_           = Phase::Outside;
+  Phase   pending_from_    = Phase::Outside;   // Outside or Ambiguous, while EnteringPending
   uint8_t agree_count_     = 0;
   int64_t inside_since_ms_ = 0;
   int64_t pending_since_ms_= 0;

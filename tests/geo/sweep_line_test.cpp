@@ -4,6 +4,7 @@
 #include <vector>
 #include "safetrail/geo/polygon.hpp"
 #include "safetrail/geo/sweep_line.hpp"
+#include "safetrail/sim/mobility.hpp"
 #include "../test_harness.hpp"
 
 using namespace safetrail;
@@ -154,6 +155,107 @@ int main() {
     t::ok(!polygon_self_intersects(square), "square is simple");
     Polygon bowtie(Ring{{25.0, 91.0}, {25.1, 91.1}, {25.0, 91.1}, {25.1, 91.0}});
     t::ok(polygon_self_intersects(bowtie), "bowtie self-intersects");
+  }
+
+  // ── Regression: degenerate rings the sweep used to call simple ─────────────
+  //
+  // The randomised checks above use points on a jittered circle, which never
+  // produce touching edges, shared vertices or collinear overlaps -- exactly the
+  // inputs a sweep line is fragile on. Fuzzing on a coarse lattice found 94
+  // disagreements in 800,000 small rings, all of one shape: the pairwise oracle
+  // said "intersecting", the sweep said "simple". The cause was at INSERTION: a
+  // new segment was tested only against its first non-exempt neighbour on each
+  // side, so a touching segment one step further out was never compared (see
+  // kReach in sweep_line.cpp). The first two cases below are from the original
+  // failures; the rest are rings that fail with exactly that insertion rule and
+  // nothing else changed, so the test pins the fix itself. Lattice units
+  // (lat, lon) x 0.001 around (25, 91).
+  {
+    auto lattice = [](std::initializer_list<std::pair<int, int>> pts) {
+      Ring r;
+      for (const auto& p : pts) r.push_back({25.0 + 0.001 * p.first, 91.0 + 0.001 * p.second});
+      return r;
+    };
+    const Ring cases[] = {
+        lattice({{2, 0}, {2, 1}, {2, 2}, {1, 1}, {3, 3}, {3, 0}}),      // fold-back through a vertex
+        lattice({{1, 2}, {2, 1}, {0, 0}, {1, 3}, {1, 1}}),              // vertex on a non-adjacent edge
+        lattice({{4, 2}, {4, 2}, {0, 2}, {1, 0}, {3, 0}, {5, 3}}),      // duplicated vertex
+        lattice({{2, 2}, {1, 2}, {2, 1}, {3, 2}, {2, 2}}),
+        lattice({{1, 6}, {0, 6}, {6, 3}, {2, 6}, {1, 6}}),
+        lattice({{0, 3}, {2, 3}, {1, 3}, {3, 3}, {1, 0}}),              // collinear overlap
+        lattice({{1, 2}, {1, 2}, {0, 2}, {2, 0}, {2, 3}}),
+        lattice({{0, 3}, {2, 3}, {1, 3}, {3, 3}, {3, 2}}),
+    };
+    int k = 0;
+    for (const Ring& r : cases) {
+      t::ok(ring_self_intersects_pairwise(r), "degenerate case " + std::to_string(k) +
+                                                  ": the pairwise oracle says intersecting");
+      t::ok(ring_self_intersects_sweep(r), "degenerate case " + std::to_string(k) +
+                                               ": and so does the sweep");
+      ++k;
+    }
+  }
+
+  // ── Fuzz: sweep == pairwise on lattice rings full of degeneracies ──────────
+  //
+  // Tiny random lattice rings (almost all intersecting, many degenerately), and
+  // large star-shaped lattice rings -- above the dispatch threshold, where
+  // validate() really runs the sweep -- left simple or given one injected
+  // degeneracy: a vertex moved onto a non-adjacent edge, a duplicated vertex,
+  // or a collinear spike. tools/ has no separate fuzzer; this is it, scaled to
+  // run in a second. The run that found the bugs above was a throwaway program
+  // doing the first half of this loop alone: 800,000 tiny rings, 400,000 on each
+  // grid size.
+  {
+    safetrail::sim::Rng frng(12345);
+    auto L = [](double y, double x) { return LatLon{25.0 + 0.001 * y, 91.0 + 0.001 * x}; };
+    size_t disagree = 0, rings = 0, intersecting = 0;
+    for (int it = 0; it < 6000 * t::stress(); ++it) {
+      {
+        const size_t n = 4 + frng.below(9);
+        const uint32_t g = frng.uniform() < 0.5 ? 4 : 8;
+        Ring r;
+        for (size_t i = 0; i < n; ++i) r.push_back(L(double(frng.below(g)), double(frng.below(g))));
+        const bool a = ring_self_intersects_pairwise(r);
+        disagree += a != ring_self_intersects_sweep(r);
+        intersecting += a;
+        ++rings;
+      }
+      {
+        const size_t n = 20 + frng.below(130);
+        Ring r;
+        for (size_t i = 0; i < n; ++i) {
+          const double ang = 6.283185307179586 * (double(i) + 0.5) / double(n);
+          const double rad = 20 + double(frng.below(20));
+          r.push_back(L(std::round(rad * std::sin(ang)), std::round(rad * std::cos(ang))));
+        }
+        const size_t k = frng.below(uint32_t(n - 1));
+        switch (frng.below(5)) {
+          case 1: {                                            // vertex onto an edge midpoint
+            const size_t j = (k + 2 + frng.below(uint32_t(n - 4))) % n;
+            r[k] = {(r[j].lat + r[(j + 1) % n].lat) / 2, (r[j].lon + r[(j + 1) % n].lon) / 2};
+            break;
+          }
+          case 2: r.insert(r.begin() + long(k), r[k]); break;  // consecutive duplicate
+          case 3: r[k] = r[(k + 3) % n]; break;        // non-consecutive duplicate
+          case 4: {                                            // collinear spike
+            const LatLon a = r[k], b = r[k + 1];
+            const LatLon mid{(a.lat + b.lat) / 2, (a.lon + b.lon) / 2};
+            r.insert(r.begin() + long(k) + 2, mid);
+            r.insert(r.begin() + long(k) + 2, b);
+            break;
+          }
+          default: break;                                      // left simple (mostly)
+        }
+        const bool a = ring_self_intersects_pairwise(r);
+        disagree += a != ring_self_intersects_sweep(r);
+        intersecting += a;
+        ++rings;
+      }
+    }
+    t::ok(disagree == 0, "sweep == pairwise on " + std::to_string(rings) +
+                             " degenerate lattice rings (" + std::to_string(intersecting) +
+                             " intersecting, " + std::to_string(disagree) + " disagreements)");
   }
 
   return t::report("geo/sweep_line");

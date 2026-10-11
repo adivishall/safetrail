@@ -172,6 +172,83 @@ int main() {
     t::ok(d.size() == 0 && d.check_invariants(), "drained and valid");
   }
 
+  // ── Regression: two-child deletion among exact duplicates ───────────────────
+  //
+  // Deleting a node with two children copies its in-order successor up and then
+  // unlinks the successor. That unlink used to SEARCH for the successor's
+  // (low, high, value) triple, and with exact duplicates the search can stop on
+  // a different node carrying the same triple. The real successor then survived
+  // in the right subtree while its payload and seq were also copied up: two live
+  // nodes with one total-order key. Queries were unaffected -- the payloads are
+  // indistinguishable -- which is why the block above, which only audits after
+  // draining, never saw it. Audit after EVERY removal.
+  {
+    IntervalTree<int> d;
+    for (int i = 0; i < 50; ++i) d.insert(7, 9, 3);
+    size_t bad = 0;
+    for (int i = 0; i < 50; ++i) {
+      d.remove(7, 9, 3);
+      if (!d.check_invariants()) ++bad;
+    }
+    t::ok(bad == 0, "identical triples: invariants hold after every one of 50 removals");
+
+    // Duplicates interleaved with a distinct neighbour block, removed in an order
+    // that repeatedly hits two-child nodes.
+    IntervalTree<int> e;
+    for (int i = 0; i < 20; ++i) e.insert(5, 9, 1);
+    for (int i = 0; i < 20; ++i) e.insert(3, 4, 2);
+    bad = 0;
+    for (int i = 0; i < 20; ++i) {
+      e.remove(3, 4, 2);
+      if (!e.check_invariants()) ++bad;
+    }
+    std::vector<int> left;
+    e.stabbing(6, left);
+    t::ok(bad == 0 && left.size() == 20,
+          "mixed duplicate blocks: invariants hold after each removal, survivors intact");
+
+    // Randomised: a small key space so exact duplicates are the common case.
+    safetrail::sim::Rng dr(0xD00B);
+    IntervalTree<int> f;
+    std::vector<std::array<Timestamp, 3>> live;
+    bad = 0;
+    for (int op = 0; op < 3000 * t::stress(); ++op) {
+      if (!live.empty() && dr.uniform() < 0.45) {
+        const size_t k = dr.below(uint32_t(live.size()));
+        const auto r = live[k];
+        live.erase(live.begin() + long(k));
+        if (!f.remove(r[0], r[1], int(r[2]))) ++bad;
+        if (!f.check_invariants()) ++bad;
+      } else {
+        const Timestamp lo = Timestamp(dr.below(4));
+        const Timestamp hi = lo + 1 + Timestamp(dr.below(3));
+        const int v = int(dr.below(3));
+        f.insert(lo, hi, v);
+        live.push_back({lo, hi, Timestamp(v)});
+      }
+    }
+    t::ok(bad == 0 && f.size() == live.size(),
+          std::to_string(3000 * t::stress()) + " ops over a 4x3x3 key space: every removal found, invariants after each");
+  }
+
+  // ── Range edge cases ────────────────────────────────────────────────────────
+  {
+    IntervalTree<int> d;
+    d.insert(0, 20, 1);
+    d.insert(INT64_MAX - 5, INT64_MAX, 2);
+    std::vector<int> o2;
+    d.overlapping(10, 5, o2);
+    t::ok(o2.empty(), "an inverted query range [10, 5) overlaps nothing");
+    d.overlapping(7, 7, o2);
+    t::ok(o2.empty(), "an empty query range [7, 7) overlaps nothing");
+    // INT64_MAX is kForever. Half-open intervals never contain it, and computing
+    // at + 1 for it was signed overflow (caught by UBSan via VersionedIndex).
+    d.stabbing(INT64_MAX, o2);
+    t::ok(o2.empty(), "stabbing at INT64_MAX returns nothing and does not overflow");
+    d.stabbing(INT64_MAX - 1, o2);
+    t::ok(o2.size() == 1 && o2[0] == 2, "stabbing just below INT64_MAX finds [MAX-5, MAX)");
+  }
+
   // Deletions that force rotations at several levels: insert in ascending order
   // (which is the worst case for an unbalanced BST) and delete from one end.
   {

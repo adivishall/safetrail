@@ -52,7 +52,7 @@ struct UncertainPoint {
 };
 
 // ─── Free functions ─────────────────────────────────────────────────────────
-// Great-circle distance. See haversine.hpp for the implementation and for why
+// Great-circle distance (haversine). See point.cpp for the implementation and why
 // we do not use the equirectangular approximation at these latitudes.
 double distance_m(const LatLon& a, const LatLon& b);
 

@@ -28,6 +28,10 @@ struct ZoneState {
   Timestamp entered_ms = 0;
   bool dwell_reported = false;
   bool approach_reported = false;
+  // The Tourist::eval_epoch in which the spatial index last returned this zone.
+  // fence::Evaluator uses it to find states the index did NOT return this tick,
+  // which must still be observed -- see the reconciliation step there.
+  uint64_t seen_epoch = 0;
 };
 
 struct Tourist {
@@ -45,11 +49,16 @@ struct Tourist {
   std::vector<geo::LatLon> planned_route;
   size_t route_leg = 0;
 
+  // One entry per zone the tourist is near or has open state with. Bounded by the
+  // candidate window: fence::Evaluator drops an entry once its zone has left the
+  // window and its state has settled back to Outside.
   std::vector<ZoneState> zone_states;
+  uint64_t eval_epoch = 0;        // incremented by every usable evaluation
   power::AdaptiveSampler sampler{};
   bool alert_active = false;
 
   ZoneState& state_for(ZoneId z);
+  ZoneState* find_state(ZoneId z);
   const ZoneState* peek_state(ZoneId z) const;
 
   double speed_mps() const;

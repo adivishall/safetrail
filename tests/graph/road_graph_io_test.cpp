@@ -216,7 +216,7 @@ int main() {
     // exercised. It is also how the bug was found: section 14 of `make bench`
     // runs it and reported "same node: NO".
     const geo::Bbox area{25.50, 91.83, 25.62, 91.95};
-    RoadGraph g = RoadGraph::grid(area, 64, 64, 7);
+    RoadGraph grid = RoadGraph::grid(area, 64, 64, 7);
     sim::Rng rng(0x5AAA);
     size_t differ = 0;
     double worst_extra_m = 0.0;
@@ -224,19 +224,19 @@ int main() {
     for (int i = 0; i < probes; ++i) {
       const geo::LatLon q{rng.range(area.min_lat, area.max_lat),
                           rng.range(area.min_lon, area.max_lon)};
-      const NodeId plane = g.nearest_node(q);
+      const NodeId plane = grid.nearest_node(q);
       // The haversine nearest, computed here rather than in the graph: it is not
       // the question the engine asks, so it does not belong in the API.
       NodeId hav = kNoNode;
       double best = 1e300;
-      for (size_t k = 0; k < g.node_count(); ++k) {
-        const double d = geo::distance_m(q, g.pos(NodeId(k)));
-        if (d < best) { best = d; hav = NodeId(k); }
+      for (size_t k = 0; k < grid.node_count(); ++k) {
+        const double dist = geo::distance_m(q, grid.pos(NodeId(k)));
+        if (dist < best) { best = dist; hav = NodeId(k); }
       }
       if (plane != hav) {
         ++differ;
         worst_extra_m = std::fmax(worst_extra_m,
-                                  geo::distance_m(q, g.pos(plane)) - best);
+                                  geo::distance_m(q, grid.pos(plane)) - best);
       }
     }
     // The case must actually occur, or the bound below is vacuous and the test is

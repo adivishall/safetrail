@@ -16,6 +16,14 @@ Undefined by the parity rule. We *define* it: on-boundary counts as inside.
 Document the choice, test it, be consistent — a zone and its neighbour sharing an
 edge must not both reject a point on that edge.
 
+"On the edge" needs a tolerance, and the tolerance must be a **distance**: a
+point is on an edge when its perpendicular distance to the edge is at most
+1e-9° (~0.1 mm) and it lies within the edge's extent. The implementation used to
+bound the raw cross product instead, which is |edge| × distance — so the
+boundary was ~1 mm thick on a 100 m edge and ~11 cm thick on a 1 m edge, and a
+fix 10 cm *outside* a small zone counted as inside. Pinned for 1 m, 100 m and
+5 km edges in `tests/geo/ray_casting_test.cpp`.
+
 **2. Ray passes exactly through a vertex.**
 The classic failure. The vertex belongs to two edges, so naive code counts two
 crossings where there is one, flipping parity and inverting the answer. Fix: use a
@@ -77,8 +85,22 @@ straight: Bentley–Ottmann *enumerates* all k intersection points in
 O((V+k) log V); Shamos–Hoey answers *does one exist* and stops at the first, with
 no k term at all. A validity gate only ever needs the second question, so paying
 for the first would be paying for an answer nobody reads. The O(V²) pairwise scan
-is kept beside it as the oracle and is what runs on rings below 56 vertices, where
-it is genuinely faster — `make bench` §12 measures the crossover.
+is kept beside it as the oracle and is what runs on rings below 80 vertices, where
+it is genuinely faster — `make bench` §16 measures the crossover.
+
+**Degeneracies are where a sweep line breaks**, and ring validation is all
+degeneracies: adjacent edges share a vertex by definition, so they are exempt
+from each other, and exemptions break the textbook argument that a crossing pair
+must become adjacent in the sweep's status order. The implementation tested a
+new segment only against its *first* non-exempt neighbour on each side, and a
+touching segment one step further out was never compared. Fuzzing on lattice
+rings — touches, repeated vertices, collinear fold-backs — found 94 rings in
+800,000 that the sweep called simple and the pairwise oracle did not. It now
+tests every eligible segment among the nearest three on each side (an edge has
+at most two exempt partners), which is still O(log V) per event, and events at
+the same x are processed in a total order so the result cannot depend on the
+standard library's sort. `tests/geo/sweep_line_test.cpp` pins the failing rings
+and fuzzes 12,000 more on every run.
 
 **7. Antimeridian crossing (±180° longitude).**
 Not relevant for Northeast India, and worth splitting into what IS handled and
@@ -90,18 +112,40 @@ identically to the true +0.2° crossing. `offset()` and `LocalPlane` do need it,
 because they *produce* a longitude rather than consuming one, and both normalise
 to (-180, 180]. `tests/geo/wraparound_test.cpp` pins all of it.
 
-*Not handled.* A polygon whose bbox spans the antimeridian still inverts, and the
-index would silently reject everything in it. That limitation stands, documented
-rather than papered over — the fix is a split-at-the-seam representation, which is
-scope this project does not need.
+*Not handled — and refused.* A polygon spanning the antimeridian would need a
+split-at-the-seam representation, which is scope this project does not need. So
+the zone loader rejects any coordinate that is non-finite or off the
+lat/lon domain (a ring stored as lon 179.5 → 180.5 is refused with a reason)
+rather than loading a zone that half-works. The spatial indexes themselves are
+correct on out-of-domain boxes — the quadtree and the persistent index widen
+their roots, the geohash clamps monotonically — which
+`tests/index/differential_test.cpp` checks, but correct pruning is not the same
+as meaningful geography.
+
+The same boundary applies to the query box. `Bbox::around(c, r)` is the exact
+bounding box of the spherical cap of radius r on the sphere `distance_m` uses:
+half-width r/R in latitude, `asin(sin(r/R) / cos(lat))` in longitude (a great
+circle bulges poleward), every longitude when the cap reaches a pole. It used to
+be built from WGS84 metres-per-degree constants and came out 0.11% too narrow
+east-west against the haversine metric — enough for the index to drop a zone the
+exact test would have called Uncertain. The filter must be a superset of what the
+refinement can accept; `tests/geo/bbox_around_test.cpp` samples 160,000 points to
+hold it to that.
 
 **8. Degenerate rings.**
-Fewer than three vertices, zero area, duplicate consecutive points. Reject at
-load.
+Fewer than three vertices, zero area, repeated vertices. Rejected at load: a
+repeated vertex makes two non-adjacent edges share a point, which validation
+counts as self-intersection.
 
 **9. Floating-point boundary noise.**
 A point 10⁻¹⁵ from an edge. Use an epsilon comparison, and pick it deliberately:
-1e-9 degrees is roughly 0.1 mm, far below GPS accuracy, so it is safe.
+1e-9 degrees is roughly 0.1 mm, far below GPS accuracy, so it is safe. These are
+tolerance-based predicates, not exact (adaptive-precision) ones: orientation
+treats a cross product within 1e-14 deg² of zero as collinear. Every caller —
+containment, validation, the sweep, jurisdiction nesting — shares the one set of
+predicates in `src/geo/segment.cpp`, so the layers cannot disagree with each
+other about where an edge is, but a configuration that close to collinear is
+decided by the tolerance rather than exactly.
 
 **10. Winding direction.**
 Clockwise vs counter-clockwise changes the sign of the area but must not change

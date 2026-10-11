@@ -1,0 +1,5 @@
+mutation,avg_nodes_allocated,max_nodes_allocated
+add (new zone),14.74,15
+replace (moved zone),29.01,30
+validity change,0.00,0
+remove,14.30,15

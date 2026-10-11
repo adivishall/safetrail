@@ -49,12 +49,23 @@ class Quadtree final : public SpatialIndex {
   // doubling behaviour directly rather than inferring it from query results.
   geo::Bbox root_region() const;
 
- private:
-  public:
-  struct Node;
+  // Structural audit. The invariant that makes query() correct is that every
+  // item lies inside the region of the node that stores it -- then skipping a
+  // subtree whose region misses the query cannot skip a match. Also checked:
+  // children TILE their parent -- child i is exactly quadrant i of the
+  // parent's region, which is what makes this a quadtree rather than some tree
+  // of boxes (a doubling root expansion reuses the old root as one quadrant,
+  // equal up to rounding) -- a node has either four children or none, and the
+  // stored item count equals size(). Called after every operation by
+  // tests/index/differential_test.cpp.
+  bool check_invariants() const;
+
+  struct Node;   // public only so the .cpp's free helper functions can name it
+
  private:
   std::unique_ptr<Node> root_;
   size_t cap_, max_depth_, count_ = 0;
+  bool root_widened_ = false;      // expand_root_to_cover's last-resort path ran
   mutable IndexStats st_{};
 
   // Grow the root by doubling until it covers `box`, keeping the old root as one

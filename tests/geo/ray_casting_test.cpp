@@ -71,5 +71,32 @@ int main() {
   UncertainPoint far{{50.0, 50.0}, 5.0, 0};
   t::ok(evaluate(sq, far) == Containment::Outside, "gap1: far away = Outside");
 
+  // ── Regression: boundary thickness must not depend on edge length ──────────
+  //
+  // "On the boundary" was an absolute bound on the cross product, which is
+  // |edge| x perpendicular distance -- so the boundary was ~1 mm thick on a
+  // 100 m edge and ~11 cm thick on a 1 m edge. A fix 10 cm OUTSIDE a small
+  // zone read as "on the boundary", i.e. inside. The tolerance is now a
+  // perpendicular distance (~0.1 mm), the same on every edge.
+  {
+    const double m_lat = 1.0 / 111195.0;                 // one metre of latitude
+    for (double edge_m : {1.0, 100.0, 5000.0}) {
+      // A right triangle with a diagonal hypotenuse of about edge_m metres.
+      const double s = edge_m * m_lat / std::sqrt(2.0);
+      const LatLon a{25.5, 91.8}, b{25.5 + s, 91.8 + s}, apex{25.5 + s, 91.8};
+      const Polygon tri(Ring{a, b, apex});
+      const LatLon mid{(a.lat + b.lat) / 2, (a.lon + b.lon) / 2};
+      // Step 10 cm off the hypotenuse, away from the triangle (south-east).
+      const double off = 0.10 * m_lat / std::sqrt(2.0);
+      const LatLon out{mid.lat - off, mid.lon + off};
+      t::ok(!contains(tri, out), "a point 10 cm outside a " + std::to_string(int(edge_m)) +
+                                     " m edge is outside");
+      t::ok(contains(tri, mid), "the edge midpoint itself is on the boundary (inside) for a " +
+                                    std::to_string(int(edge_m)) + " m edge");
+      t::ok(contains(tri, out) == contains_winding(tri, out),
+            "ray casting and winding agree next to a " + std::to_string(int(edge_m)) + " m edge");
+    }
+  }
+
   return t::report("geo/ray_casting");
 }

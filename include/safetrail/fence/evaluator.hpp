@@ -2,26 +2,61 @@
 //
 // The hot loop. Everything else in this project is scaffolding around Evaluator.
 //
-// Called once per simulation tick (default 100 ms) for every tracked tourist.
-// Runs at 200 tourists × 10 Hz against up to 100k zones, so this is where every
-// performance decision either pays off or doesn't.
+// Called once per fix for every tracked tourist (the simulator's default tick is
+// one second), against up to 100k zones, so this is where every performance
+// decision either pays off or doesn't.
 //
 // Structure of one evaluation, and why it is in this order:
 //
 //   1. usability gate    — reject fixes too noisy to mean anything      O(1)
-//   2. adaptive sampling — should we even have a fix right now?         O(1)
-//   3. spatial prune     — 100k zones → ~3 candidates            O(log n + k)
-//   4. temporal prune    — of those, which are active right now?  O(log n + k)
+//   2. (reserved)        — the adaptive sampler is FED at the end of each
+//                          evaluation (distance to the nearest zone); it
+//                          is a device-side policy for when to take the
+//                          next fix and gates nothing here. Measured on
+//                          its own in `make bench` §13.
+//   3. spatial prune     — 100k zones → a handful of candidates   O(log n + k)
+//   4. temporal prune    — of those, which are in force now?    O(1) each
 //   5. exact geometry    — three-valued containment per candidate     O(k·V)
 //   6. hysteresis        — filter drift-induced flapping               O(1)
 //   7. transition diff   — states → EVENTS, the actual output          O(k)
 //   8. prediction        — where will they be, and does it cross?      O(k·V)
+//   9. reconciliation    — observe every zone with OPEN state that the
+//                          index did not return this tick               O(s)
 //
 // Step 3 is the entire performance story. Without it this is
 // O(T·Z·V) = 200 × 100,000 × 40 = 800M operations per tick, ten times a second.
 // With it, roughly 200 × (17 + 3×40) ≈ 27k. See bench/results/index_scaling.csv.
 //
-// Step 7 is where the bugs live. See the note on transitions below.
+// Steps 7 and 9 are where the bugs live.
+//
+// ── Why step 9 exists ────────────────────────────────────────────────────────
+//
+// Per-zone state only advanced for zones the index returned. A tourist inside a
+// zone who then left its candidate window in one step -- a GPS gap, a vehicle
+// ride, a fix after the phone was off -- was never observed against that zone
+// again: no ZoneExit, state stuck at Inside forever, and a later genuine
+// re-entry produced no ZoneEnter because the state already said Inside. A zone
+// whose validity window closed while someone was inside had the same effect.
+// Both are silent missed alerts.
+//
+// Now every zone with state is observed every tick:
+//   - returned by the index and in force  -> the exact geometry, as before;
+//   - NOT returned by the index           -> a certain Outside: the query box is
+//     the conservative bound of a disc at least as large as the fix's
+//     uncertainty (geo::Bbox::around, tests/geo/bbox_around_test.cpp), so a
+//     zone it misses cannot contain any point the fix could be at. That
+//     observation goes through HYSTERESIS like any other, so one wild fix
+//     cannot force an exit on its own;
+//   - out of force, or deleted            -> the state is closed at once, with a
+//     ZoneExit if it was Inside. A rule change is not measurement noise.
+// A state that has settled to Outside outside the window is dropped, which
+// also keeps zone_states bounded by the candidate window rather than by every
+// zone the tourist has ever been near.
+//
+// Candidates are evaluated in ZONE-ID order, not in whatever order the index
+// emitted them. That makes the event stream a function of the zone set and the
+// fixes alone -- tests/fence/index_independence_test.cpp runs the full
+// simulation under all four indexes and asserts byte-identical output.
 //
 #include <cstdint>
 #include <vector>
@@ -154,7 +189,6 @@ class Evaluator {
     uint64_t evaluations         = 0;
     uint64_t candidates_examined = 0;   // post-index
     uint64_t exact_tests_run     = 0;   // post-bbox-reject
-    uint64_t fixes_skipped_power = 0;   // adaptive sampler said no
     uint64_t fixes_rejected_noise = 0;  // accuracy worse than usable
     uint64_t flaps_suppressed    = 0;   // ★ hysteresis value, GAP 8
     uint64_t candidate_cap_hits  = 0;   // the cap was exceeded
@@ -164,6 +198,8 @@ class Evaluator {
                                         // the invariant the false-negative test
                                         // asserts.
     uint64_t radius_clamped_max  = 0;   // derived query radius hit the ceiling
+    uint64_t out_of_window_observations = 0;  // step 9: open state, zone not returned
+    uint64_t states_closed       = 0;   // step 9: zone went out of force or was deleted
   };
   Counters counters() const { return counters_; }
   void reset_counters();
@@ -181,6 +217,10 @@ class Evaluator {
   // Reused across ticks — allocation-free steady state.
   mutable std::vector<ZoneId> candidate_buf_;
   mutable std::vector<std::pair<double, ZoneId>> ranked_buf_;
+
+  void emit_transition(track::Tourist& t, track::ZoneState& st, geo::Containment confirmed,
+                       double sd, int64_t now_ms, std::vector<Event>& out);
+  void reconcile(track::Tourist& t, uint64_t epoch, int64_t now_ms, std::vector<Event>& out);
 };
 
 }  // namespace safetrail::fence

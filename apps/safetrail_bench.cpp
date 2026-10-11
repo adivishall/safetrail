@@ -1,26 +1,66 @@
-// safetrail_bench -- the measurements that make this a project rather than a demo.
+// safetrail_bench -- every number the documentation quotes is printed here and
+// written to bench/results/*.csv by `make bench`.
 //
-//   1. Index scaling      brute force vs quadtree, 10 -> 100,000 zones
-//   2. Equivalence        every index must agree with brute force, exactly
-//   3. Hysteresis A/B     false-alert reduction under injected GPS noise  [GAP 8]
-//   4. Containment cross-check   ray casting vs winding number
-//   5. Persistent index   path-copying sharing vs full copies  [GAP 3]
-//   6. Routing            A* vs Dijkstra node expansions
-//   7. Dispatch           greedy vs optimal responder assignment
-//   8. Power              adaptive sampling vs continuous polling  [GAP 7]
-//   9. Bulk loading       R-tree: STR packing vs repeated insertion
-//  10. Churn              what insert/delete does to each structure over time
-//  11. Serialisation      blob size, write time, read time
-//  12. Self-intersection  Shamos-Hoey sweep vs the O(V^2) pairwise reference
-//  13. Interval tree      churn: real AVL deletion vs the tombstone it replaced
-//  14. Node snapping      k-d tree vs the linear scan, on the dispatch path
+// CORE -- the project's claim: hand-built indexes make repeated geofencing
+// faster without changing the answer.
+//   1. Scaling, fixed area       brute force vs quadtree vs R-tree; k grows with n
+//   2. Scaling, fixed density    the same, with the answer size k held near 1
+//   3. End to end                "which zones contain this point?": filter + exact
+//                                geometry, against a truly naive baseline, by
+//                                polygon complexity
+//   4. Build, memory, updates    what each index costs to build, hold and change
+//   5. Equivalence               every index == brute force, over mixed radii
+//   6. Containment cross-check   ray casting vs winding number
+//   7. R-tree bulk loading       STR packing vs repeated insertion
+//   8. Interval tree             stabbing vs a linear scan; AVL height under churn
+//   9. Persistent quadtree       path copying vs full copies; cost per mutation
+//  18. Evaluator per fix         the whole evaluate() -- index, geometry,
+//                                hysteresis, reconciliation -- as zones grow
+// EXTENSIONS -- built on the core, not part of the headline claim
+//  10. Hysteresis A/B    11. Routing    12. Dispatch    13. Adaptive sampling
+//  14. Index churn       15. Serialisation    16. Self-intersection
+//  17. Node snapping
+//
+// ── Measurement protocol (applies to every "median" in the core sections) ────
+//
+//   * Work is precomputed. Query boxes are built before timing, so a query time
+//     is index traversal, not the trigonometry of Bbox::around.
+//   * One SAMPLE runs the whole probe set enough times to last >= 20 ms,
+//     calibrated per contender after an untimed warm-up pass. Microsecond-scale
+//     timings of single ~2 ms passes were what made the old table jump +/-40%.
+//   * 11 ROUNDS. In each round every contender takes one sample, in an order
+//     rotated round to round, so drift (thermal, frequency, core migration)
+//     lands on all of them rather than on whichever ran last.
+//   * Reported: median, and the interquartile range as a percentage of it.
+//     Speedups are PAIRED: the median over rounds of (baseline / contender)
+//     measured back to back in the same round, which cancels slow rounds.
+//   * Every pass returns a checksum of its results (order-independent: a sum of
+//     bit-mixed ids). The checksums of contenders doing the same job must be
+//     equal -- that is both a correctness gate and what stops the optimiser
+//     deleting the work. Section 5 is the exact set-for-set comparison.
+//   * On macOS the process asks for the performance cores (QoS
+//     user-interactive); Apple Silicon otherwise runs default-QoS work on
+//     efficiency cores at will, which roughly doubled absolute times in testing.
+//
+// Absolute times are specific to one machine and compiler; bench/results/
+// environment.txt records which. Ratios and candidate counts are the portable
+// part, and the docs quote them that way.
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
-#include <algorithm>
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
+#if defined(__APPLE__)
+#include <pthread.h>
+#include <sys/qos.h>
+#endif
 #include "safetrail/ds/interval_tree.hpp"
+#include "safetrail/geo/containment.hpp"
 #include "safetrail/geo/polygon.hpp"
 #include "safetrail/geo/sweep_line.hpp"
 #include "safetrail/index/brute_force.hpp"
@@ -43,127 +83,695 @@ static double ms_since(Clock::time_point t) {
   return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
 }
 
+// ── Harness ──────────────────────────────────────────────────────────────────
+
+// Everything measured is folded into this, so no result is dead code.
+static volatile uint64_t g_sink = 0;
+
+struct Stat {
+  double median = 0, p25 = 0, p75 = 0, min = 0;
+  double iqr_pct() const { return median > 0 ? 100.0 * (p75 - p25) / median : 0.0; }
+};
+
+static Stat summarize(std::vector<double> v) {
+  if (v.empty()) return {};
+  std::sort(v.begin(), v.end());
+  auto at = [&](double q) { return v[size_t(q * double(v.size() - 1) + 0.5)]; };
+  return {at(0.5), at(0.25), at(0.75), v.front()};
+}
+
+constexpr int kRounds = 11;
+constexpr double kMinSampleMs = 20.0;
+
+struct Contender {
+  std::string name;
+  std::function<uint64_t()> pass;    // one full pass over the probe set -> checksum
+  size_t ops_per_pass;
+};
+
+struct Measured {
+  std::vector<double> us;            // microseconds per op, one entry per round
+  Stat stat;
+  uint64_t checksum = 0;             // of ONE pass
+};
+
+static std::vector<Measured> measure(const std::vector<Contender>& cs, int rounds = kRounds) {
+  const size_t k = cs.size();
+  std::vector<Measured> m(k);
+  std::vector<int> reps(k, 1);
+  for (size_t i = 0; i < k; ++i) {
+    m[i].checksum = cs[i].pass();                      // warm-up; records the checksum
+    const auto t0 = Clock::now();
+    g_sink = g_sink + cs[i].pass();
+    const double one = ms_since(t0);
+    reps[i] = std::max(1, int(std::ceil(kMinSampleMs / std::max(one, 1e-3))));
+  }
+  for (int r = 0; r < rounds; ++r)
+    for (size_t j = 0; j < k; ++j) {
+      const size_t i = (j + size_t(r)) % k;            // rotate the order each round
+      uint64_t s = 0;
+      const auto t0 = Clock::now();
+      for (int q = 0; q < reps[i]; ++q) s += cs[i].pass();
+      const double ms = ms_since(t0);
+      g_sink = g_sink + s;
+      m[i].us.push_back(ms * 1000.0 / (double(reps[i]) * double(cs[i].ops_per_pass)));
+    }
+  for (auto& x : m) x.stat = summarize(x.us);
+  return m;
+}
+
+// Median over rounds of base/fast, each pair measured back to back.
+static double paired_speedup(const Measured& base, const Measured& fast) {
+  std::vector<double> r;
+  for (size_t i = 0; i < base.us.size() && i < fast.us.size(); ++i)
+    if (fast.us[i] > 0) r.push_back(base.us[i] / fast.us[i]);
+  return summarize(r).median;
+}
+
+// Median wall time of `reps` runs of f, in ms.
+static double median_ms(int reps, const std::function<void()>& f) {
+  std::vector<double> t;
+  for (int i = 0; i < reps; ++i) {
+    const auto t0 = Clock::now();
+    f();
+    t.push_back(ms_since(t0));
+  }
+  return summarize(t).median;
+}
+
+// Order-independent fold of a result set: equal sets give equal checksums
+// however the index happened to order them. Each id goes through a bit mixer
+// (splitmix64's finaliser) before the sum: a plain sum of ids let {1, 4} and
+// {2, 3} -- two different answers -- hash alike, which made the gate below weaker
+// than it claimed to be.
+static uint64_t mix64(uint64_t x) {
+  x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ull;
+  x ^= x >> 27; x *= 0x94D049BB133111EBull;
+  return x ^ (x >> 31);
+}
+static uint64_t fold(const std::vector<index::ZoneId>& ids) {
+  uint64_t s = ids.size();
+  for (index::ZoneId id : ids) s += mix64(uint64_t(id) + 0x9E3779B97F4A7C15ull);
+  return s;
+}
+
+// ── Corpora ──────────────────────────────────────────────────────────────────
+using Items = std::vector<std::pair<index::ZoneId, geo::Bbox>>;
+static const geo::Bbox kDistrict{25.40, 91.70, 25.75, 92.05};   // ~39 x 35 km, Shillong
+
 struct Corpus {
-  std::vector<std::pair<index::ZoneId, geo::Bbox>> boxes;
+  Items boxes;
   std::vector<geo::LatLon> probes;
 };
 
-static Corpus make_corpus(size_t n, size_t probes, uint64_t seed) {
+// Zones are boxes of half-width 0.0003..0.0022 deg (~30-240 m), scattered
+// uniformly over `area`; probes are uniform over the same area.
+static Corpus make_corpus_in(const geo::Bbox& area, size_t n, size_t probes, uint64_t seed) {
   sim::Rng rng(seed);
   Corpus c;
-  const geo::Bbox area{25.40, 91.70, 25.75, 92.05};
+  c.boxes.reserve(n);
   for (size_t i = 0; i < n; ++i) {
     const double clat = rng.range(area.min_lat, area.max_lat);
     const double clon = rng.range(area.min_lon, area.max_lon);
     const double r = rng.range(0.0003, 0.0022);
-    geo::Bbox b{clat - r, clon - r, clat + r, clon + r};
-    c.boxes.emplace_back(index::ZoneId(i), b);
+    c.boxes.emplace_back(index::ZoneId(i), geo::Bbox{clat - r, clon - r, clat + r, clon + r});
   }
   for (size_t i = 0; i < probes; ++i)
-    c.probes.push_back({rng.range(area.min_lat, area.max_lat),
-                        rng.range(area.min_lon, area.max_lon)});
+    c.probes.push_back({rng.range(area.min_lat, area.max_lat), rng.range(area.min_lon, area.max_lon)});
   return c;
 }
-
-// A timing is never one number. We report the MEDIAN of several full passes
-// (robust to a single scheduler hiccup), the best pass seen (the cleanest run
-// the machine managed), and the spread as a percent of the median (how much to
-// trust the figure). A warmup pass first faults in the caches and settles the
-// branch predictor so the first timed pass is not an outlier.
-struct Timing { double median_us, min_us, spread_pct; };
-
-static Timing time_queries(index::SpatialIndex& ix, const Corpus& c, double radius) {
-  std::vector<index::ZoneId> out; out.reserve(8192);
-  for (const auto& p : c.probes) {          // warmup, untimed
-    out.clear(); ix.query(geo::Bbox::around(p, radius), out);
-  }
-  constexpr int kRuns = 7;
-  double s[kRuns];
-  for (int r = 0; r < kRuns; ++r) {
-    auto t0 = Clock::now();
-    for (const auto& p : c.probes) { out.clear(); ix.query(geo::Bbox::around(p, radius), out); }
-    s[r] = ms_since(t0) * 1000.0 / double(c.probes.size());   // us per query
-  }
-  std::sort(s, s + kRuns);
-  const double median = s[kRuns / 2];
-  return {median, s[0], median > 0 ? 100.0 * (s[kRuns - 1] - s[0]) / median : 0.0};
+static Corpus make_corpus(size_t n, size_t probes, uint64_t seed) {
+  return make_corpus_in(kDistrict, n, probes, seed);
 }
 
-static void bench_scaling(FILE* csv) {
-  printf("\n\033[1m1. INDEX SCALING\033[0m   450 m query box, 2000 probes/row, median of 7 timed"
-         " passes after a warmup, us/query\n");
-  printf("  %8s  %11s  %11s  %11s  %9s  %9s  %8s  %7s\n",
-         "zones", "brute", "quadtree", "r-tree", "QT gain", "RT gain", "cands", "±spread");
-  printf("  ─────────────────────────────────────────────────────────────────────────────────────────\n");
-  if (csv) fprintf(csv, "zones,brute_us,quad_us,rtree_us,quad_speedup,rtree_speedup,"
-                        "candidates,quad_nodes,quad_depth,rtree_nodes,rtree_depth,"
-                        "brute_min_us,quad_min_us,rtree_min_us,brute_spread_pct,"
-                        "quad_spread_pct,rtree_spread_pct\n");
-
-  for (size_t n : {10u, 100u, 1000u, 5000u, 10000u, 20000u, 50000u, 100000u}) {
-    Corpus c = make_corpus(n, 2000, 99);
-    index::BruteForceIndex bf; bf.build(c.boxes);
-    index::Quadtree qt;        qt.build(c.boxes);
-    index::RTree rt;           rt.build(c.boxes);
-
-    const Timing bf_t = time_queries(bf, c, 450);
-    const Timing qt_t = time_queries(qt, c, 450);
-    const Timing rt_t = time_queries(rt, c, 450);
-    const auto bs = bf.stats(), qs = qt.stats(), rs = rt.stats();
-
-    // The worst spread across the three medians -- the honest error bar on the row.
-    const double worst_spread = std::max({bf_t.spread_pct, qt_t.spread_pct, rt_t.spread_pct});
-    printf("  %8zu  %11.2f  %11.2f  %11.2f  %8.1fx  %8.1fx  %8.2f  %6.1f%%\n",
-           n, bf_t.median_us, qt_t.median_us, rt_t.median_us,
-           qt_t.median_us > 0 ? bf_t.median_us / qt_t.median_us : 0.0,
-           rt_t.median_us > 0 ? bf_t.median_us / rt_t.median_us : 0.0,
-           bs.avg_candidates(), worst_spread);
-    if (csv) fprintf(csv, "%zu,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%zu,%zu,%zu,%zu,"
-                          "%.4f,%.4f,%.4f,%.1f,%.1f,%.1f\n",
-                     n, bf_t.median_us, qt_t.median_us, rt_t.median_us,
-                     qt_t.median_us > 0 ? bf_t.median_us / qt_t.median_us : 0.0,
-                     rt_t.median_us > 0 ? bf_t.median_us / rt_t.median_us : 0.0,
-                     bs.avg_candidates(), qs.node_count, qs.max_depth, rs.node_count, rs.max_depth,
-                     bf_t.min_us, qt_t.min_us, rt_t.min_us,
-                     bf_t.spread_pct, qt_t.spread_pct, rt_t.spread_pct);
-  }
-  printf("\n  Median of 7 passes, best-run and spread in the CSV. Single machine, one build;\n");
-  printf("  the speedup is a ratio to our own brute force, not to an external library.\n");
-  printf("  Candidates returned is IDENTICAL across all three -- they are true positives, so\n");
-  printf("  the speedup ceiling is output size k, exactly as O(log n + k) says.\n");
+static std::vector<geo::Bbox> query_boxes(const std::vector<geo::LatLon>& probes, double radius_m) {
+  std::vector<geo::Bbox> q;
+  q.reserve(probes.size());
+  for (const auto& p : probes) q.push_back(geo::Bbox::around(p, radius_m));
+  return q;
 }
 
+static Contender index_queries(const std::string& name, const index::SpatialIndex& ix,
+                               const std::vector<geo::Bbox>& qs) {
+  auto out = std::make_shared<std::vector<index::ZoneId>>();
+  out->reserve(1 << 14);
+  return {name,
+          [&ix, &qs, out]() {
+            uint64_t s = 0;
+            for (const auto& q : qs) {
+              out->clear();
+              ix.query(q, *out);
+              s += fold(*out);
+            }
+            return s;
+          },
+          qs.size()};
+}
+
+static double avg_results(const index::SpatialIndex& ix, const std::vector<geo::Bbox>& qs) {
+  std::vector<index::ZoneId> out;
+  size_t total = 0;
+  for (const auto& q : qs) { out.clear(); ix.query(q, out); total += out.size(); }
+  return qs.empty() ? 0.0 : double(total) / double(qs.size());
+}
+
+static const char* ok_str(bool ok) { return ok ? "\033[32mok\033[0m" : "\033[31mMISMATCH\033[0m"; }
+
+// ── 1 & 2. Scaling ───────────────────────────────────────────────────────────
+//
+// Two regimes, because "how does it scale?" has two honest answers:
+//   fixed area     more zones in the same district, so the answer size k grows in
+//                  proportion to n. O(log n + k) is dominated by k, and the
+//                  speedup over brute force levels off -- no index returns
+//                  fewer results than exist.
+//   fixed density  the area grows with n, so k stays near 1. Now the log n term
+//                  is what is left, and the speedup keeps growing with n.
+static bool scaling_table(FILE* csv, bool fixed_density, const std::vector<size_t>& sizes) {
+  if (csv) fprintf(csv, "zones,brute_us,quad_us,rtree_us,quad_speedup,rtree_speedup,candidates,"
+                        "brute_iqr_pct,quad_iqr_pct,rtree_iqr_pct,"
+                        "brute_build_ms,quad_build_ms,rtree_build_ms,"
+                        "brute_bytes,quad_bytes,rtree_bytes,quad_nodes,quad_depth,"
+                        "rtree_nodes,rtree_depth,area_deg\n");
+  printf("  %8s  %10s  %10s  %10s  %8s  %8s  %8s  %6s  %6s\n", "zones", "brute us",
+         "quadtree", "r-tree", "QT x", "RT x", "k/query", "IQR", "equal");
+  printf("  ──────────────────────────────────────────────────────────────────────────────────────\n");
+  bool all_ok = true;
+  for (size_t n : sizes) {
+    const double side = fixed_density ? 0.35 * std::sqrt(double(n) / 1000.0) : 0.35;
+    const geo::Bbox area{kDistrict.min_lat, kDistrict.min_lon, kDistrict.min_lat + side,
+                         kDistrict.min_lon + side};
+    const Corpus c = make_corpus_in(area, n, 2000, 99);
+    const auto qs = query_boxes(c.probes, 450);
+
+    index::BruteForceIndex bf;
+    index::Quadtree qt;
+    index::RTree rt;
+    const double bf_b = median_ms(5, [&] { bf.build(c.boxes); });
+    const double qt_b = median_ms(5, [&] { qt.build(c.boxes); });
+    const double rt_b = median_ms(5, [&] { rt.build(c.boxes); });
+
+    const auto m = measure({index_queries("brute", bf, qs), index_queries("quadtree", qt, qs),
+                            index_queries("r-tree", rt, qs)});
+    const bool eq = m[0].checksum == m[1].checksum && m[0].checksum == m[2].checksum;
+    all_ok = all_ok && eq;
+    const double qx = paired_speedup(m[0], m[1]), rx = paired_speedup(m[0], m[2]);
+    const double k = avg_results(bf, qs);
+    const double iqr = std::max({m[0].stat.iqr_pct(), m[1].stat.iqr_pct(), m[2].stat.iqr_pct()});
+    const auto bs = bf.stats(), qst = qt.stats(), rs = rt.stats();
+
+    printf("  %8zu  %10.3f  %10.3f  %10.3f  %7.1fx  %7.1fx  %8.2f  %5.1f%%  %6s\n", n,
+           m[0].stat.median, m[1].stat.median, m[2].stat.median, qx, rx, k, iqr, ok_str(eq));
+    if (csv)
+      fprintf(csv, "%zu,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,"
+                   "%zu,%zu,%zu,%zu,%zu,%zu,%zu,%.3f\n",
+              n, m[0].stat.median, m[1].stat.median, m[2].stat.median, qx, rx, k,
+              m[0].stat.iqr_pct(), m[1].stat.iqr_pct(), m[2].stat.iqr_pct(), bf_b, qt_b, rt_b,
+              bs.bytes, qst.bytes, rs.bytes, qst.node_count, qst.max_depth, rs.node_count,
+              rs.max_depth, side);
+  }
+  return all_ok;
+}
+
+static bool bench_scaling(FILE* csv) {
+  printf("\n\033[1m1. SCALING, FIXED AREA\033[0m   one 39 x 35 km district, 450 m query boxes, "
+         "2000 probes; us/query\n");
+  const bool ok = scaling_table(csv, false, {100, 1000, 5000, 10000, 20000, 50000, 100000});
+  printf("\n  k grows in proportion to n here: at 100,000 zones about 99 genuinely overlap\n");
+  printf("  each query box, and every index must return all of them. That is the O(k)\n");
+  printf("  term, and it caps the speedup. The index removes the O(n) scan, not the answer.\n");
+  return ok;
+}
+
+static bool bench_density(FILE* csv) {
+  printf("\n\033[1m2. SCALING, FIXED DENSITY\033[0m   the area grows with n, so k stays ~1; "
+         "us/query\n");
+  const bool ok = scaling_table(csv, true, {1000, 10000, 100000});
+  printf("\n  With k held constant, brute force stays linear while the trees grow with the\n");
+  printf("  depth of the tree, so the speedup keeps rising with n. Same code, same queries\n");
+  printf("  per zone; only the answer size differs from section 1.\n");
+  return ok;
+}
+
+// ── 3. End to end: filter + exact geometry ───────────────────────────────────
+//
+// The question the engine really asks per fix: which zones CONTAIN this point?
+// Four ways to answer it, all required to return the same set:
+//   naive       ray-cast every polygon, no filter at all                  O(n V)
+//   bbox scan   BruteForceIndex (test every zone's box), exact on hits    O(n + k V)
+//   quadtree    tree filter, exact on candidates                  O(log n + k + k V)
+//   r-tree      likewise
+// Polygon complexity V is the variable: the index only removes the O(n) part, so
+// as V grows the shared O(k V) refinement is what is left.
+namespace {
+// The textbook even-odd test with no bounding-box early-out -- the "naive" row.
+// It deliberately does not share code with geo::contains(): it is the baseline,
+// and its answers are checked against the engine's below.
+bool naive_contains(const geo::Ring& r, const geo::LatLon& p) {
+  bool in = false;
+  const size_t n = r.size();
+  for (size_t i = 0, j = n - 1; i < n; j = i++)
+    if ((r[i].lat > p.lat) != (r[j].lat > p.lat) &&
+        p.lon < r[i].lon + (p.lat - r[i].lat) / (r[j].lat - r[i].lat) * (r[j].lon - r[i].lon))
+      in = !in;
+  return in;
+}
+}  // namespace
+
+static bool bench_end_to_end(FILE* csv) {
+  printf("\n\033[1m3. END TO END\033[0m   \"which zones contain this point?\" -- filter + exact "
+         "geometry;\n   5,000 zones in the district, 300 probe points, us/query\n");
+  printf("  %6s  %10s  %10s  %10s  %10s  %9s  %9s  %8s  %6s\n", "V", "naive", "bbox scan",
+         "quadtree", "r-tree", "QT/naive", "QT/scan", "cand/q", "equal");
+  printf("  ──────────────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "vertices,naive_us,scan_us,quad_us,rtree_us,quad_vs_naive,quad_vs_scan,"
+                        "rtree_vs_scan,candidates,hits,naive_iqr_pct,scan_iqr_pct,quad_iqr_pct,"
+                        "rtree_iqr_pct\n");
+  bool all_ok = true;
+  for (size_t V : {8u, 32u, 128u, 512u}) {
+    sim::Rng rng(0xE2E0 + V);
+    std::vector<geo::Polygon> polys;
+    Items boxes;
+    while (polys.size() < 5000) {
+      const double clat = rng.range(kDistrict.min_lat, kDistrict.max_lat);
+      const double clon = rng.range(kDistrict.min_lon, kDistrict.max_lon);
+      const double r = rng.range(0.0003, 0.0022);
+      geo::Ring ring;
+      for (size_t v = 0; v < V; ++v) {                 // star-shaped, hence simple
+        const double a = 6.283185307179586 * (double(v) + rng.range(0.0, 0.8)) / double(V);
+        const double rr = r * rng.range(0.6, 1.0);
+        ring.push_back({clat + rr * std::sin(a), clon + rr * std::cos(a)});
+      }
+      geo::Polygon p(std::move(ring));
+      if (p.validate() != geo::Polygon::Validity::Ok) continue;
+      boxes.emplace_back(index::ZoneId(polys.size()), p.bbox());
+      polys.push_back(std::move(p));
+    }
+    std::vector<geo::LatLon> probes;
+    for (int i = 0; i < 300; ++i)
+      probes.push_back({rng.range(kDistrict.min_lat, kDistrict.max_lat),
+                        rng.range(kDistrict.min_lon, kDistrict.max_lon)});
+
+    index::BruteForceIndex bf; bf.build(boxes);
+    index::Quadtree qt;        qt.build(boxes);
+    index::RTree rt;           rt.build(boxes);
+
+    auto buf = std::make_shared<std::vector<index::ZoneId>>();
+    auto hits = std::make_shared<std::vector<index::ZoneId>>();
+    auto filtered = [&, buf, hits](const index::SpatialIndex& ix) {
+      return [&ix, &probes, &polys, buf, hits]() {
+        uint64_t s = 0;
+        for (const auto& p : probes) {
+          buf->clear(); hits->clear();
+          ix.query(geo::Bbox{p.lat, p.lon, p.lat, p.lon}, *buf);
+          for (index::ZoneId id : *buf) if (geo::contains(polys[id], p)) hits->push_back(id);
+          s += fold(*hits);
+        }
+        return s;
+      };
+    };
+    std::vector<Contender> cs = {
+        {"naive",
+         [&probes, &polys, hits]() {
+           uint64_t s = 0;
+           for (const auto& p : probes) {
+             hits->clear();
+             for (size_t z = 0; z < polys.size(); ++z)
+               if (naive_contains(polys[z].outer(), p)) hits->push_back(index::ZoneId(z));
+             s += fold(*hits);
+           }
+           return s;
+         },
+         probes.size()},
+        {"bbox scan", filtered(bf), probes.size()},
+        {"quadtree", filtered(qt), probes.size()},
+        {"r-tree", filtered(rt), probes.size()},
+    };
+    const auto m = measure(cs, 7);
+    const bool eq = m[0].checksum == m[1].checksum && m[1].checksum == m[2].checksum &&
+                    m[2].checksum == m[3].checksum;
+    all_ok = all_ok && eq;
+
+    size_t cand = 0, hit = 0;
+    for (const auto& p : probes) {
+      std::vector<index::ZoneId> out;
+      bf.query(geo::Bbox{p.lat, p.lon, p.lat, p.lon}, out);
+      cand += out.size();
+      for (index::ZoneId id : out) hit += geo::contains(polys[id], p);
+    }
+    const double cq = double(cand) / double(probes.size()), hq = double(hit) / double(probes.size());
+    const double q_naive = paired_speedup(m[0], m[2]), q_scan = paired_speedup(m[1], m[2]);
+    const double r_scan = paired_speedup(m[1], m[3]);
+    printf("  %6zu  %10.2f  %10.3f  %10.3f  %10.3f  %8.0fx  %8.1fx  %8.2f  %6s\n", V,
+           m[0].stat.median, m[1].stat.median, m[2].stat.median, m[3].stat.median, q_naive,
+           q_scan, cq, ok_str(eq));
+    if (csv)
+      fprintf(csv, "%zu,%.4f,%.4f,%.4f,%.4f,%.1f,%.2f,%.2f,%.3f,%.3f,%.1f,%.1f,%.1f,%.1f\n", V,
+              m[0].stat.median, m[1].stat.median, m[2].stat.median, m[3].stat.median, q_naive,
+              q_scan, r_scan, cq, hq, m[0].stat.iqr_pct(), m[1].stat.iqr_pct(),
+              m[2].stat.iqr_pct(), m[3].stat.iqr_pct());
+  }
+  printf("\n  The naive column is what \"check every zone\" really costs: O(n V), which is\n");
+  printf("  where the large factors come from. A plain bounding-box scan already removes\n");
+  printf("  the V; the tree then removes the n. The exact test on the few candidates is\n");
+  printf("  identical in every column, which is why QT/scan shrinks as V grows.\n");
+  return all_ok;
+}
+
+// ── 4. Build, memory, updates ────────────────────────────────────────────────
+//
+// Memory is IndexStats::bytes: nodes plus the capacity of every vector they own,
+// allocator overhead excluded. Update cost: in each round every index is freshly
+// built (untimed), then 1,000 inserts are timed, then removing those 1,000.
+static void bench_costs(FILE* csv) {
+  printf("\n\033[1m4. BUILD, MEMORY, UPDATES\033[0m   per index; build = median of 5, "
+         "insert/remove = median of 7 rounds of 1,000\n");
+  printf("  %8s  %-12s  %10s  %11s  %9s  %11s  %11s\n", "zones", "index", "build ms",
+         "memory KB", "B/zone", "insert us", "remove us");
+  printf("  ──────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "zones,index,build_ms,bytes,bytes_per_zone,insert_us,remove_us\n");
+  for (size_t n : {10000u, 100000u}) {
+    const Corpus c = make_corpus(n, 0, 1234);
+    sim::Rng rng(5678);
+    Items extra;
+    for (size_t i = 0; i < 1000; ++i) {
+      const double clat = rng.range(kDistrict.min_lat, kDistrict.max_lat);
+      const double clon = rng.range(kDistrict.min_lon, kDistrict.max_lon);
+      const double r = rng.range(0.0003, 0.0022);
+      extra.emplace_back(index::ZoneId(n + i), geo::Bbox{clat - r, clon - r, clat + r, clon + r});
+    }
+    std::vector<index::ZoneId> order;
+    for (const auto& e : extra) order.push_back(e.first);
+    for (size_t i = order.size(); i > 1; --i) std::swap(order[i - 1], order[rng.below(uint32_t(i))]);
+
+    const index::IndexKind kinds[] = {index::IndexKind::BruteForce, index::IndexKind::Quadtree,
+                                      index::IndexKind::RTree};
+    for (index::IndexKind kind : kinds) {
+      auto ix = index::make_index(kind);
+      const double build = median_ms(5, [&] { ix->build(c.boxes); });
+      const size_t bytes = ix->stats().bytes;
+      std::vector<double> ins, rem;
+      for (int r = 0; r < 7; ++r) {
+        ix->build(c.boxes);
+        auto t0 = Clock::now();
+        for (const auto& e : extra) ix->insert(e.first, e.second);
+        ins.push_back(ms_since(t0) * 1000.0 / double(extra.size()));
+        t0 = Clock::now();
+        for (index::ZoneId id : order) ix->remove(id);
+        rem.push_back(ms_since(t0) * 1000.0 / double(order.size()));
+      }
+      const double iu = summarize(ins).median, ru = summarize(rem).median;
+      printf("  %8zu  %-12s  %10.2f  %11.1f  %9.1f  %11.3f  %11.3f\n", n, ix->name(), build,
+             double(bytes) / 1024.0, double(bytes) / double(n), iu, ru);
+      if (csv) fprintf(csv, "%zu,%s,%.3f,%zu,%.1f,%.4f,%.4f\n", n, ix->name(), build, bytes,
+                       double(bytes) / double(n), iu, ru);
+    }
+  }
+  printf("\n  Removal is O(n) in all three: none keeps an id -> node map, so the entry is\n");
+  printf("  found by search. The trees then pay again to collapse or condense. That is a\n");
+  printf("  deliberate simplification for a read-heavy workload, measured here rather\n");
+  printf("  than hidden; an id -> leaf hash map is the fix if zones churn in production.\n");
+}
+
+// ── 5. Equivalence ───────────────────────────────────────────────────────────
 static bool bench_equivalence() {
-  printf("\n\033[1m2. EQUIVALENCE\033[0m   every index must return EXACTLY what brute force returns\n");
+  printf("\n\033[1m5. EQUIVALENCE\033[0m   every index must return EXACTLY brute force's set "
+         "(radii 80 m, 400 m, 2 km)\n");
   bool all_ok = true;
   for (size_t n : {50u, 500u, 5000u}) {
     Corpus c = make_corpus(n, 2000, 7);
     index::BruteForceIndex bf; bf.build(c.boxes);
     index::Quadtree qt;        qt.build(c.boxes);
     index::RTree rt;           rt.build(c.boxes);
+    index::Geohash gh;         gh.build(c.boxes);
 
-    size_t mq = 0, mr = 0, total = 0, queries = 0;
-    std::vector<index::ZoneId> a, b, d;
+    size_t mq = 0, mr = 0, mg = 0, total = 0, queries = 0;
+    std::vector<index::ZoneId> a, b, d, g;
     for (const auto& p : c.probes)
       for (double r : {80.0, 400.0, 2000.0}) {
-        a.clear(); b.clear(); d.clear();
+        a.clear(); b.clear(); d.clear(); g.clear();
         const geo::Bbox q = geo::Bbox::around(p, r);
-        bf.query(q, a); qt.query(q, b); rt.query(q, d);
-        std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end()); std::sort(d.begin(), d.end());
+        bf.query(q, a); qt.query(q, b); rt.query(q, d); gh.query(q, g);
+        std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end());
+        std::sort(d.begin(), d.end()); std::sort(g.begin(), g.end());
         total += a.size(); ++queries;
-        if (a != b) ++mq;
-        if (a != d) ++mr;
+        mq += a != b; mr += a != d; mg += a != g;
       }
-    printf("  %6zu zones  %6zu queries  %8zu hits   quadtree: %s%zu\033[0m   r-tree: %s%zu\033[0m\n",
-           n, queries, total, mq ? "\033[31m" : "\033[32m", mq,
-           mr ? "\033[31m" : "\033[32m", mr);
-    if (mq || mr) all_ok = false;
+    printf("  %6zu zones  %6zu queries  %8zu hits   quadtree %zu   r-tree %zu   geohash %zu "
+           "mismatches\n", n, queries, total, mq, mr, mg);
+    if (mq || mr || mg) all_ok = false;
   }
+  printf("  (tests/index/differential_test.cpp runs ~275,000 more, over seven hostile\n");
+  printf("   workload profiles, with structural invariants audited after every operation)\n");
   return all_ok;
 }
 
+// ── 7. R-tree bulk loading ───────────────────────────────────────────────────
+//
+// Inserting n items one at a time makes every ChooseSubtree decision blind to the
+// items still to come, so node boxes overlap more than they need to; overlap is
+// what forces a query down several branches. STR sees the whole set and packs it
+// into near-square tiles.
+static void bench_bulkload(FILE* csv) {
+  printf("\n\033[1m7. R-TREE BULK LOADING\033[0m   STR packing vs repeated insertion, same data "
+         "and queries\n");
+  printf("  %8s  %10s  %10s  %9s  %9s  %11s  %11s  %8s\n", "zones", "insert ms", "STR ms",
+         "ins nodes", "STR nodes", "ins us/qry", "STR us/qry", "gain");
+  printf("  ────────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "zones,incremental_build_ms,str_build_ms,incremental_nodes,str_nodes,"
+                        "incremental_depth,str_depth,incremental_us,str_us,query_gain\n");
+  for (size_t n : {1000u, 10000u, 100000u}) {
+    const Corpus c = make_corpus(n, 2000, 31337);
+    const auto qs = query_boxes(c.probes, 450);
+    index::RTree inc, str;
+    const double inc_ms = median_ms(5, [&] { inc.build_incremental(c.boxes); });
+    const double str_ms = median_ms(5, [&] { str.build(c.boxes); });
+    const auto m = measure({index_queries("incremental", inc, qs), index_queries("str", str, qs)});
+    const auto is = inc.stats(), ss = str.stats();
+    const double gain = paired_speedup(m[0], m[1]);
+    printf("  %8zu  %10.2f  %10.2f  %9zu  %9zu  %11.3f  %11.3f  %7.2fx\n", n, inc_ms, str_ms,
+           is.node_count, ss.node_count, m[0].stat.median, m[1].stat.median, gain);
+    if (csv) fprintf(csv, "%zu,%.3f,%.3f,%zu,%zu,%zu,%zu,%.4f,%.4f,%.3f\n", n, inc_ms, str_ms,
+                     is.node_count, ss.node_count, is.max_depth, ss.max_depth,
+                     m[0].stat.median, m[1].stat.median, gain);
+  }
+  printf("\n  Both builds are O(n log n). STR's tree is smaller and its sibling boxes overlap\n");
+  printf("  less, so a query enters fewer branches -- the structure, not the machine.\n");
+}
+
+// ── 8. Interval tree ─────────────────────────────────────────────────────────
+//
+// "Which validity windows contain instant t?" -- stabbing the AVL interval tree
+// vs scanning every window, in two regimes, because the answer size k decides
+// the outcome exactly as it does for the spatial indexes:
+//   selective  windows of 1-30 minutes spread over 30 days: few contain any t
+//   dense      a tenth as many start times as windows, lasting up to 4 hours:
+//              hundreds contain any t, and the tree must report every one
+// Starts are shared heavily in both (many closures begin at the same moment).
+// Then churn: ten rounds of deleting and reinserting a tenth of the set, to show
+// the height tracks the LIVE size.
+static bool bench_interval(FILE* csv) {
+  printf("\n\033[1m8. INTERVAL TREE\033[0m   stab at a random instant: AVL tree vs linear scan\n");
+  printf("  %-9s  %8s  %10s  %10s  %8s  %8s  %6s  %7s  %7s  %9s\n", "regime", "windows",
+         "scan us", "tree us", "speedup", "k/stab", "height", "AVL max", "churned", "delete us");
+  printf("  ─────────────────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "regime,intervals,scan_us,tree_us,speedup,hits_per_stab,height,avl_bound,"
+                        "height_after_churn,delete_us,scan_iqr_pct,tree_iqr_pct\n");
+  bool all_ok = true;
+  for (int regime = 0; regime < 2; ++regime)
+  for (size_t n : {1000u, 10000u, 100000u}) {
+    const bool dense = regime == 1;
+    sim::Rng rng(0xC4147 + n + size_t(regime));
+    struct W { Timestamp lo, hi; int id; };
+    std::vector<W> ws;
+    ds::IntervalTree<int> tree;
+    const Timestamp month = Timestamp(30) * 86400000;
+    auto make = [&](int id) {
+      if (dense) {
+        const Timestamp lo = Timestamp(rng.below(uint32_t(n / 10 + 1))) * 60000;
+        return W{lo, lo + 60000 + Timestamp(rng.below(4 * 3600)) * 1000, id};
+      }
+      const Timestamp lo = Timestamp(rng.below(uint32_t(n / 10 + 1))) * (month / Timestamp(n / 10 + 1));
+      return W{lo, lo + 60000 + Timestamp(rng.below(29 * 60)) * 1000, id};
+    };
+    for (size_t i = 0; i < n; ++i) {
+      ws.push_back(make(int(i)));
+      tree.insert(ws.back().lo, ws.back().hi, ws.back().id);
+    }
+    const size_t h_fresh = tree.height();
+    Timestamp span = 0;
+    for (const auto& w : ws) span = std::max(span, w.hi);
+    std::vector<Timestamp> probes;
+    for (int i = 0; i < 2000; ++i)
+      probes.push_back(Timestamp(rng.below(uint32_t(span / 1000))) * 1000);
+
+    auto out = std::make_shared<std::vector<int>>();
+    auto fold_ints = [](const std::vector<int>& v) {
+      uint64_t s = v.size();
+      for (int id : v) s += (uint64_t(id) + 1) * 0x9E3779B97F4A7C15ull;
+      return s;
+    };
+    const auto m = measure({
+        {"scan", [&ws, &probes, out, fold_ints]() {
+           uint64_t s = 0;
+           for (Timestamp t : probes) {
+             out->clear();
+             for (const auto& w : ws) if (w.lo <= t && t < w.hi) out->push_back(w.id);
+             s += fold_ints(*out);
+           }
+           return s;
+         }, probes.size()},
+        {"tree", [&tree, &probes, out, fold_ints]() {
+           uint64_t s = 0;
+           for (Timestamp t : probes) {
+             out->clear();
+             tree.stabbing(t, *out);
+             s += fold_ints(*out);
+           }
+           return s;
+         }, probes.size()}});
+    const bool eq = m[0].checksum == m[1].checksum;
+    all_ok = all_ok && eq;
+    size_t hits = 0;
+    for (Timestamp t : probes) { out->clear(); tree.stabbing(t, *out); hits += out->size(); }
+
+    const size_t batch = n / 10;
+    std::vector<double> del_us;
+    int next_id = int(n);
+    for (int round = 0; round < 10; ++round) {
+      const auto t0 = Clock::now();
+      for (size_t i = 0; i < batch; ++i) {
+        const W w = ws[size_t(round) * batch + i];
+        tree.remove(w.lo, w.hi, w.id);
+      }
+      del_us.push_back(ms_since(t0) * 1000.0 / double(batch));
+      for (size_t i = 0; i < batch; ++i) {
+        ws.push_back(make(next_id++));
+        tree.insert(ws.back().lo, ws.back().hi, ws.back().id);
+      }
+    }
+    const double bound = 1.4405 * std::log2(double(n) + 2.0) - 0.3277;
+    const double sx = paired_speedup(m[0], m[1]);
+    const double k = double(hits) / double(probes.size());
+    printf("  %-9s  %8zu  %10.3f  %10.3f  %7.1fx  %8.1f  %6zu  %7.1f  %7zu  %9.3f  %s\n",
+           dense ? "dense" : "selective", n, m[0].stat.median, m[1].stat.median, sx, k, h_fresh,
+           bound, tree.height(), summarize(del_us).median, ok_str(eq));
+    if (csv) fprintf(csv, "%s,%zu,%.4f,%.4f,%.2f,%.2f,%zu,%.2f,%zu,%.4f,%.1f,%.1f\n",
+                     dense ? "dense" : "selective", n, m[0].stat.median, m[1].stat.median, sx, k,
+                     h_fresh, bound, tree.height(), summarize(del_us).median,
+                     m[0].stat.iqr_pct(), m[1].stat.iqr_pct());
+    if (!tree.check_invariants() || !tree.balanced()) all_ok = false;
+  }
+  printf("\n  Selective windows are where the augmentation earns its keep: the max_high\n");
+  printf("  bound prunes whole subtrees, and the scan's cost is all waste. With hundreds\n");
+  printf("  of windows containing every instant, the tree must still visit and report\n");
+  printf("  each one and a sequential scan is as fast -- the same O(k) ceiling as the\n");
+  printf("  spatial indexes. Height stays under the AVL bound for the LIVE size after\n");
+  printf("  churn, and each delete is one root-to-node descent despite shared starts.\n");
+  return all_ok;
+}
+
+// ── 9. Persistent quadtree ───────────────────────────────────────────────────
+static void bench_versioned(FILE* csv, FILE* csv_ops) {
+  printf("\n\033[1m9. PERSISTENT QUADTREE\033[0m   path copying vs copying the whole tree "
+         "per version\n");
+  printf("  %8s  %10s  %12s  %8s  %11s  %11s  %8s\n", "versions", "allocated", "full copies",
+         "sharing", "query@past", "query@now", "past/now");
+  printf("  ────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "versions,allocated,full_copies,sharing_ratio,query_past_us,"
+                        "query_now_us,past_over_now\n");
+  for (size_t n : {50u, 200u, 1000u, 5000u}) {
+    sim::Rng rng(4321);
+    index::VersionedIndex ix;
+    std::vector<geo::LatLon> probes;
+    for (size_t i = 0; i < n; ++i) {
+      const double lat = rng.range(25.50, 25.62), lon = rng.range(91.80, 91.96);
+      const double r = rng.range(0.0004, 0.0025);
+      ix.add_zone(index::ZoneId(i), geo::Bbox{lat - r, lon - r, lat + r, lon + r},
+                  index::Validity{0, kForever}, Timestamp(1000 * (i + 1)));
+    }
+    for (int i = 0; i < 500; ++i) probes.push_back({rng.range(25.49, 25.63), rng.range(91.79, 91.97)});
+    const auto qs = query_boxes(probes, 450);
+    const auto st = ix.share_stats();
+    const Timestamp mid = Timestamp(1000 * (n / 2));
+
+    auto out = std::make_shared<std::vector<index::ZoneId>>();
+    const auto m = measure({
+        {"past", [&ix, &qs, mid, out]() {
+           uint64_t s = 0;
+           for (const auto& q : qs) { out->clear(); ix.query_at(mid, q, *out); s += fold(*out); }
+           return s;
+         }, qs.size()},
+        {"now", [&ix, &qs, out]() {
+           uint64_t s = 0;
+           for (const auto& q : qs) { out->clear(); ix.query_now(q, *out); s += fold(*out); }
+           return s;
+         }, qs.size()}});
+    const double ratio = paired_speedup(m[1], m[0]);   // now-time / past-time
+    printf("  %8zu  %10zu  %12zu  %7.1fx  %11.3f  %11.3f  %7.2fx\n", ix.version_count(),
+           st.total_nodes_allocated, st.nodes_if_full_copies, st.sharing_ratio(),
+           m[0].stat.median, m[1].stat.median, 1.0 / ratio);
+    if (csv) fprintf(csv, "%zu,%zu,%zu,%.2f,%.4f,%.4f,%.3f\n", ix.version_count(),
+                     st.total_nodes_allocated, st.nodes_if_full_copies, st.sharing_ratio(),
+                     m[0].stat.median, m[1].stat.median, 1.0 / ratio);
+  }
+
+  // Cost of each kind of mutation, in nodes allocated, on a 5,000-zone index.
+  {
+    sim::Rng rng(8765);
+    index::VersionedIndex ix;
+    Timestamp at = 1;
+    for (index::ZoneId i = 0; i < 5000; ++i) {
+      const double lat = rng.range(25.50, 25.62), lon = rng.range(91.80, 91.96);
+      const double r = rng.range(0.0004, 0.0025);
+      ix.add_zone(i, {lat - r, lon - r, lat + r, lon + r}, {0, kForever}, at++);
+    }
+    struct Op { const char* name; std::function<void(index::ZoneId)> run; };
+    const Op ops[] = {
+        {"add (new zone)", [&](index::ZoneId id) {
+           const double lat = rng.range(25.50, 25.62), lon = rng.range(91.80, 91.96);
+           ix.add_zone(10000 + id, {lat, lon, lat + 0.001, lon + 0.001}, {0, kForever}, at++);
+         }},
+        {"replace (moved zone)", [&](index::ZoneId id) {
+           const double lat = rng.range(25.50, 25.62), lon = rng.range(91.80, 91.96);
+           ix.add_zone(id, {lat, lon, lat + 0.001, lon + 0.001}, {0, kForever}, at++);
+         }},
+        {"validity change", [&](index::ZoneId id) {
+           ix.update_validity(id, {0, Timestamp(1000000 + id)}, at++);
+         }},
+        {"remove", [&](index::ZoneId id) { ix.remove_zone(id + 2000, at++); }},
+    };
+    printf("\n  nodes allocated per mutation (5,000-zone index, 500 of each):\n");
+    if (csv_ops) fprintf(csv_ops, "mutation,avg_nodes_allocated,max_nodes_allocated\n");
+    for (const auto& op : ops) {
+      size_t total = 0, worst = 0;
+      for (index::ZoneId i = 0; i < 500; ++i) {
+        const size_t before = ix.share_stats().total_nodes_allocated;
+        op.run(i);
+        const size_t d = ix.share_stats().total_nodes_allocated - before;
+        total += d; worst = std::max(worst, d);
+      }
+      printf("    %-22s  avg %6.1f   max %4zu\n", op.name, double(total) / 500.0, worst);
+      if (csv_ops) fprintf(csv_ops, "%s,%.2f,%zu\n", op.name, double(total) / 500.0, worst);
+    }
+  }
+  printf("\n  Sharing grows with history, a query against the past costs what one against\n");
+  printf("  the present does (a different root pointer, no replay), and every mutation\n");
+  printf("  copies one root-to-node path: a validity change copies nothing.\n");
+}
+
+// Old-style single-index timing, used by the churn extension. Same protocol as
+// measure(), one contender.
+struct Timing { double median_us, min_us, spread_pct; };
+static Timing time_queries(index::SpatialIndex& ix, const Corpus& c, double radius) {
+  const auto qs = query_boxes(c.probes, radius);
+  const auto m = measure({index_queries(ix.name(), ix, qs)});
+  return {m[0].stat.median, m[0].stat.min, m[0].stat.iqr_pct()};
+}
+
+// ── Extensions (and the containment cross-check) ────────────────────────────
+
 static bool bench_containment() {
-  printf("\n\033[1m4. CONTAINMENT CROSS-CHECK\033[0m   ray casting vs winding number\n");
+  printf("\n\033[1m6. CONTAINMENT CROSS-CHECK\033[0m   ray casting vs winding number, two independent implementations\n");
   sim::Rng rng(4242);
   size_t disagree = 0, inside = 0, tested = 0;
   for (int poly = 0; poly < 200; ++poly) {
@@ -190,93 +798,75 @@ static bool bench_containment() {
   return disagree == 0;
 }
 
-static void bench_hysteresis(FILE* csv) {
-  printf("\n\033[1m3. HYSTERESIS A/B  [GAP 8]\033[0m   filter on vs off, under TWO noise models\n");
-  printf("  %-26s %11s  %11s  %10s\n", "noise model", "transitions", "transitions", "removed");
-  printf("  %-26s %11s  %11s  %10s\n", "", "hyst OFF", "hyst ON", "");
-  printf("  ────────────────────────────────────────────────────────────────\n");
-  if (csv) fprintf(csv, "noise_model,correlation,trans_off,trans_on,removed_pct\n");
 
-  // Two noise regimes:
-  //   white  (rho=0)   independent per-tick error -- the naive, jumpy model that
-  //                    flatters hysteresis because it flaps far more than reality
-  //   drift  (rho=0.9) temporally-correlated smooth drift -- what a real GPS
-  //                    receiver actually produces. The HONEST test.
+// ── 10. Hysteresis A/B ───────────────────────────────────────────────────────
+//
+// The filter's job is to make noisy fixes produce the transitions that PERFECT
+// fixes would have produced under the same policy. So each noise model runs four
+// simulations over identical trajectories (the GPS model draws the same random
+// numbers whatever its sigma, so movement is unchanged):
+//   noise-free, filter off   the raw truth: every boundary crossing
+//   noise-free, filter on    the TARGET: truth under the dwell/confirmation policy
+//   noisy, filter off        what a naive geofence reports
+//   noisy, filter on         what this engine reports
+// "Excess removed" is the share of the naive run's excess over the target that
+// the filter eliminates. Transitions = confirmed ZoneEnter + ZoneExit events.
+// An earlier version compared only the two noisy runs and called the difference
+// "false transitions removed", which cannot tell a removed flap from a
+// suppressed real crossing.
+static void bench_hysteresis(FILE* csv) {
+  printf("\n\033[1m10. HYSTERESIS A/B\033[0m  [extension]   60 tourists x 30 min on the OSM zones; "
+         "enter + exit events\n");
+  printf("  %-26s %10s  %10s  %10s  %10s  %9s\n", "noise model", "truth raw", "target",
+         "naive", "filtered", "excess cut");
+  printf("  %-26s %10s  %10s  %10s  %10s  %9s\n", "", "(no noise)", "(no noise,", "(noisy,",
+         "(noisy,", "");
+  printf("  %-26s %10s  %10s  %10s  %10s  %9s\n", "", "", "filter on)", "filter off)",
+         "filter on)", "");
+  printf("  ──────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "noise_model,correlation,truth_raw,target,naive,filtered,excess_removed_pct,"
+                        "filtered_vs_target_pct\n");
+
   const struct { const char* name; double rho; } models[] = {
-    {"white noise (rho=0)", 0.0}, {"realistic drift (rho=0.9)", 0.9}};
+      {"white noise (rho=0)", 0.0}, {"realistic drift (rho=0.9)", 0.9}};
+
+  auto run = [](double rho, bool noisy, bool filter) -> uint64_t {
+    sim::SimConfig cfg;
+    cfg.tourists = 60; cfg.groups = 6; cfg.seed = 20260817;
+    cfg.duration_ms = 1800000; cfg.tick_ms = 1000;
+    cfg.gps.correlation = rho;
+    if (!noisy) { cfg.gps.open_sky_m = 0.01; cfg.gps.multipath_m = 0.01; }
+    cfg.eval.hysteresis.enabled = filter;
+    sim::Simulator s(cfg);
+    std::string err;
+    if (!s.load_zones("data/zones/shillong_osm.geojson", &err)) return 0;
+    s.spawn_tourists();
+    s.run();
+    return s.summary().enters + s.summary().exits;
+  };
 
   for (const auto& nm : models) {
-    uint64_t base = 0, kept = 0;
-    for (int mode = 0; mode < 2; ++mode) {
-      sim::SimConfig cfg;
-      cfg.tourists = 60; cfg.groups = 6; cfg.seed = 20260817;
-      cfg.duration_ms = 1800000; cfg.tick_ms = 1000;
-      cfg.gps.correlation = nm.rho;
-      cfg.eval.hysteresis.enabled = (mode == 1);
-      sim::Simulator s(cfg);
-      std::string err;
-      if (!s.load_zones("data/zones/shillong_osm.geojson", &err)) { printf("  %s\n", err.c_str()); return; }
-      s.spawn_tourists();
-      s.run();
-      const uint64_t trans = s.summary().enters + s.summary().exits;
-      if (mode == 0) base = trans; else kept = trans;
-    }
-    const double removed = base ? 100.0 * (1.0 - double(kept) / double(base)) : 0.0;
-    printf("  %-26s %11llu  %11llu  %9.1f%%\n", nm.name,
-           (unsigned long long)base, (unsigned long long)kept, removed);
-    if (csv) fprintf(csv, "%s,%.1f,%llu,%llu,%.1f\n", nm.name, nm.rho,
-                     (unsigned long long)base, (unsigned long long)kept, removed);
+    const uint64_t raw = run(nm.rho, false, false), target = run(nm.rho, false, true);
+    const uint64_t naive = run(nm.rho, true, false), filtered = run(nm.rho, true, true);
+    const double excess = naive > target ? double(naive - target) : 0.0;
+    const double removed = excess > 0 ? 100.0 * (double(naive) - double(filtered)) / excess : 0.0;
+    const double vs_target = target ? 100.0 * double(filtered) / double(target) : 0.0;
+    printf("  %-26s %10llu  %10llu  %10llu  %10llu  %8.1f%%\n", nm.name,
+           (unsigned long long)raw, (unsigned long long)target, (unsigned long long)naive,
+           (unsigned long long)filtered, removed);
+    if (csv) fprintf(csv, "%s,%.1f,%llu,%llu,%llu,%llu,%.1f,%.1f\n", nm.name, nm.rho,
+                     (unsigned long long)raw, (unsigned long long)target,
+                     (unsigned long long)naive, (unsigned long long)filtered, removed, vs_target);
   }
-  printf("\n  The realistic-drift row is the honest headline: hysteresis still removes\n");
-  printf("  the bulk of false transitions even when the noise is NOT artificially jumpy.\n");
+  printf("\n  Filtered vs target is the check that matters: close to 100%% means the filter\n");
+  printf("  recovers what perfect GPS would have reported. Counts are a first-order check;\n");
+  printf("  they do not match individual events to individual crossings.\n");
 }
 
-static void bench_versioned(FILE* csv) {
-  printf("\n\033[1m5. PERSISTENT INDEX  [GAP 3]\033[0m   path copying vs copying the whole tree\n");
-  printf("  %8s  %10s  %12s  %14s  %9s  %11s\n", "versions", "allocated",
-         "full copies", "sharing", "query@past", "query@now");
-  printf("  ──────────────────────────────────────────────────────────────────────────────\n");
-  if (csv) fprintf(csv, "versions,allocated,full_copies,sharing_ratio,query_past_us,query_now_us\n");
-
-  for (size_t n : {50u, 200u, 1000u, 5000u}) {
-    sim::Rng rng(4321);
-    index::VersionedIndex ix;
-    std::vector<geo::LatLon> probes;
-    for (size_t i = 0; i < n; ++i) {
-      const double lat = rng.range(25.50, 25.62), lon = rng.range(91.80, 91.96);
-      const double r = rng.range(0.0004, 0.0025);
-      ix.add_zone(index::ZoneId(i), geo::Bbox{lat - r, lon - r, lat + r, lon + r},
-                  index::Validity{0, kForever}, Timestamp(1000 * (i + 1)));
-    }
-    for (int i = 0; i < 500; ++i)
-      probes.push_back({rng.range(25.49, 25.63), rng.range(91.79, 91.97)});
-
-    const auto st = ix.share_stats();
-    const Timestamp mid = Timestamp(1000 * (n / 2));
-
-    std::vector<index::ZoneId> out;
-    auto t0 = Clock::now();
-    for (const auto& p : probes) { out.clear(); ix.query_at(mid, geo::Bbox::around(p, 450), out); }
-    const double past_us = ms_since(t0) * 1000.0 / double(probes.size());
-
-    t0 = Clock::now();
-    for (const auto& p : probes) { out.clear(); ix.query_now(geo::Bbox::around(p, 450), out); }
-    const double now_us = ms_since(t0) * 1000.0 / double(probes.size());
-
-    printf("  %8zu  %10zu  %12zu  %12.1fx  %8.2f  %10.2f\n", ix.version_count(),
-           st.total_nodes_allocated, st.nodes_if_full_copies, st.sharing_ratio(),
-           past_us, now_us);
-    if (csv) fprintf(csv, "%zu,%zu,%zu,%.2f,%.4f,%.4f\n", ix.version_count(),
-                     st.total_nodes_allocated, st.nodes_if_full_copies,
-                     st.sharing_ratio(), past_us, now_us);
-  }
-  printf("\n  Querying the past costs the same as querying the present -- there is no\n");
-  printf("  replay or reconstruction, just a different root pointer.\n");
-}
 
 // ── 6. Routing: A* vs Dijkstra, node expansions on the road grid ──────────────
 static void bench_routing(FILE* csv) {
-  printf("\n\033[1m6. ROUTING  A* vs DIJKSTRA\033[0m   single-pair queries on a road grid\n");
+  printf("\n\033[1m11. ROUTING  A* vs DIJKSTRA\033[0m  [extension]   single-pair queries on a road grid\n");
   printf("  %8s  %8s  %12s  %12s  %9s  %10s  %10s\n", "nodes", "queries",
          "dijkstra exp", "A* expanded", "less work", "dijkstra us", "A* us");
   printf("  ────────────────────────────────────────────────────────────────────────────────\n");
@@ -317,9 +907,10 @@ static void bench_routing(FILE* csv) {
   printf("  the map-distance heuristic steers the search toward the target.\n");
 }
 
+
 // ── 7. Dispatch: greedy vs optimal (Hungarian) responder assignment ───────────
 static void bench_dispatch(FILE* csv) {
-  printf("\n\033[1m7. DISPATCH  GREEDY vs OPTIMAL\033[0m   total responder travel, averaged over 200 layouts\n");
+  printf("\n\033[1m12. DISPATCH  GREEDY vs OPTIMAL\033[0m  [extension]   total responder travel, averaged over 200 layouts\n");
   printf("  %10s  %12s  %12s  %10s  %10s\n", "responders", "greedy m", "optimal m",
          "saved", "greedy>=opt");
   printf("  ──────────────────────────────────────────────────────────────────────\n");
@@ -360,9 +951,10 @@ static void bench_dispatch(FILE* csv) {
   printf("  early cheap pick can strand a later incident with only a distant responder.\n");
 }
 
+
 // ── 8. Power: adaptive sampling vs continuous polling, at matched recall ──────
 static void bench_power(FILE* csv) {
-  printf("\n\033[1m8. POWER  [GAP 7]\033[0m   risk-adaptive GPS sampling vs continuous 1 Hz\n");
+  printf("\n\033[1m13. ADAPTIVE SAMPLING\033[0m  [extension]   risk-adaptive GPS sampling vs continuous 1 Hz\n");
   printf("  %-22s %11s  %11s  %10s  %12s\n", "day profile", "cont. fixes", "adaptive",
          "battery", "near-zone");
   printf("  %-22s %11s  %11s  %10s  %12s\n", "", "(1 Hz)", "fixes", "saved", "recall");
@@ -406,58 +998,6 @@ static void bench_power(FILE* csv) {
 }
 
 
-// ── 9. Bulk loading: STR vs repeated insertion ───────────────────────────────
-//
-// Inserting n items one at a time makes every ChooseSubtree decision blind to the
-// items still to come, so early splits are guesses and node boxes end up
-// overlapping more than they need to. Overlap is what forces a query down several
-// branches, so it is the thing that actually costs query time. STR knows the
-// whole set up front and packs it into near-square tiles.
-//
-// Four numbers, because "better" needs to be specific: build time, tree size,
-// query time, and -- the one that explains the others -- how many nodes a query
-// has to visit.
-static void bench_bulkload(FILE* csv) {
-  printf("\n\033[1m9. BULK LOADING\033[0m   R-tree: STR packing vs repeated insertion\n");
-  printf("  %8s  %11s  %11s  %9s  %9s  %11s  %11s  %8s\n",
-         "zones", "insert ms", "STR ms", "ins nodes", "STR nodes",
-         "ins us/qry", "STR us/qry", "gain");
-  printf("  ────────────────────────────────────────────────────────────────────────────────────────\n");
-  if (csv) fprintf(csv, "zones,incremental_build_ms,str_build_ms,incremental_nodes,str_nodes,"
-                        "incremental_depth,str_depth,incremental_us,str_us,query_gain\n");
-
-  for (size_t n : {1000u, 10000u, 50000u, 100000u}) {
-    Corpus c = make_corpus(n, 2000, 31337);
-
-    index::RTree inc;
-    auto t0 = Clock::now();
-    inc.build_incremental(c.boxes);
-    const double inc_ms = ms_since(t0);
-
-    index::RTree str;
-    t0 = Clock::now();
-    str.build(c.boxes);
-    const double str_ms = ms_since(t0);
-
-    const Timing inc_t = time_queries(inc, c, 450);
-    const Timing str_t = time_queries(str, c, 450);
-    const auto is = inc.stats(), ss = str.stats();
-
-    printf("  %8zu  %11.1f  %11.1f  %9zu  %9zu  %11.2f  %11.2f  %7.2fx\n",
-           n, inc_ms, str_ms, is.node_count, ss.node_count,
-           inc_t.median_us, str_t.median_us,
-           str_t.median_us > 0 ? inc_t.median_us / str_t.median_us : 0.0);
-    if (csv) fprintf(csv, "%zu,%.2f,%.2f,%zu,%zu,%zu,%zu,%.4f,%.4f,%.3f\n",
-                     n, inc_ms, str_ms, is.node_count, ss.node_count,
-                     is.max_depth, ss.max_depth, inc_t.median_us, str_t.median_us,
-                     str_t.median_us > 0 ? inc_t.median_us / str_t.median_us : 0.0);
-  }
-  printf("\n  Both are O(n log n) to build. What differs is tree QUALITY: STR's tiles\n");
-  printf("  overlap less, so fewer branches are entered per query. A gain near 1.00x on\n");
-  printf("  this corpus would mean the zones are uniform enough that insertion order\n");
-  printf("  barely matters -- which is itself worth reporting rather than hiding.\n");
-}
-
 // ── 10. Churn ────────────────────────────────────────────────────────────────
 //
 // Every structure here was originally written as if it were built once and
@@ -466,7 +1006,7 @@ static void bench_bulkload(FILE* csv) {
 // measured is not wrongness -- correctness is asserted in the tests -- it is
 // DECAY: node counts that never come back down, and query times that drift up.
 static void bench_churn(FILE* csv) {
-  printf("\n\033[1m10. CHURN\033[0m   insert/delete cycles at a constant live-set size\n");
+  printf("\n\033[1m14. INDEX CHURN\033[0m   insert/delete cycles at a constant live-set size\n");
   if (csv) fprintf(csv, "structure,metric,fresh,after_churn,ratio\n");
 
   Corpus c = make_corpus(2000, 1500, 5150);
@@ -548,13 +1088,14 @@ static void bench_churn(FILE* csv) {
   printf("  would close the gap and is noted as a deliberate non-goal in the header.\n");
 }
 
+
 // ── 11. Serialisation  [GAP 6] ───────────────────────────────────────────────
 //
 // The offline claim is that a district's zones ship to a device as a compact blob
 // and are queried locally with no server. That is a size and a latency, so both
 // are measured rather than asserted.
 static void bench_serialization(FILE* csv) {
-  printf("\n\033[1m11. SERIALISATION  [GAP 6]\033[0m   geohash blob: size and round-trip cost\n");
+  printf("\n\033[1m15. SERIALISATION\033[0m  [extension]   geohash blob: size and round-trip cost\n");
   printf("  %8s  %11s  %10s  %11s  %11s  %11s\n",
          "zones", "bytes", "bytes/zone", "write ms", "read ms", "MB/s read");
   printf("  ──────────────────────────────────────────────────────────────────────────\n");
@@ -607,14 +1148,14 @@ static void bench_serialization(FILE* csv) {
 // verdicts compared, so the table is also a correctness check -- a faster
 // algorithm that answers a different question is not faster.
 static void bench_selfintersect(FILE* csv) {
-  printf("\n\033[1m12. SELF-INTERSECTION\033[0m   Shamos-Hoey sweep vs the O(V^2) pairwise"
+  printf("\n\033[1m16. SELF-INTERSECTION\033[0m  [validation]   Shamos-Hoey sweep vs the O(V^2) pairwise"
          " reference, median of 7\n");
   printf("  vertices    pairwise us      sweep us    speedup   verdicts agree\n");
   printf("  ─────────────────────────────────────────────────────────────────────\n");
   if (csv) fprintf(csv, "vertices,pairwise_us,sweep_us,speedup,agree,rings\n");
 
   sim::Rng rng(0x5EEEP1);
-  for (size_t n : {8u, 16u, 24u, 32u, 48u, 64u, 128u, 512u, 2048u}) {
+  for (size_t n : {8u, 16u, 32u, 48u, 64u, 80u, 96u, 112u, 128u, 256u, 512u, 2048u}) {
     // A simple ring, which is the case that matters: a self-intersecting one
     // lets both implementations exit early, and validation's cost is dominated by
     // the polygons that pass. Points on a jittered circle stay simple.
@@ -668,98 +1209,6 @@ static void bench_selfintersect(FILE* csv) {
   printf("  second opinion. The reference is not deleted: it is the oracle.\n");
 }
 
-// ── 13. Interval tree under churn ────────────────────────────────────────────
-//
-// Deletion used to be a tombstone: scan the node array, mark one dead, leave it.
-// That is O(n) per delete and leaves the structure carrying its high-water mark
-// forever. This measures real AVL deletion against the shape it should have --
-// and against a tombstone emulation, so the improvement is a number rather than
-// an assertion in a header.
-static void bench_interval_churn(FILE* csv) {
-  printf("\n\033[1m13. INTERVAL TREE\033[0m   AVL deletion under churn, at a constant live size\n");
-  printf("     live   height fresh  height churned    stab us fresh  stab us churned"
-         "     delete us\n");
-  printf("  ──────────────────────────────────────────────────────────────────────────"
-         "───────────\n");
-  if (csv) fprintf(csv, "live,height_fresh,height_churned,stab_fresh_us,stab_churned_us,"
-                        "delete_us,avl_bound\n");
-
-  for (size_t live : {1000u, 10000u, 50000u}) {
-    sim::Rng rng(0xC4147 + uint64_t(live));
-    auto fill = [&](ds::IntervalTree<int>& t, std::vector<std::pair<Timestamp, Timestamp>>& iv) {
-      for (size_t i = 0; i < live; ++i) {
-        // Deliberately many shared low endpoints -- the shape that made the old
-        // `low`-only key degenerate. A tenth as many distinct starts as entries.
-        const Timestamp lo = Timestamp(rng.below(uint32_t(live / 10 + 1))) * 1000;
-        const Timestamp hi = lo + Timestamp(1 + rng.below(50000));
-        t.insert(lo, hi, int(i));
-        iv.push_back({lo, hi});
-      }
-    };
-
-    ds::IntervalTree<int> fresh;
-    std::vector<std::pair<Timestamp, Timestamp>> fresh_iv;
-    fill(fresh, fresh_iv);
-    const size_t h_fresh = fresh.height();
-
-    // Churn: ten rounds of deleting and reinserting a tenth of the live set, so
-    // the live size returns to where it started every round.
-    ds::IntervalTree<int> churned;
-    std::vector<std::pair<Timestamp, Timestamp>> ch_iv;
-    fill(churned, ch_iv);
-    const size_t batch = live / 10;
-    double delete_ms = 0;
-    size_t deletes = 0;
-    for (int round = 0; round < 10; ++round) {
-      auto t0 = Clock::now();
-      for (size_t i = 0; i < batch; ++i) {
-        const size_t k = size_t(round) * batch + i;
-        churned.remove(ch_iv[k].first, ch_iv[k].second, int(k));
-      }
-      delete_ms += ms_since(t0);
-      deletes += batch;
-      for (size_t i = 0; i < batch; ++i) {
-        const Timestamp lo = Timestamp(rng.below(uint32_t(live / 10 + 1))) * 1000;
-        const Timestamp hi = lo + Timestamp(1 + rng.below(50000));
-        const int id = int(live + size_t(round) * batch + i);
-        churned.insert(lo, hi, id);
-        ch_iv.push_back({lo, hi});
-      }
-    }
-
-    auto stab = [](ds::IntervalTree<int>& t, uint64_t seed) {
-      sim::Rng r(seed);
-      std::vector<int> out;
-      std::vector<Timestamp> probes;
-      for (int i = 0; i < 2000; ++i) probes.push_back(Timestamp(r.below(6000000)));
-      for (Timestamp p : probes) { out.clear(); t.stabbing(p, out); }   // warmup
-      constexpr int kRuns = 7;
-      double s[kRuns];
-      for (int k = 0; k < kRuns; ++k) {
-        auto t0 = Clock::now();
-        for (Timestamp p : probes) { out.clear(); t.stabbing(p, out); }
-        s[k] = ms_since(t0) * 1000.0 / double(probes.size());
-      }
-      std::sort(s, s + kRuns);
-      return s[kRuns / 2];
-    };
-    const double sf = stab(fresh, 77), sc = stab(churned, 77);
-    const double del_us = deletes ? delete_ms * 1000.0 / double(deletes) : 0.0;
-    const double bound = 1.4405 * std::log(double(live) + 2.0) / std::log(2.0);
-
-    printf("  %7zu   %12zu  %14zu   %14.4f  %16.4f  %12.4f\n",
-           live, h_fresh, churned.height(), sf, sc, del_us);
-    if (csv) fprintf(csv, "%zu,%zu,%zu,%.4f,%.4f,%.4f,%.2f\n", live, h_fresh,
-                     churned.height(), sf, sc, del_us, bound);
-  }
-  printf("\n  Height after churn stays at the AVL bound for the LIVE size, and stab\n");
-  printf("  time with it. The tombstone version this replaced kept every deleted\n");
-  printf("  node: height frozen at the high-water mark, max_high inflated by dead\n");
-  printf("  intervals so the pruning bound loosened with every delete, and delete\n");
-  printf("  itself O(n) because finding the victim was a scan of the node array.\n");
-  printf("  Per-delete cost above is logarithmic even though a tenth of the entries\n");
-  printf("  share each low endpoint -- that is the (low, high, value, seq) key.\n");
-}
 
 // ── 14. Node snapping: k-d tree vs the linear scan ───────────────────────────
 //
@@ -769,7 +1218,7 @@ static void bench_interval_churn(FILE* csv) {
 // that justifies which one the pipeline calls, and it re-checks that they return
 // the SAME node, which is the only reason the swap is safe.
 static void bench_snap(FILE* csv) {
-  printf("\n\033[1m14. NODE SNAPPING\033[0m   k-d tree vs linear scan, nearest road junction\n");
+  printf("\n\033[1m17. NODE SNAPPING\033[0m  [extension]   k-d tree vs linear scan, nearest road junction\n");
   printf("     nodes     linear us     k-d tree us      speedup   same node\n");
   printf("  ────────────────────────────────────────────────────────────────────\n");
   if (csv) fprintf(csv, "nodes,linear_us,kdtree_us,speedup,agree,probes\n");
@@ -814,71 +1263,264 @@ static void bench_snap(FILE* csv) {
   printf("  different snap would change the whole dispatch plan.\n");
 }
 
-int main(int argc, char** argv) {
-  std::string out;
-  for (int i = 1; i < argc; ++i)
-    if (!strcmp(argv[i], "--out") && i + 1 < argc) out = argv[++i];
 
-  printf("\n\033[1msafetrail benchmark\033[0m\n");
+
+// ── 18. The evaluator per fix ────────────────────────────────────────────────
+//
+// Sections 1-3 time the index. This times fence::Evaluator::evaluate() end to
+// end -- query box, index, validity, exact geometry, hysteresis, transitions,
+// and the reconciliation step that observes every zone with open state whether
+// or not the index returned it -- on one fixed set of trajectories, replayed
+// from scratch each pass, against a growing zone set. If the per-fix cost were
+// hiding an O(n) term, or if reconciliation re-ran geometry over every zone a
+// walker had ever been near, the row for 50,000 zones would show it.
+//
+// Walkers: 100, one fix per second for 5 minutes, ~1.4 m/s with a random
+// heading drift, accuracy 5 m or 35 m (multipath) at random, and a 1.5 km jump
+// every 150 s -- the GPS-gap case step 9 of the evaluator exists for; the
+// motion window is cleared on a jump as a tracker would. Zones: the OSM set
+// plus n synthetic polygons built the way the simulator builds them. The gate
+// is determinism: two replays must produce the same event checksum.
+namespace {
+struct Walk {
+  std::vector<std::vector<geo::LatLon>> pos;     // [walker][tick]
+  std::vector<std::vector<double>>      acc;     // [walker][tick]
+  std::vector<std::vector<uint8_t>>     jump;    // [walker][tick]: window reset
+  size_t walkers = 0, ticks = 0;
+};
+
+Walk make_walk(size_t walkers, size_t ticks, uint64_t seed) {
+  const geo::Bbox roam{25.50, 91.80, 25.62, 91.95};
+  sim::Rng rng(seed);
+  Walk w;
+  w.walkers = walkers; w.ticks = ticks;
+  w.pos.assign(walkers, {}); w.acc.assign(walkers, {}); w.jump.assign(walkers, {});
+  for (size_t i = 0; i < walkers; ++i) {
+    geo::LatLon p{rng.range(roam.min_lat, roam.max_lat), rng.range(roam.min_lon, roam.max_lon)};
+    double heading = rng.range(0.0, 360.0);
+    for (size_t k = 0; k < ticks; ++k) {
+      bool jumped = false;
+      if (k > 0 && k % 150 == 0) {
+        p = geo::offset(p, rng.range(0.0, 360.0), 1500.0);
+        jumped = true;
+      } else if (k > 0) {
+        heading += rng.normal() * 15.0;
+        p = geo::offset(p, heading, 1.4);
+      }
+      if (!roam.contains(p)) {                       // walked out of the area: turn back
+        heading += 180.0;
+        p = geo::offset(p, heading, 3.0);
+      }
+      w.pos[i].push_back(p);
+      w.acc[i].push_back(rng.uniform() < 0.2 ? 35.0 : 5.0);
+      w.jump[i].push_back(jumped ? 1 : 0);
+    }
+  }
+  return w;
+}
+
+struct EvalRun {
+  fence::Evaluator::Counters counters{};
+  double open_states_mean = 0.0;
+  size_t open_states_max = 0;
+  uint64_t enters = 0, exits = 0, uncertain = 0;
+};
+
+// One full replay. `run` is filled only when non-null (the untimed pass), so the
+// timed passes do nothing but evaluate.
+uint64_t replay(const index::SpatialIndex& ix, const fence::ZoneStore& zones, const Walk& w,
+                EvalRun* run) {
+  fence::Evaluator ev(ix, zones);
+  std::vector<track::Tourist> ts(w.walkers);
+  for (size_t i = 0; i < w.walkers; ++i) ts[i].id = track::TouristId(i);
+  std::vector<fence::Event> out;
+  uint64_t s = 0, states = 0;
+  size_t states_max = 0;
+  for (size_t k = 0; k < w.ticks; ++k) {
+    const int64_t now = int64_t(k + 1) * 1000;
+    for (size_t i = 0; i < w.walkers; ++i) {
+      track::Tourist& t = ts[i];
+      if (w.jump[i][k]) t.pings.clear();
+      t.last_fix = {w.pos[i][k], w.acc[i][k], now};
+      track::Ping ping; ping.fix = t.last_fix;
+      t.pings.push(ping);
+      out.clear();
+      ev.evaluate(t, now, out);
+      for (const auto& e : out)
+        s += mix64((uint64_t(e.kind) + 1) * 0x100000001B3ull + uint64_t(e.zone) * 0x9E3779B1ull +
+                   uint64_t(e.t_ms));
+      if (run) {
+        states += t.zone_states.size();
+        if (t.zone_states.size() > states_max) states_max = t.zone_states.size();
+        for (const auto& e : out) {
+          run->enters    += e.kind == fence::EventKind::ZoneEnter;
+          run->exits     += e.kind == fence::EventKind::ZoneExit;
+          run->uncertain += e.kind == fence::EventKind::ZoneUncertain;
+        }
+      }
+    }
+  }
+  if (run) {
+    run->counters = ev.counters();
+    run->open_states_mean = double(states) / double(w.walkers * w.ticks);
+    run->open_states_max = states_max;
+  }
+  return s;
+}
+}  // namespace
+
+// The zone set for one row. `area_scale` stretches the box the synthetic zones
+// are drawn in: 1 packs them into the walkers' own area (k grows with n, as in
+// section 1); sqrt(n / 5000) holds the density constant (k stays put, section 2).
+static fence::ZoneStore evaluator_zones(size_t n, double area_scale, std::string* err) {
+  fence::ZoneStore zones;
+  if (!zones.load_geojson("data/zones/shillong_osm.geojson", err)) return zones;
+  sim::Rng rng(4242);
+  const double lat0 = 25.48, lon0 = 91.78, lat_span = 0.16 * area_scale, lon_span = 0.19 * area_scale;
+  for (size_t i = 0; i < n; ++i) {                   // as Simulator::add_synthetic_zones
+    const double clat = rng.range(lat0, lat0 + lat_span), clon = rng.range(lon0, lon0 + lon_span);
+    const double r = rng.range(0.0004, 0.0025);
+    geo::Ring ring;
+    const int verts = 6 + int(rng.below(10));
+    for (int v = 0; v < verts; ++v) {
+      const double a = 6.283185307 * double(v) / double(verts);
+      ring.push_back({clat + r * std::sin(a), clon + r * std::cos(a) * 1.1});
+    }
+    fence::Zone z;
+    z.kind = fence::ZoneKind::Caution;
+    z.severity = uint8_t(1 + rng.below(5));
+    z.synthetic = true;
+    z.shape = geo::Polygon(std::move(ring));
+    zones.add(std::move(z));
+  }
+  return zones;
+}
+
+static bool bench_evaluator(FILE* csv) {
+  printf("\n\033[1m18. EVALUATOR PER FIX\033[0m  [core path]   the whole evaluate(), incl. "
+         "reconciliation; 100 walkers x 300 s, us/fix\n");
+  printf("  %-16s %7s  %8s  %6s  %9s  %9s  %11s  %9s  %5s  %6s\n", "regime", "zones", "us/fix",
+         "IQR", "cands/fix", "exact/fix", "reconc./fix", "open mean", "max", "determ");
+  printf("  ─────────────────────────────────────────────────────────────────────────────────────────────\n");
+  if (csv) fprintf(csv, "regime,synthetic_zones,zones,walkers,ticks,evaluations,us_per_fix,iqr_pct,"
+                        "candidates_per_fix,exact_tests_per_fix,out_of_window_per_fix,"
+                        "open_states_mean,open_states_max,enters,exits,uncertain,deterministic\n");
+  const Walk walk = make_walk(100, 300, 20261001);
+  bool all_ok = true;
+  const struct { const char* name; bool fixed_density; std::vector<size_t> sizes; } regimes[] = {
+      {"one district", false, {1000, 5000, 20000}},
+      {"constant density", true, {5000, 20000, 50000}}};
+  for (const auto& rg : regimes) {
+    for (size_t n : rg.sizes) {
+      std::string err;
+      const fence::ZoneStore zones =
+          evaluator_zones(n, rg.fixed_density ? std::sqrt(double(n) / 5000.0) : 1.0, &err);
+      if (!err.empty()) { printf("  cannot load zones: %s\n", err.c_str()); return false; }
+      Items items;
+      for (index::ZoneId id : zones.all_ids()) items.emplace_back(id, zones.get(id)->shape.bbox());
+      index::Quadtree qt;
+      qt.build(items);
+
+      EvalRun run;
+      const uint64_t a = replay(qt, zones, walk, &run), b = replay(qt, zones, walk, nullptr);
+      const bool det = a == b;
+      all_ok = all_ok && det;
+      const size_t evals = walk.walkers * walk.ticks;
+      const auto m = measure({{"evaluator", [&] { return replay(qt, zones, walk, nullptr); }, evals}});
+      const auto& c = run.counters;
+      const double per = double(c.evaluations ? c.evaluations : 1);
+      printf("  %-16s %7zu  %8.3f  %5.1f%%  %9.2f  %9.2f  %11.3f  %9.2f  %5zu  %6s\n", rg.name,
+             zones.size(), m[0].stat.median, m[0].stat.iqr_pct(),
+             double(c.candidates_examined) / per, double(c.exact_tests_run) / per,
+             double(c.out_of_window_observations) / per, run.open_states_mean,
+             run.open_states_max, ok_str(det));
+      if (csv)
+        fprintf(csv, "%s,%zu,%zu,%zu,%zu,%zu,%.4f,%.1f,%.3f,%.3f,%.4f,%.3f,%zu,%llu,%llu,%llu,%d\n",
+                rg.name, n, zones.size(), walk.walkers, walk.ticks, evals, m[0].stat.median,
+                m[0].stat.iqr_pct(), double(c.candidates_examined) / per,
+                double(c.exact_tests_run) / per, double(c.out_of_window_observations) / per,
+                run.open_states_mean, run.open_states_max, (unsigned long long)run.enters,
+                (unsigned long long)run.exits, (unsigned long long)run.uncertain, det ? 1 : 0);
+    }
+  }
+  printf("\n  us/fix tracks cands/fix: the exact geometry on k candidates is the cost, so the\n");
+  printf("  district rows grow with n (k grows with n, as in section 1) and the constant-\n");
+  printf("  density rows do not. reconc./fix is step 9: zones with open state observed\n");
+  printf("  outside the candidate set, one box distance and a hysteresis update each, no\n");
+  printf("  geometry. open mean/max = per-walker zone states (one per in-force candidate\n");
+  printf("  plus the few unsettled out-of-window ones) -- bounded by the neighbourhood.\n");
+  return all_ok;
+}
+
+static FILE* open_csv(const std::string& dir, const char* name) {
+  return dir.empty() ? nullptr : std::fopen((dir + "/" + name).c_str(), "w");
+}
+static void close_csv(FILE* f) { if (f) std::fclose(f); }
+
+int main(int argc, char** argv) {
+  // --out DIR      write CSVs there
+  // --only 1,2,9   run just those sections (default: all). Useful for repeating
+  //                one experiment to see its run-to-run variation.
+  std::string out;
+  uint32_t only = 0;
+  for (int i = 1; i < argc; ++i) {
+    if (!std::strcmp(argv[i], "--out") && i + 1 < argc) out = argv[++i];
+    else if (!std::strcmp(argv[i], "--only") && i + 1 < argc)
+      for (const char* p = argv[++i]; *p;) {
+        char* end = nullptr;
+        const long v = std::strtol(p, &end, 10);
+        if (end == p) break;
+        if (v > 0 && v < 32) only |= 1u << v;
+        p = *end ? end + 1 : end;
+      }
+  }
+  auto want = [only](int section) { return only == 0 || (only & (1u << section)) != 0; };
+
+#if defined(__APPLE__)
+  // A request for the performance cores, not a pin; see the protocol note at the
+  // top. The paired ratios are what keep comparisons valid if it is ignored.
+  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+
+  printf("\n\033[1msafetrail benchmark\033[0m   medians of %d interleaved rounds, each sample "
+         ">= %.0f ms; ratios are paired\n", kRounds, kMinSampleMs);
   printf("═════════════════════════════════════════════════════════════════════════════\n");
 
-  FILE* f1 = out.empty() ? nullptr : fopen((out + "/index_scaling.csv").c_str(), "w");
-  bench_scaling(f1);
-  if (f1) fclose(f1);
+  FILE* f = nullptr;
+  bool g1 = true, g2 = true, g3 = true, g5 = true, g6 = true, g8 = true, g18 = true;
+  if (want(1)) { f = open_csv(out, "index_scaling.csv"); g1 = bench_scaling(f);    close_csv(f); }
+  if (want(2)) { f = open_csv(out, "index_density.csv"); g2 = bench_density(f);    close_csv(f); }
+  if (want(3)) { f = open_csv(out, "end_to_end.csv");    g3 = bench_end_to_end(f); close_csv(f); }
+  if (want(4)) { f = open_csv(out, "index_costs.csv");   bench_costs(f);           close_csv(f); }
+  if (want(5)) g5 = bench_equivalence();
+  if (want(6)) g6 = bench_containment();
+  if (want(7)) { f = open_csv(out, "index_build.csv");   bench_bulkload(f);        close_csv(f); }
+  if (want(8)) { f = open_csv(out, "interval_tree.csv"); g8 = bench_interval(f);   close_csv(f); }
+  if (want(9)) {
+    f = open_csv(out, "versioned_index.csv");
+    FILE* f2 = open_csv(out, "versioned_mutations.csv");
+    bench_versioned(f, f2);
+    close_csv(f); close_csv(f2);
+  }
+  if (want(18)) { f = open_csv(out, "evaluator_cost.csv"); g18 = bench_evaluator(f); close_csv(f); }
 
-  const bool eq = bench_equivalence();
+  if (want(10) || want(11) || want(12) || want(13) || want(14) || want(15) || want(16) || want(17))
+    printf("\n\033[1m── extensions ──────────────────────────────────────────────────────────────\033[0m\n");
+  if (want(10)) { f = open_csv(out, "hysteresis_ab.csv");     bench_hysteresis(f);    close_csv(f); }
+  if (want(11)) { f = open_csv(out, "routing.csv");           bench_routing(f);       close_csv(f); }
+  if (want(12)) { f = open_csv(out, "dispatch.csv");          bench_dispatch(f);      close_csv(f); }
+  if (want(13)) { f = open_csv(out, "power.csv");             bench_power(f);         close_csv(f); }
+  if (want(14)) { f = open_csv(out, "index_churn.csv");       bench_churn(f);         close_csv(f); }
+  if (want(15)) { f = open_csv(out, "serialization.csv");     bench_serialization(f); close_csv(f); }
+  if (want(16)) { f = open_csv(out, "self_intersection.csv"); bench_selfintersect(f); close_csv(f); }
+  if (want(17)) { f = open_csv(out, "node_snap.csv");         bench_snap(f);          close_csv(f); }
 
-  FILE* f2 = out.empty() ? nullptr : fopen((out + "/hysteresis_ab.csv").c_str(), "w");
-  bench_hysteresis(f2);
-  if (f2) fclose(f2);
-
-  const bool cc = bench_containment();
-
-  FILE* f3 = out.empty() ? nullptr : fopen((out + "/versioned_index.csv").c_str(), "w");
-  bench_versioned(f3);
-  if (f3) fclose(f3);
-
-  FILE* f4 = out.empty() ? nullptr : fopen((out + "/routing.csv").c_str(), "w");
-  bench_routing(f4);
-  if (f4) fclose(f4);
-
-  FILE* f5 = out.empty() ? nullptr : fopen((out + "/dispatch.csv").c_str(), "w");
-  bench_dispatch(f5);
-  if (f5) fclose(f5);
-
-  FILE* f6 = out.empty() ? nullptr : fopen((out + "/power.csv").c_str(), "w");
-  bench_power(f6);
-  if (f6) fclose(f6);
-
-  FILE* f7 = out.empty() ? nullptr : fopen((out + "/index_build.csv").c_str(), "w");
-  bench_bulkload(f7);
-  if (f7) fclose(f7);
-
-  FILE* f8 = out.empty() ? nullptr : fopen((out + "/index_churn.csv").c_str(), "w");
-  bench_churn(f8);
-  if (f8) fclose(f8);
-
-  FILE* f9 = out.empty() ? nullptr : fopen((out + "/serialization.csv").c_str(), "w");
-  bench_serialization(f9);
-  if (f9) fclose(f9);
-
-  FILE* f10 = out.empty() ? nullptr : fopen((out + "/self_intersection.csv").c_str(), "w");
-  bench_selfintersect(f10);
-  if (f10) fclose(f10);
-
-  FILE* f11 = out.empty() ? nullptr : fopen((out + "/interval_churn.csv").c_str(), "w");
-  bench_interval_churn(f11);
-  if (f11) fclose(f11);
-
-  FILE* f12 = out.empty() ? nullptr : fopen((out + "/node_snap.csv").c_str(), "w");
-  bench_snap(f12);
-  if (f12) fclose(f12);
-
+  const bool all = g1 && g2 && g3 && g5 && g6 && g8 && g18;
   printf("\n═════════════════════════════════════════════════════════════════════════════\n");
-  printf("  correctness gates: equivalence %s   containment %s\n",
-         eq ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m",
-         cc ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m");
+  printf("  correctness gates: scaling %s  density %s  end-to-end %s  equivalence %s  "
+         "containment %s  interval %s  evaluator %s\n", ok_str(g1), ok_str(g2), ok_str(g3),
+         ok_str(g5), ok_str(g6), ok_str(g8), ok_str(g18));
   if (!out.empty()) printf("  csv written to %s/\n", out.c_str());
   printf("\n");
-  return (eq && cc) ? 0 : 1;
+  return all ? 0 : 1;
 }

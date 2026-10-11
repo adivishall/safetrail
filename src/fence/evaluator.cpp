@@ -41,6 +41,7 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
   // A fix with 200 m of uncertainty resolves to Uncertain against everything it
   // is near and produces nothing but noise. Reject it outright.
   if (!t.last_fix.usable()) { ++counters_.fixes_rejected_noise; return; }
+  const uint64_t epoch = ++t.eval_epoch;
 
   // ── 2/3. spatial prune ─────────────────────────────────────────────────────
   // The entire performance story. 100k zones -> a handful of candidates before
@@ -49,6 +50,10 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
   const double radius = query_radius_m(t);
   if (radius >= cfg_.max_query_radius_m) ++counters_.radius_clamped_max;
   index_.query(geo::Bbox::around(t.last_fix.pos, radius), candidate_buf_);
+  // Evaluate in zone-id order, whatever order the index emitted: the events a
+  // tick produces -- and everything downstream that numbers or groups them --
+  // must not depend on which index is plugged in. O(k log k) on a handful.
+  std::sort(candidate_buf_.begin(), candidate_buf_.end());
 
   if (candidate_buf_.size() > cfg_.max_candidates) {
     ++counters_.candidate_cap_hits;
@@ -67,9 +72,15 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
       }
       std::sort(ranked_buf_.begin(), ranked_buf_.end());
       counters_.candidates_dropped += candidate_buf_.size() - cfg_.max_candidates;
+      // A dropped candidate WAS returned by the index -- it may contain the fix --
+      // so its open state must not be reconciled as a certain Outside (step 9).
+      // It keeps its state unchanged: the documented cost of this policy.
+      for (size_t i = cfg_.max_candidates; i < ranked_buf_.size(); ++i)
+        if (track::ZoneState* s = t.find_state(ranked_buf_[i].second)) s->seen_epoch = epoch;
       candidate_buf_.clear();
       for (size_t i = 0; i < cfg_.max_candidates; ++i)
         candidate_buf_.push_back(ranked_buf_[i].second);
+      std::sort(candidate_buf_.begin(), candidate_buf_.end());
     }
     // ExactAlways: the cap is a diagnostic. Nothing is dropped -- a discarded
     // candidate is a missed breach, and that is not a trade this system makes by
@@ -86,7 +97,9 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
     if (!z) continue;
 
     // GAP 3, temporal filter. A zone out of force is not merely low priority --
-    // it does not exist right now, so it must not generate transitions either way.
+    // it does not exist right now. It is skipped here; if the tourist had open
+    // state with it, step 9 closes that state (with a ZoneExit if it was Inside),
+    // so the zone's next activation starts from a clean Outside.
     if (!z->validity.active_at(now_ms)) continue;
 
     // Bbox distance, used only to feed the adaptive sampler's "how far is the
@@ -111,6 +124,7 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
 
     // ── 6. hysteresis  [GAP 8] ───────────────────────────────────────────────
     track::ZoneState& st = t.state_for(zid);
+    st.seen_epoch = epoch;
     HysteresisConfig hc = cfg_.hysteresis;
     if (z->enter_margin_m > 0) hc.enter_margin_m = z->enter_margin_m;
     if (z->exit_margin_m  > 0) hc.exit_margin_m  = z->exit_margin_m;
@@ -119,28 +133,7 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
     if (st.hyst.suppressed_last_update()) ++counters_.flaps_suppressed;
 
     // ── 7. transition diff -> EVENTS ─────────────────────────────────────────
-    // State is not an event. We emit only changes; reporting current containment
-    // every tick is what makes existing dashboards unusable.
-    if (confirmed != st.confirmed) {
-      Event e{};
-      e.tourist = t.id; e.zone = zid; e.t_ms = now_ms;
-      e.depth_m = sd; e.accuracy_m = t.last_fix.accuracy_m; e.containment = confirmed;
-
-      if (confirmed == geo::Containment::Inside) {
-        e.kind = EventKind::ZoneEnter;
-        st.entered_ms = now_ms;
-        st.dwell_reported = false;
-        out.push_back(e);
-      } else if (st.confirmed == geo::Containment::Inside) {
-        e.kind = EventKind::ZoneExit;
-        out.push_back(e);
-      } else if (confirmed == geo::Containment::Uncertain) {
-        e.kind = EventKind::ZoneUncertain;      // the honest third state
-        out.push_back(e);
-      }
-      st.confirmed = confirmed;
-      st.approach_reported = false;
-    }
+    emit_transition(t, st, confirmed, sd, now_ms, out);
 
     // dwell limit
     if (st.confirmed == geo::Containment::Inside && z->max_dwell_ms > 0 &&
@@ -178,8 +171,87 @@ void Evaluator::evaluate(track::Tourist& t, int64_t now_ms, std::vector<Event>& 
     }
   }
 
+  // ── 9. reconciliation ──────────────────────────────────────────────────────
+  reconcile(t, epoch, now_ms, out);
+
   // Feed the sampler for the next tick.
   t.sampler.should_sample(now_ms, nearest_m, t.speed_mps(), t.alert_active);
+}
+
+// State is not an event. We emit only changes; reporting current containment
+// every tick is what makes existing dashboards unusable.
+void Evaluator::emit_transition(track::Tourist& t, track::ZoneState& st,
+                                geo::Containment confirmed, double sd, int64_t now_ms,
+                                std::vector<Event>& out) {
+  if (confirmed == st.confirmed) return;
+  Event e{};
+  e.tourist = t.id; e.zone = st.zone; e.t_ms = now_ms;
+  e.depth_m = sd; e.accuracy_m = t.last_fix.accuracy_m; e.containment = confirmed;
+
+  if (confirmed == geo::Containment::Inside) {
+    e.kind = EventKind::ZoneEnter;
+    st.entered_ms = now_ms;
+    st.dwell_reported = false;
+    out.push_back(e);
+  } else if (st.confirmed == geo::Containment::Inside) {
+    e.kind = EventKind::ZoneExit;
+    out.push_back(e);
+  } else if (confirmed == geo::Containment::Uncertain) {
+    e.kind = EventKind::ZoneUncertain;      // the honest third state
+    out.push_back(e);
+  }
+  st.confirmed = confirmed;
+  st.approach_reported = false;
+}
+
+// Step 9. Every zone the tourist has state with is observed on every usable fix,
+// not only the ones the index happened to return. See the header for why.
+void Evaluator::reconcile(track::Tourist& t, uint64_t epoch, int64_t now_ms,
+                          std::vector<Event>& out) {
+  size_t keep = 0;
+  for (size_t i = 0; i < t.zone_states.size(); ++i) {
+    track::ZoneState& st = t.zone_states[i];
+    bool drop = false;
+    if (st.seen_epoch != epoch) {
+      const Zone* z = zones_.get(st.zone);
+      if (!z || !z->validity.active_at(now_ms)) {
+        // Out of force or deleted: the zone does not exist right now, so there
+        // is nothing to be inside of. Close the state; a ZoneExit only if the
+        // tourist was confirmed Inside. depth_m is 0: no geometry was measured.
+        if (st.confirmed == geo::Containment::Inside) {
+          Event e{};
+          e.kind = EventKind::ZoneExit; e.tourist = t.id; e.zone = st.zone; e.t_ms = now_ms;
+          e.accuracy_m = t.last_fix.accuracy_m; e.containment = geo::Containment::Outside;
+          out.push_back(e);
+        }
+        ++counters_.states_closed;
+        drop = true;
+      } else {
+        // In force but not returned: a certain Outside (the query box bounds a
+        // disc at least as large as the fix's uncertainty). The bbox distance is
+        // a lower bound on the signed distance, and it is at least the query
+        // radius -- which exceeds the default exit margin -- so this reads as a
+        // clear exit to the hysteresis machine and still needs its usual run of
+        // agreeing fixes before it is confirmed.
+        ++counters_.out_of_window_observations;
+        const double sd = z->shape.bbox().min_distance_m(t.last_fix.pos);
+        HysteresisConfig hc = cfg_.hysteresis;
+        if (z->enter_margin_m > 0) hc.enter_margin_m = z->enter_margin_m;
+        if (z->exit_margin_m  > 0) hc.exit_margin_m  = z->exit_margin_m;
+        const geo::Containment confirmed =
+            st.hyst.update(geo::Containment::Outside, sd, now_ms, hc);
+        if (st.hyst.suppressed_last_update()) ++counters_.flaps_suppressed;
+        emit_transition(t, st, confirmed, sd, now_ms, out);
+        drop = st.confirmed == geo::Containment::Outside &&
+               st.hyst.phase() == HysteresisState::Phase::Outside;
+      }
+    }
+    if (!drop) {
+      if (keep != i) t.zone_states[keep] = t.zone_states[i];
+      ++keep;
+    }
+  }
+  t.zone_states.resize(keep);
 }
 
 void Evaluator::evaluate_all(std::vector<track::Tourist>& ts, int64_t now_ms,

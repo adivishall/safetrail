@@ -1,352 +1,206 @@
 # SafeTrail
 
-**An efficient tourist geofencing engine.** Given many geographic hazard zones
-(polygons) and a stream of tourist location updates, it decides — repeatedly, over
-time — whether each tourist is **inside, outside, or uncertain** relative to the
-hazardous zones, and when they **cross a boundary**. It does this with
-**hand-built spatial data structures and computational geometry**, no PostGIS, no
-Boost, no spatial library.
+**An efficient geofencing engine in C++17, built on hand-written spatial and
+temporal data structures, measured against brute force, and tested until the
+fast answer is provably the same as the slow one.**
 
-> **The one question this project answers:**
-> *How much faster can custom spatial data structures make repeated geofencing
-> queries, without ever changing the correct result?*
+**What it is.** Given up to 100,000 hazard-zone polygons and a stream of noisy
+GPS fixes, SafeTrail decides, fix after fix, whether each person is **inside,
+outside or uncertain** relative to every zone near them, and emits an event only
+when that changes. Zones switch on and off over time, and every past
+configuration stays queryable.
 
-This is a **Data Structures course project**. The data structures are the
-deliverable; the simulator, dashboard, and CI exist only to exercise them and
-prove they work.
+**Why.** Checking every zone against every fix is O(n) per fix — 711 million
+box tests in one simulated hour of the demo scenario. Repeated containment is the
+whole cost of geofencing, and a spatial index is the data-structures answer to it.
 
-![SafeTrail dashboard — animated tourists and hazard zones over real OpenStreetMap geography, with the live brute-force vs quadtree vs R-tree benchmark table and the O(log n + k) explanation](docs/images/dashboard-main.png)
+**What I built.** Five structures behind one interface, with no spatial library
+and no dependencies beyond a C++17 compiler: a brute-force scan (kept as the
+oracle), a **quadtree**, an **STR-packed R-tree**, an **AVL interval tree** for
+"which rules are in force at t", and a **persistent quadtree** for "what were the
+rules at 14:32". Around them: exact point-in-polygon geometry under GPS
+uncertainty, a hysteresis state machine that turns noisy positions into
+trustworthy transitions, a benchmark harness, and a one-file dashboard.
 
-<sub>The self-contained `make dashboard` (open `dashboard.html`, no server, no network). Real OSM geography around Shillong; the right panel is the measured benchmark, straight from `bench/results/index_scaling.csv`.</sub>
+**What makes it interesting.** The index is only allowed to make the answer
+faster, never different. Every structure is compared with a brute-force oracle on
+randomized hostile workloads with its invariants audited after every operation;
+the whole engine must emit bit-identical events under all four indexes; and 22
+injected bugs must each be caught by a test (22/22). That process found **ten
+real defects** in code that was passing its tests.
 
-**The index switch draws the *actual* structure each index builds on the same data** — the quadtree's disjoint space partition vs the R-tree's overlapping item envelopes:
+- **Result (measured):** at 100,000 zones in one district,
+  <!-- results:keyline -->the R-tree answers the index query **224× faster** than a linear scan (211–224× over 4 runs in one session) and the quadtree **33.7×** (31.7–33.7×), returning identical results<!-- /results:keyline -->.
+  The R-tree's ratio moves between sessions: an earlier session on the same
+  laptop measured 102–114×, so read ~100× as the floor
+  ([why](docs/RESULTS.md#read-this-first)).
+- **Run it:** `make review` — the whole story from real runs in about a minute,
+  ending with the dashboard. Or piece by piece: `make test && make demo && make
+  dashboard`. A C++17 compiler and `make`, nothing else.
+
+> **Project review:** [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) is the 5-minute live
+> demo built on `make review`; [REVIEW_QA.md](docs/REVIEW_QA.md) answers the
+> questions it raises from the code; [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html)
+> is ten slides whose numbers are generated from the committed benchmark results.
+
+| Structure | Answers | Bound (theoretical) | Implementation |
+|---|---|---|---|
+| **Brute force** | which zone boxes meet this box? (the oracle) | O(n) | a scanned vector, kept forever as the baseline |
+| **Quadtree** | same, partitioning **space** | O(log n + k) expected; O(n) worst | root fitted to data, doubling expansion, collapse on delete |
+| **R-tree** | same, partitioning **items** | O(log n + k) expected; O(n) worst | quadratic split, **STR bulk loading**, condensing delete |
+| **AVL interval tree** | which rules are in force at t? | O(log n) to find one; O(min(n, (k + 1) log n)) to report k, worst case | max-high augmentation, total-order key |
+| **Persistent quadtree** | what were the rules at 14:32? | O(depth) new nodes per change | path copying + append-only validity log |
+
+k is the number of results. No spatial library, no
+`std::map`/`set`/`unordered_map`/`priority_queue`, no dependencies beyond a C++17
+compiler. [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) covers each structure's
+invariants and bounds.
+
+![SafeTrail dashboard: simulated tourists over real OpenStreetMap hazard zones around Shillong, with the index-scaling table measured by make bench](docs/images/dashboard-main.png)
+
+<sub>`make dashboard` writes one self-contained HTML file (no server, no network):
+real OpenStreetMap zones, simulated tourists, the event stream, and a switch that
+draws each index's actual structure on the same data.</sub>
 
 | Quadtree — partitions **space** (disjoint cells) | R-tree — partitions **items** (overlapping envelopes) |
 |---|---|
-| ![Quadtree spatial index: the map overlaid with the quadtree's recursive disjoint grid cells](docs/images/dashboard-quadtree.png) | ![R-tree spatial index: the map overlaid with the R-tree's overlapping green bounding-box envelopes](docs/images/dashboard-rtree.png) |
+| ![Quadtree cells over the zones](docs/images/dashboard-quadtree.png) | ![R-tree envelopes over the zones](docs/images/dashboard-rtree.png) |
 
----
+## Measured results (empirical)
 
-## The problem
+Speedups are **paired ratios against this project's own brute force**, shown with
+their range over independent runs. Absolute times are one laptop's
+(<!-- results:machine -->Apple M4, Battery power, load average 2.61 at the start, commit a29ef13<!-- /results:machine -->; see
+[RESULTS.md](docs/RESULTS.md) for the protocol). Every number is generated from
+`bench/results/*.csv`.
 
-Repeated geofencing gets expensive as the number of zones grows. The naive method
-checks **every zone for every tourist, every tick**:
+<!-- results:headline -->
+| Workload | Brute force / naive | Quadtree speedup (range over runs) | R-tree speedup (range over runs) |
+|---|---:|---:|---:|
+| Range query, 100,000 zones in one district (k ≈ 98) | 239 µs | 33.7× (31.7–33.7×) | 224× (211–224×) |
+| Range query, 100,000 zones at constant density (k ≈ 1) | 216 µs | 543× (423–543×) | 1042× (845–1042×) |
+| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 262 µs | 1461× (1461–1552×) | 2088× (ratio of medians) |
+<!-- /results:headline -->
 
-```
-200 tourists × 100,000 zones × 40 vertices  =  800 million geometry ops / tick
-```
+What the numbers say, and why:
 
-SafeTrail improves this in three stages, and each stage is a data-structures problem:
+- **The speedup has a ceiling, and it is the answer size.** In one crowded
+  district, about 100 zones really do overlap each query at 100,000 zones, and
+  every index must return all of them, so the quadtree's ratio stops growing
+  after a few thousand zones. Hold the density constant so each query overlaps
+  about one zone, and the same code is hundreds of times faster at 100,000
+  zones. O(log n + k), measured both ways. (§1–2)
+- **The index accelerates the filter, not the geometry.** Against checking every
+  polygon the tree wins by two to three orders of magnitude, more as polygons
+  get more complex; against a plain bounding-box scan followed by the same exact
+  test the margin is far smaller and shrinks as vertex counts grow, because the
+  exact test on the few candidates is the same work in both.
+  ([RESULTS.md](docs/RESULTS.md) §3)
+- **STR packing matters**: a bulk-loaded R-tree is about 6× faster to query than
+  the same R-tree built by insertion at 100,000 zones. (§7)
+- **The interval tree wins only when the query is selective**: an order of
+  magnitude or more over a linear scan for short windows; when hundreds of
+  windows contain every instant it loses to the scan at 1,000 windows and is at
+  most a small factor ahead at 100,000 — what its O(min(n, (k + 1) log n)) bound
+  predicts. That is why the engine checks validity in O(1) per candidate per
+  tick and uses the tree only for history queries. (§8)
+- **Persistence is cheap**: one root-to-leaf path per change (≈15 nodes on a
+  5,000-zone index), zero for a rule change, and a query against the past costs
+  the same as one against the present. (§9)
+- **Reconciliation does not undo the index**: <!-- results:evalfix -->the whole `evaluate()` — index, geometry, hysteresis and the observation of every zone with open state — costs **4.93 µs per fix at 5,038 zones and 5.52 µs at 50,038** when the zone density is held constant; packed into one district it costs 2.19 µs at 1,038 zones and 17.0 µs at 20,038, tracking the candidate count (k grows with n, as in §1). Reconciliation itself is 0.08–1.42 zones observed per fix outside the candidate set, a box distance each, no geometry<!-- /results:evalfix -->. (§18)
 
-1. **Spatial pruning** — a tree returns only the handful of zones near the tourist.
-2. **Exact geometry** — point-in-polygon decides the actual answer for those few.
-3. **State-transition detection** — emit an event only when containment *changes*.
+## How correctness is established (evidence)
 
-> **Spatial index finds the candidates; geometry determines the actual answer.**
-> That sentence is the whole architecture.
+| Method | What it covers |
+|---|---|
+| **Oracles** | every fast structure has an independent one: brute force for the indexes, a linear scan for the interval tree, a full-table replay for the persistent index, winding number for ray casting, an O(V²) scan for the sweep line |
+| **Differential tests** | ~55,000 queries per index over seven hostile workload profiles (identical boxes, zero-area boxes, touching edges, both hemispheres, poles, past lon 180, far inserts), mixed with inserts, removals and rebuilds |
+| **Invariant audits** | each core structure's `check_invariants()` runs after **every** operation in those tests |
+| **End to end** | the whole engine under all four indexes must emit bit-identical event streams |
+| **Mutation testing** | 22 realistic bugs injected into the core; the suite must fail on each (`make mutation`: 22/22) |
+| **Sanitizers, warnings, analysis** | the whole suite is UBSan-clean on macOS and gated under ASan + UBSan in Linux CI; `-Werror` builds with clang, and with g++ 13 in CI; Clang Static Analyzer: 0 findings |
 
-## The solution — five core data structures
+This process found **ten defects** in code that was already passing its tests —
+eight in the engine, two in how it was measured. One was the state machine never
+observing a zone again after it left the candidate window: a missed exit, then a
+silent re-entry. Another, in the hysteresis filter, produced about 60% of the
+demo's enter/exit events. Each is pinned: by a test that fails on the old code,
+or, where the test now uses API the old code lacks, by a mutant that reverts the
+fix; the measurement defect is pinned by the benchmark's own gates
+([DEFECT_LOG.md](docs/DEFECT_LOG.md), [TESTING.md](docs/TESTING.md) §5).
 
-The project is built around exactly **five** spatial/temporal structures, all
-hand-written, all measured against each other on identical data and queries:
-
-| # | Structure | Problem it solves | Key operation | Complexity |
-|---|---|---|---|---|
-| 1 | **Brute force** | baseline + correctness oracle | scan all zones | `O(n)` |
-| 2 | **Quadtree** | spatial search | range query | `O(log n + k)` avg |
-| 3 | **R-tree** | spatial search (compared) | range query | `O(log n + k)` avg |
-| 4 | **Interval tree** | temporal filtering | overlap (stab) query | `O(log n + k)` guaranteed |
-| 5 | **Persistent quadtree** | historical spatial state | query a past version | `O(log n + k)` avg |
-
-Everything else in the repository is an **extension** built on top of these (see
-[the hierarchy](#the-project-in-four-levels) and
-[COURSE_MAPPING.md](docs/COURSE_MAPPING.md)).
-
-## How one query works (the hot path)
-
-The canonical flow, per tourist per tick:
-
-```
-   tourist location update
-            │
-            ▼
-   ┌──────────────────┐   1. spatial index  (Quadtree / R-tree)   O(log n + k)
-   │  candidate zones │      100,000 zones → ~a handful
-   └──────────────────┘
-            │
-            ▼
-   ┌──────────────────┐   2. interval tree   "active at time t?"   O(log n + k)
-   │  active candidates│
-   └──────────────────┘
-            │
-            ▼
-   ┌──────────────────┐   3. exact geometry  ray casting → 3-valued   O(k·V)
-   │ inside / outside │      (Inside / Outside / Uncertain);
-   │   / uncertain    │      winding number cross-checks it in tests
-   └──────────────────┘
-            │
-            ▼
-   ┌──────────────────┐   4. compare with previous state           O(k)
-   │ Entered / Exited │      emit an event only on a CHANGE
-   │   / Uncertain    │
-   └──────────────────┘
-```
-
-**Step 1 is the entire performance story.** Everything after it runs on a handful
-of candidates instead of all 100,000 zones. The rest is rounding.
-
-## The main experiment — brute force vs quadtree vs R-tree
-
-One dataset, one query workload, three indexes. Full table and caveats in
-[docs/RESULTS.md](docs/RESULTS.md) (the single source of truth for every number).
-Timings are the **median of 7 passes**; each speedup is a ratio to **our own brute
-force**, the correctness oracle — not to an external library.
-
-| zones | brute force | quadtree | R-tree (STR) | quadtree gain | R-tree gain | candidates/query |
-|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 2.75 µs | 0.10 µs | 0.11 µs | 28.4× | 25.1× | 0.97 |
-| 10,000 | 22.86 µs | 0.64 µs | 0.30 µs | 35.6× | 76.0× | 9.81 |
-| 100,000 | **243.7 µs** | **6.95 µs** | **1.00 µs** | **~35×** | **~240–260×** | **98.78** |
-
-![index scaling](bench/plots/index_scaling.svg)
-
-Two results matter more than the raw speedup:
-
-- **Correctness first.** 18,000 randomized queries across three densities,
-  **0 mismatches** between each fast index and brute force (`make bench` §2). A fast
-  wrong answer is worthless; this is what makes the speedups mean anything.
-- **The speedup has a ceiling, and explaining it is the point.** All three indexes
-  return the *same* candidate count, because those are true positives. At 100,000
-  dense zones ~99 zones genuinely overlap each query, and **no index can return
-  fewer results than exist** — the ceiling is output size `k`, exactly as
-  `O(log n + k)` predicts. The design doc first guessed ~29,000×; measurement
-  disciplined it to ~35×, and understanding *why* is worth more than the big number.
-
-## Time-dependent zones — the interval tree
-
-A static spatial index answers "which zones are *near* here?" It cannot answer
-"which zones are *in force* right now?" — hazards turn on and off (a night curfew, a
-temporary landslide closure). The **AVL interval tree** stabs the set of validity
-windows overlapping time `t` in `O(log n + k)`, *guaranteed* — it is the one
-structure on the query path with a real worst-case bound, because it balances on
-data, not space. See [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md).
-
-## Historical queries — the persistent quadtree
-
-*"What hazard-zone configuration was active at 14:32?"* The **persistent
-(path-copying) quadtree** answers it. Each mutation copies only the `O(depth)` nodes
-on one root-to-leaf path and **shares every untouched subtree** by reference count,
-so the whole history is retained for a fraction of the cost of copying the tree per
-version — **measured 13.0× structural sharing at 5,001 versions**, and querying the
-past is as cheap as querying the present. This is the most advanced structure in the
-project.
-
-```
-   version 1          version 2 (one zone moved)     version 3 (rule changed)
-      root ───────────── root'  (new path only)        root'   (SHARED — a
-     / | \ \            /  |  \  \                      / | \ \   validity-only
-    A  B  C  D        A'   B   C   D                   A' B  C  D  change copies
-       ▲  ▲  ▲   ← B,C,D shared from v1 by refcount        ▲ ▲ ▲   ZERO nodes)
-```
-
-## Demo
-
-No dependencies beyond a C++17 compiler.
+## Run it
 
 ```bash
-make demo        # run the simulation, print the event stream + counters
-make bench       # brute force vs quadtree vs R-tree, + correctness gates
-make test        # unit, golden and integration tests (~25 s)
-make dashboard   # writes dashboard.html — open it, no server needed
+make review       # the project walkthrough: every index, identical answers,
+                  # transitions, noise, history, the benchmark results, tests,
+                  # dashboard (PAUSE=1 to step through it while presenting)
+make test         # 45 test files, ~11,800 checks (~20 s once built)
+make demo         # the engine on real OSM zones: event stream + counters
+make dashboard    # writes dashboard.html; just open it
+make bench        # every benchmark (~2–3 min), regenerates the tables above
+make validate     # everything that gates a merge: -Werror, docs, tests,
+                  # determinism, sanitizers, CMake + ctest
+make mutation     # the mutation check (needs python3)
 ```
 
-`make dashboard` produces a single self-contained HTML file (zero network
-requests): an animated map over **real OpenStreetMap geography** around Shillong,
-Meghalaya, a timeline scrubber, an **index-mode switch** that draws the real cells
-of all three indexes (**brute force → quadtree → R-tree**, so you can see the
-quadtree's disjoint grid vs the R-tree's overlapping envelopes on the same data),
-and a **persistent-index panel** showing consecutive versions with the copied path
-highlighted and shared subtrees dimmed — path copying made visible. Full
-step-by-step in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
+Plain `make` and a C++17 compiler. Developed with Apple clang 17; CI builds with
+g++ 13 and clang on Linux and Apple clang on macOS. CMake builds the same source
+set from the same flag files (`make cmake-build`). The
+dashboard opens `#index=rtree&frame=400` style deep links.
 
-```bash
-make determinism # same seed twice, assert byte-identical output
-make check       # every header compiles standalone
-make asan        # whole suite under AddressSanitizer + UBSan (Linux/CI)
-make ubsan       # whole suite under UBSan only (macOS ASan fallback)
-make cmake-build # build a second way, so the two build systems can't drift
-```
-
----
-
-## How to explain this project in 60 seconds
-
-> *"SafeTrail decides whether tourists are entering dangerous zones. The naive way
-> checks every zone against every tourist every second — millions of operations. I
-> built spatial data structures — a quadtree and an R-tree — that prune 100,000
-> zones down to the handful actually near each tourist, then run exact
-> point-in-polygon geometry on just those. I proved correctness by comparing every
-> fast index against a brute-force oracle over 18,000 randomized queries with zero
-> mismatches, and measured a ~35× (quadtree) to ~250× (R-tree) speedup at 100,000
-> zones. An interval tree handles zones that turn on and off over time, and a
-> persistent version of the quadtree lets me ask what the map looked like at any
-> past moment for incident investigation. Everything is hand-written — no spatial
-> library — because the structures are the point of the course."*
-
-## Five questions this project answers
-
-1. **Why is brute force too slow?** It is `O(n)` per query — linear in the zone
-   count — so cost grows without bound as zones are added. [See §1.](docs/RESULTS.md)
-2. **How does a quadtree reduce the work?** It subdivides space so a query descends
-   only the branches that can overlap it — `O(log n + k)` on spread data.
-3. **Why compare a quadtree *and* an R-tree?** They make opposite trade-offs
-   (partition space vs partition items); measuring both on identical data shows the
-   R-tree's STR bulk packing winning by ~7×, and *why*.
-4. **How do we handle time-varying zones?** An AVL interval tree answers "active at
-   time `t`?" in guaranteed `O(log n + k)`.
-5. **How can historical states be queried efficiently?** A persistent path-copying
-   quadtree shares untouched subtrees across versions — 13× cheaper than full copies.
-
-Full answers to these and 15 more viva questions: [docs/VIVA.md](docs/VIVA.md).
-
-## The project in four levels
-
-The whole repository is organized as a strict hierarchy, so a reader always knows
-what is core and what is supporting work:
+## How it fits together
 
 ```
-Level 1 — Core problem      Efficient repeated geofencing.
-Level 2 — Core structures   Brute force · Quadtree · R-tree · Interval tree
-                            · Persistent quadtree.
-Level 3 — Core algorithms   Ray casting · Winding number · Segment intersection
-                            · State transitions.
-Level 4 — Extensions        Groups · Prediction · Offline sync · Merkle log
-                            · Routing (Dijkstra/A*) · Dispatch (Hungarian)
-                            · Jurisdiction · k-d tree · heap · hash table · …
+ GPS fix ──► query box ──► spatial index ──► per candidate: in force? ──► exact
+ (± accuracy)   (provably      (quadtree /       O(1) validity check        three-valued
+                conservative)   R-tree / …)                                  geometry
+                                                                               │
+ events ◄── transition only on change ◄── hysteresis ◄────────────────────────┘
+   │        (+ every zone with open state observed each tick, returned or not)
+   └──► extensions: alert correlation → incidents → responder dispatch (Dijkstra/A*,
+        Hungarian) · group cohesion · Merkle evidence log · the dashboard
 ```
 
-Levels 1–3 are what you present and defend. Level 4 is substantial engineering that
-supports the core but is never required to understand it —
-[COURSE_MAPPING.md](docs/COURSE_MAPPING.md) maps every module to its level.
+The interval tree and the persistent quadtree sit beside this path, answering
+historical questions. [ARCHITECTURE.md](docs/ARCHITECTURE.md) has the full
+pipeline, the design decisions with their costs, the limitations, and what would
+change at production scale.
 
-## Architecture
+## Limitations
 
-```
-   Input (tourist fixes) → Zone Store → Spatial Index → Temporal Filter
-        → Geometry → State Machine → Event
-                                         │
-                                         ├──► Extensions (built on the event stream):
-                                         │      groups · alerts · dispatch · evidence
-                                         └──► one self-contained dashboard.html
-```
+- **Simulated people, real geography.** OpenStreetMap zones around Shillong,
+  Meghalaya; synthetic movement with a GPS error model. No field data.
+- **Removal is O(n)** in every spatial index (no id → node map); the quadtree and
+  R-tree have O(n) worst-case queries on adversarial data. The interval tree's
+  guarantee is O(min(n, (k + 1) log n)) for reporting k results — a bound, but
+  not the O(log n + k) a centred interval tree would give.
+- **Tolerance-based geometry**, not exact predicates (on-edge tolerance ~0.1 mm).
+- **No antimeridian support.** Zones crossing ±180° are refused at load, and
+  query boxes do not wrap, so a fix at 179.99° cannot see a zone at −179.99°.
+- **GPS jumps inflate the query radius.** A jump sits in the 64-fix speed window
+  for about a minute, the radius clamps toward 10 km, and pruning collapses for
+  that person meanwhile — still correct, just slow.
+- **Single-threaded**, one process, in-memory.
+- Benchmarks come from one laptop. Ratios transfer far better than absolute times,
+  and even ratios move — under ~10% within a session at 100,000 zones, more
+  than 2× between sessions for the R-tree — which is why they're quoted as
+  ranges.
 
-Layers depend downward only; `ds/` and `geo/` depend on nothing but `types.hpp`.
-Full diagram and the hot-loop breakdown: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Documentation
 
-## Ground rules
-
-**Every data structure is hand-written.** No `std::unordered_map`, `std::set`,
-`std::map`, `std::priority_queue`, no Boost.Geometry, no PostGIS — those are the
-structures the course grades, so they are ours. `std::vector`/`std::string` are
-permitted as raw storage; `std::sort` is an algorithm, not a structure;
-`std::shared_ptr` is the memory management the persistent index's sharing needs.
-This is a **deliberate learning constraint**, not a production recommendation.
-
-**The naive baseline is a permanent deliverable.** `BruteForceIndex` stays behind
-the same interface as the fast indexes forever. It is the correctness oracle every
-index is validated against and the denominator of every speedup number.
-
-**Determinism is non-negotiable.** Fixed seeds, stable tie-breaking, and
-`-ffp-contract=off` give byte-identical output across runs of the same scenario —
-without it the replay harness is worthless and timing-dependent bugs are unfindable.
-See the note below for exactly how far cross-platform reproducibility goes.
-
-## Determinism, precisely
-
-Same seed → byte-identical output on one platform, guaranteed and gated by
-`make determinism`. Across operating systems, the **evaluation core is identical**
-— same events, same Merkle root, same alerts and index statistics — because a
-fixed-seed PRNG, explicit tie-breaks in every ordered structure, and
-`-ffp-contract=off` remove every source of drift we control. The one documented
-exception is the dispatch travel totals: they take an argmin over haversine costs,
-and `asin`/`sin`/`cos` differ in the last ulp between Apple's libm and glibc, which
-moves those totals ~3%. Closing that would mean shipping our own transcendental
-functions — not a trade worth making — so it is documented instead of hidden.
-
-## Layout
-
-```
-include/safetrail/      headers — the design lives here
-  index/                ★ CORE: brute force, quadtree, R-tree, persistent index
-  ds/                   ★ CORE: interval tree (+ heap, hash table, buffers…)
-  geo/                  ★ CORE: containment, ray casting, winding, segments
-  graph/                extension: road network, Dijkstra, A*, matching
-  group/ alert/         extension: cohesion, triage, correlation
-  dispatch/ sync/       extension: assignment, offline reconciliation
-  power/ evidence/      extension: adaptive sampling, Merkle log
-  jurisdiction/         extension: polygon nesting
-  sim/  viz/            harness: simulator, dashboard export
-src/                    implementations, mirrors include/
-apps/                   headless engine · benchmark binaries
-tests/                  per-structure unit tests + golden replays
-bench/                  CSV results and the generated scaling chart
-docs/                   start with RESULTS.md and VIVA.md
-data/  tools/           real OSM zones, road graph; data-prep + plotting scripts
-```
-
-## Documents
-
-**Start here for the course project:**
-
-| Doc | What's in it |
+| | |
 |---|---|
-| [docs/RESULTS.md](docs/RESULTS.md) | ★ Single source of truth for every measured number |
-| [docs/DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) | ★ The five core structures first, then extensions; invariants, complexity, worst cases |
-| [docs/VIVA.md](docs/VIVA.md) | ★ 20 viva questions answered from the actual implementation |
-| [docs/PROFESSOR_REVIEW.md](docs/PROFESSOR_REVIEW.md) | ★ Examiner's-eye assessment: likely questions, the hardest one, the weakest area |
-| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | ★ A literal 5-minute demo script — command, screen, what to say |
-| [docs/PRESENTATION.md](docs/PRESENTATION.md) | ★ 10-slide walkthrough for your guide |
-| [docs/INTERVIEW.md](docs/INTERVIEW.md) | ★ Tech-interview framing: 30s/60s/3-min, key decisions, likely Q&A |
-| [docs/RESUME.md](docs/RESUME.md) | ★ Résumé bullets, each number traceable to a `make bench` command |
-| [docs/COURSE_MAPPING.md](docs/COURSE_MAPPING.md) | Which DS concept each module demonstrates; CORE vs EXTENSIONS |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The hot loop, data flow, layer responsibilities |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | pipeline, layers, design decisions, limitations, production changes |
+| [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md) | each structure: design, invariants, bounds (guaranteed vs expected) |
+| [RESULTS.md](docs/RESULTS.md) | every benchmark, the protocol, the environment, run-to-run ranges |
+| [TESTING.md](docs/TESTING.md) | oracles, differential tests, invariants, mutation results, sanitizers |
+| [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | what breaks point-in-polygon and polygon validation, and the tolerances |
+| [DEFECT_LOG.md](docs/DEFECT_LOG.md) | every real defect found, its fix, and the test that pins it |
+| [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) · [REVIEW_QA.md](docs/REVIEW_QA.md) · [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html) | the 5-minute live demo on `make review`, the questions it raises, and ten slides |
+| [INTERVIEW.md](docs/INTERVIEW.md) · [RESUME.md](docs/RESUME.md) | the project explained at 30 s / 60 s / 3 min, and résumé bullets with sources |
+| [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) · [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) · [DEPLOYMENT.md](docs/DEPLOYMENT.md) | why the extensions exist; where the dashboard's data comes from; CI and Pages |
+| [docs/course/](docs/course/README.md) | the original course submission (viva prep, slides), archived |
 
-**Deeper / supporting:**
-
-| Doc | What's in it |
-|---|---|
-| [docs/DESIGN_DEFENSE.md](docs/DESIGN_DEFENSE.md) | The hardest questions, in depth |
-| [docs/GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | What breaks in point-in-polygon and how it's handled |
-| [docs/DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) | Where every dashboard number comes from, with verification |
-| [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | Why the extensions exist — research on real systems |
-| [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) | Start-to-finish trace of one run |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) · [TEAM_BRIEF.md](TEAM_BRIEF.md) | Deployment; teammate onboarding |
-
-## Extensions (Level 4 — additional work)
-
-Substantial, tested engineering that supports the core problem without competing
-with it. **None is required to understand or defend the five core structures.**
-
-- **Groups & cohesion** — rollback union-find (splits *and* merges; no path
-  compression so unions stay undoable).
-- **Prediction** — project position forward, retest containment → time-to-boundary.
-- **Alert correlation** — spatio-temporal DSU collapses a flood of alerts into one
-  incident.
-- **Routing & dispatch** — Dijkstra / A* on a real road graph; Hungarian assignment
-  for provably optimal responder→incident matching.
-- **Offline & evidence** — geohash index serialisation, Lamport-clock
-  reconciliation, an RFC 6962 Merkle log (SHA-256 from scratch), QR digital IDs.
-- **Adaptive sampling · hysteresis · jurisdiction · k-d tree · binary heap ·
-  hash table · timer wheel** — see [DATA_STRUCTURES.md](docs/DATA_STRUCTURES.md).
-
-Origin: this problem is derived from Smart India Hackathon 2025 statement
-`SIH25002` (Ministry of DoNER). The extensions each close a documented gap in how
-existing systems handle it — [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) has the
-research — but they are deliberately kept out of the core narrative so the data
-structures stay the deliverable.
-
-## Stack
-
-C++17, zero external dependencies anywhere — core, viewer, or build. The dashboard
-is one self-contained HTML file with a hand-drawn canvas map (no Leaflet, no tiles,
-no CDN, no network). Python 3 is used only for optional data-prep and plotting.
+SafeTrail started as a Data Structures course project derived from Smart India
+Hackathon 2025 problem SIH25002 (Ministry of DoNER).
