@@ -9,29 +9,29 @@ GitHub API, and they open normally in a browser. The repository is
 ## The one thing to know about the live site
 
 GitHub Pages deploys from successful workflow runs on `main`: every push to
-`main` starts one, and so does "Run workflow" on the Actions tab (a newer run of
-the workflow can cancel a deploy in progress; see 07). Pull request #3 was merged on 11 October 2026 as merge commit
-`e794816`, and run 38134207816 deployed it. Checked after that deploy:
+`main` starts one, and so does "Run workflow" on the Actions tab. Once the
+deploy-workflow fix recorded in the WORKLOG on 11 October is merged, a
+pull-request run never touches a main deploy, and a newer main run waits for a
+running one to finish rather than cancelling it (see 07).
+
+That fix also takes the site's benchmark numbers from the committed results. The
+workflow's `build` job assembles the site from a clean checkout and fails if any
+tracked file differs from the commit; the informational benchmark runs in a
+separate `bench` job whose CSVs only become a downloadable artifact. From the
+first deploy that includes the fix, slide 8's table and chart and the
+dashboard's "main experiment" table show the committed laptop results, as the
+demo, the PDF and every document do (239 µs, 33.7× and 224× at 100,000 zones).
+Deploys before it, including those of `e794816` and `b7d6ced`, showed a CI
+runner's timings in those three places. **Before sharing a live link, check that
+slide 8 of the live deck shows 239 µs.**
+
+Pull request #3 was merged on 11 October 2026 as merge commit `e794816`, and run
+38134207816 deployed it. Checked after that deploy:
 
 - https://adivishall.github.io/safetrail/slides.html serves the review deck
   (title "SafeTrail — project review"); its three screenshots and the chart load.
 - https://adivishall.github.io/safetrail/ serves the dashboard built from that
   commit's code (current panels, no internal `[GAP n]` labels).
-
-One caveat applies to both. The workflow's build job (whose output the deploy
-job publishes) runs `make bench` on GitHub's shared CI runner before it builds
-the site, so three things on the live site come from that run, not from the
-committed results, and change with every deploy (the deploy of the merge commit, for example, showed brute force 329 µs, quadtree 36.0× and R-tree 198× at 100,000 zones, against the committed
-239 µs, 33.7× and 224×):
-
-- slide 8's table, whose ranges mix that run with the committed laptop runs,
-  under a caption that says one laptop (Apple M4);
-- slide 8's chart, redrawn from that run;
-- the dashboard's "main experiment" table, which is that run alone, under a
-  caption that says one laptop.
-
-The committed results are what the demo, the PDF, the local `dashboard.html`
-and every document quote. Present slide 8 from the local deck or the PDF.
 
 ## Live links (need internet; no GitHub account needed)
 
@@ -59,8 +59,8 @@ and every document quote. Present slide 8 from the local deck or the PDF.
 | https://github.com/adivishall/safetrail/blob/main/docs/RESUME.md | résumé bullets with sources, and the "Do not claim" list | live, current; useful to you, less so to the teacher |
 | https://github.com/adivishall/safetrail/blob/main/tools/review.sh | the script behind `make review` | live, current |
 | https://github.com/adivishall/safetrail/blob/main/.github/workflows/deploy.yml | the CI definition (what gates what) | live, current |
-| https://adivishall.github.io/safetrail/ | live dashboard | current code, rebuilt by each successful run on `main`; its "main experiment" table shows CI-runner timings, see above |
-| https://adivishall.github.io/safetrail/slides.html | live slides | the review deck, rebuilt by each successful run on `main`; slide 8's table and chart show CI-runner timings, see above |
+| https://adivishall.github.io/safetrail/ | live dashboard | current code, rebuilt by each successful run on `main`; benchmark table from the committed results once the deploy fix has deployed |
+| https://adivishall.github.io/safetrail/slides.html | live slides | the review deck, rebuilt by each successful run on `main`; slide 8 from the committed results once the deploy fix has deployed (check it shows 239 µs) |
 | https://github.com/adivishall/safetrail/blob/main/docs/presentation/SafeTrail_review_slides.pdf | the review deck as a PDF, with the committed numbers; GitHub renders PDFs in the browser | live, current |
 
 The kit itself (`docs/presentation/`) is on `main` and readable on GitHub like the
@@ -94,8 +94,9 @@ A package that works when they have only GitHub and what you attach:
    one file and needs no server").
 5. **Where the numbers come from:** https://github.com/adivishall/safetrail/blob/main/docs/RESULTS.md
 
-If you also send either live link (https://adivishall.github.io/safetrail/slides.html
-or https://adivishall.github.io/safetrail/), say explicitly: "Slide 8 and the dashboard's experiment table on the website are regenerated on GitHub's build server at every deploy; the numbers I quote are the laptop measurements in the PDF and in RESULTS.md."
+You can also send the live slides link, https://adivishall.github.io/safetrail/slides.html,
+once you have checked that its slide 8 shows 239 µs, as the PDF does. If it
+shows anything else, send only the PDF.
 
 ## How the PDF was made (and how to remake it)
 

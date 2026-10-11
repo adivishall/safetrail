@@ -181,27 +181,31 @@ green on this code. Continue with `tools/review.sh 5`.
 **Symptom:** someone opens slide 8 at https://adivishall.github.io/safetrail/slides.html,
 or the live dashboard's "main experiment" panel, and sees timings that differ
 from step 8 and the PDF (the deploy of the merge commit, for example, showed brute force 329 µs, quadtree 36.0× and R-tree 198× at 100,000 zones, instead of 239 µs, 33.7× and 224×).
-**Cause:** the workflow's build job runs `make bench` on GitHub's shared CI
-runner before building the site. Slide 8's table (its ranges mixed with the
-committed laptop runs) and its chart, and the dashboard's experiment table, are
-generated from that run, while slide 8 is still captioned one laptop (Apple M4)
-and the dashboard table one laptop. Every deploy shows different numbers.
-**Recovery:** say so plainly: "the website regenerates those numbers on GitHub's
-build server at every deploy; the numbers I quote are the committed laptop
-results in RESULTS.md, with the commit and machine recorded". Present slide 8
-from the local deck or the PDF and the dashboard from the local `dashboard.html`.
-Do not try to change the pipeline during the review.
+**Cause:** the page was deployed before the deploy-workflow fix recorded in the
+WORKLOG on 11 October. Until then the workflow ran `make bench` on GitHub's
+shared CI runner before building the site, so slide 8's table and chart and the
+dashboard's experiment table showed that run's timings under "one laptop"
+captions. After the fix deploys, those come from the committed results; a
+difference then means the newest deploy has not finished or did not run, or an
+old pre-fix run was re-run.
+**Recovery:** say so plainly: "that page was built from a CI server's run; the
+numbers I quote are the committed laptop results in RESULTS.md, with the commit
+and machine recorded". Present slide 8 from the local deck or the PDF and the
+dashboard from the local `dashboard.html`. Do not try to change the pipeline
+during the review.
 
 ### GitHub Pages is down or mid-deploy
 
 **Symptom:** the live site does not load, or shows an older version than expected.
-**Cause:** no network, a GitHub Pages problem, a deploy still running after a
-push to `main` (about 7 minutes), or a deploy cancelled by a newer run of the
-same workflow, including one started by a pull request. A cancelled deploy is
-not retried automatically: the site stays on the previous version until another
-run on `main` succeeds, from a push, "Run workflow" on the Actions tab, or a
-re-run of the cancelled run (this happened on 2 October). None of that is a
-thing to do during the review.
+**Cause:** no network, a GitHub Pages problem, or a deploy still running after a
+push to `main` (about 7 minutes). After the deploy-workflow fix, a newer push
+waits for a running deploy instead of cancelling it, and a pull-request run can
+no longer cancel one; before it, both happened (24 August and 2 October). If a
+deploy failed, the site stays on the previous version until another run on
+`main` succeeds. Redeploy with "Run workflow" on `main`, never by re-running an
+older run: a re-run uses its original commit and workflow, and runs from before
+the fix publish CI-runner timings again. None of that is a thing to do during
+the review.
 **Recovery:** do not present from the live site. Show the local `dashboard.html`
 and `docs/REVIEW_SLIDES.html` or the PDF; nothing in the demo depends on the site.
 

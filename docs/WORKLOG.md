@@ -6,6 +6,46 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-11 — Pages deploy: main deploys never cancelled mid-run; benchmark numbers from committed results
+
+**What:** Two changes to `.github/workflows/deploy.yml`, and the documents that
+describe its behaviour. Concurrency is now one group per pull request, where a
+newer push cancels the superseded run, and one group per branch for pushes and
+manual runs, where a running run is never cancelled. GitHub still keeps only one
+waiting run per group, so a waiting main run is replaced by a newer one and only
+the newest waiting commit deploys. The benchmark moved out of the job that
+builds the site into its own informational `bench` job. On success it uploads
+its CSVs and `environment.txt` as an artifact. On failure or after a 15-minute
+step timeout it raises a warning and uploads nothing (`continue-on-error`
+replaces `|| true`). The site `build` job now runs only `make dashboard` and
+copies committed files. It then fails if any tracked file differs from the
+commit, if slides.html or the chart differ from the committed files, or if the
+dashboard's benchmark table is not the committed CSV. DEPLOYMENT.md and the
+presentation kit (`00`, `01`, `05`, `07`) were updated to match.
+
+**Why:** Both problems occurred in real runs. On 2 October, two pull-request
+runs entered the shared `pages` group three seconds after main run 36990828476
+started, and cancelled it. That time no content was lost: `7e3a236` was a
+history rewrite of the already-deployed `6656b74`, with the same tree. Any main
+commit with new content would have stayed undeployed until the next main run.
+On 24 August, three main runs were cancelled by newer main pushes. The build job
+also ran `make bench` before it assembled the site. That rewrites the committed
+CSVs, redraws the chart and re-renders the tables in README, RESULTS and the
+review deck, so the live slide 8 and the dashboard showed the CI runner's
+timings under "one laptop" captions. Rendering the committed tree from the
+benchmark CSVs of run 38136419795 reproduces the live `slides.html` and chart
+byte for byte.
+
+**Impact:** No engine, test or data change. The six gates still guard `bench`,
+`build` and `deploy`, and the deploy condition is unchanged. A newer main run now
+waits for the previous run to finish, about seven minutes, instead of cancelling
+it. Verified locally: actionlint 1.7.12 reports no workflow errors, and its
+shellcheck notes are the same ten that `main` already has. The `build` job's
+steps, run in a clean clone, produce a site whose slide 8 row and dashboard table
+equal the committed CSV. They fail at the guard when the CSV is overwritten the
+way `make bench` did. An independent three-lens review found ten corrections
+before the first push; all are applied.
+
 ### 2026-10-11 — Presentation kit updated after pull request #3 merged
 
 **What:** The kit's statements about the pull request and the live site were
