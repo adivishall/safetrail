@@ -170,11 +170,11 @@ Press **Enter**.
 |---|---|
 | **Action** | Enter (prompt 8). About 20 s. No further prompt. |
 | **Screen** | Terminal; then switch to the browser. |
-| **Say** | *"Forty-five test files, each structure against its oracle, all passing; same seed, byte-identical output; and the dashboard is one HTML file with no server. Not run here because they take minutes: mutation testing, 22 of 22 injected bugs caught; the sanitizers; static analysis. All of them run in CI on this commit and are green."* |
+| **Say** | *"Forty-five test files, each structure against its oracle, all passing; same seed, byte-identical output; and the dashboard is one HTML file with no server. Not run here because they take minutes: mutation testing, 22 of 22 injected bugs caught; the sanitizers; static analysis. All of them run in CI on this code and are green."* |
 | **Expected output** | 45 lines `[ ok ] <name>   N checks, 0 failed` (plus a few indented diagnostic lines) · `ALL TESTS PASS` · `determinism: identical output across runs` · the four "not run here" lines (`make mutation`, `make ubsan`, `make analyze`, `make validate`) · `dashboard  dashboard.html  (720 frames, self-contained -- just open it)` · `━━ done ━━` · `Open dashboard.html in a browser (macOS: open dashboard.html). One file, no server.` |
 | **Point out** | `ALL TESTS PASS`, the determinism line, the `720 frames` line. If the test list scrolls too fast, say *"forty-five files, I'll show the summary line"* and point at `ALL TESTS PASS`. |
 | **Why it matters** | Evidence that the engineering is checked, not described. |
-| **Recovery** | `tools/review.sh 9` reruns tests, determinism and the dashboard. If `make test` fails live, do not debug; say the suite is green in CI on this commit (run 38035618082) and move to the dashboard from the warm-up, which is already on disk. |
+| **Recovery** | `tools/review.sh 9` reruns tests, determinism and the dashboard. If `make test` fails live, do not debug; say the suite is green in CI on this code (run 38134207816, the merge into `main`) and move to the dashboard from the warm-up, which is already on disk. |
 
 Switch to the browser tab with `dashboard.html` and press **⌘R**.
 

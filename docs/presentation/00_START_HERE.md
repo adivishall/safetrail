@@ -5,14 +5,15 @@ run, what to say, what to click, what to answer, and what to do when something
 breaks. Follow it top to bottom even if you are nervous; nothing in it requires
 improvising.
 
-**State this kit was written against (checked 2026-10-11):** branch
-`flagship-hardening` at commit `76b63af`, identical to `origin/flagship-hardening`,
-working tree clean, GitHub Actions run
-[38035618082](https://github.com/adivishall/safetrail/actions/runs/38035618082)
-green on that commit (all seven jobs), pull request
-[#3](https://github.com/adivishall/safetrail/pull/3) open and not merged. If
-`git log -1 --oneline` shows a different commit, re-check the numbers in this kit
-against [RESULTS.md](../RESULTS.md) before presenting.
+**State this kit was checked against (2026-10-11):** written at commit
+`76b63af`; pull request [#3](https://github.com/adivishall/safetrail/pull/3) was
+then merged into `main` as merge commit `e794816`, which changes no code after
+`76b63af`, so every count, command and expected output here still holds. GitHub
+Actions run [38134207816](https://github.com/adivishall/safetrail/actions/runs/38134207816) on
+`e794816` passed every job, including the GitHub Pages deploy. Present from
+`main`. If `git log -1 --oneline` shows a later commit that changes code,
+re-check the numbers in this kit against [RESULTS.md](../RESULTS.md) before
+presenting.
 
 | File | Use it for |
 |---|---|
@@ -66,9 +67,9 @@ cd "/Users/adivishal/Projects/Data Structures CP"
 Confirm you are where you think you are:
 
 ```bash
-git status --short | wc -l        # 0 means a clean tree (new kit files count until committed)
-git branch --show-current         # flagship-hardening
-git log -1 --oneline              # 76b63af ... (or newer, if you committed since)
+git status --short | wc -l        # 0 means a clean tree
+git branch --show-current         # main
+git log -1 --oneline              # e794816 Merge pull request #3 ..., or a later docs-only commit
 ```
 
 ### 1.3 Build
@@ -211,7 +212,7 @@ There is nothing that must be cleaned. The demo writes only `build/review/` and
 `dashboard.html`, both ignored by git. Check and leave it:
 
 ```bash
-git status --short | wc -l        # 0 (or just the kit files, until committed)
+git status --short | wc -l        # 0 means a clean tree
 ```
 
 Do **not** run `make clean`, `git reset --hard` or any `git clean` afterwards
@@ -225,19 +226,22 @@ instead of 35 s), the other two can destroy uncommitted work.
 Full table with what needs an account or a connection: [05_LINKS_AND_RESOURCES.md](05_LINKS_AND_RESOURCES.md).
 The short list:
 
-- Repository (public): https://github.com/adivishall/safetrail
-- The branch being presented: https://github.com/adivishall/safetrail/tree/flagship-hardening
-- Pull request #3 (the audited branch, CI green): https://github.com/adivishall/safetrail/pull/3
-- The green CI run on the presented commit: https://github.com/adivishall/safetrail/actions/runs/38035618082
-- Live dashboard (GitHub Pages) — **stale, from the 17 September deploy of
-  `main`, before the audit**: https://adivishall.github.io/safetrail/
-- Live slides URL — **currently serves the old course deck**, not the review
-  deck: https://adivishall.github.io/safetrail/slides.html
+- Repository (public; `main` holds the audited work): https://github.com/adivishall/safetrail
+- Pull request #3 (the audit, merged 11 October): https://github.com/adivishall/safetrail/pull/3
+- The green CI and deploy run on the merge commit: https://github.com/adivishall/safetrail/actions/runs/38134207816
+- Live dashboard (GitHub Pages, rebuilt by each successful run on `main`): https://adivishall.github.io/safetrail/
+- Live slides (the review deck): https://adivishall.github.io/safetrail/slides.html
 
-Because the live site is stale until pull request #3 is merged, share the review
-deck as the PDF in this folder and the dashboard as the `dashboard.html` file
-(one self-contained file, about 1.6 MB, opens offline). Do not point the teacher
-at the live `slides.html`.
+One caveat on both live pages. The workflow's build job runs `make bench` on
+GitHub's shared CI runner before it builds the site, so slide 8's table and
+chart and the dashboard's "main experiment" table are generated from that run
+and change with every deploy (the deploy of the merge commit, for example, showed brute force 329 µs, quadtree 36.0× and R-tree 198× at 100,000 zones, instead of the committed 239 µs, 33.7×
+and 224×). Slide 8 is still captioned one laptop (Apple M4), and the dashboard
+table one laptop. So attach the PDF in this folder and the `dashboard.html` file
+(one self-contained file, about 1.6 MB, opens offline) as the authoritative
+copies, present slide 8 from the local deck or the PDF, and if you send either
+live link, add the sentence given in [05_LINKS_AND_RESOURCES.md](05_LINKS_AND_RESOURCES.md)
+under "What to send the teacher".
 
 ---
 

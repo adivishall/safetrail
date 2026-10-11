@@ -14,7 +14,7 @@ is not on this page, do not improvise one live; move down the fallback ladder.
    PDF in `docs/presentation/`.
 3. **Show the committed evidence:** `docs/RESULTS.md` (every table with its
    environment), `bench/results/environment.txt`, `docs/TESTING.md`, and the
-   green CI run https://github.com/adivishall/safetrail/actions/runs/38035618082
+   green CI run on the merge commit https://github.com/adivishall/safetrail/actions/runs/38134207816
    if there is internet.
 4. **Explain from the slides** (slide 4 for the indexes, 5 for geometry and
    state, 7 for correctness, 8 for results, 10 for limitations).
@@ -158,8 +158,9 @@ ratio will differ from the committed table.
 **Symptom:** a `[FAIL]` line and `TESTS FAILED`, and the script stops with
 `tests failed`.
 **Cause:** an edited source, a stale object file, or a genuine regression.
-**Recovery:** do not debug. Say: "the suite is green in CI on this commit, run
-38035618082; this is a local environment problem I will look at afterwards".
+**Recovery:** do not debug. Say: "the suite is green in CI on this code, run
+38134207816 on the merge into main; this is a local environment problem I will
+look at afterwards".
 Then `make dashboard` (independent of the tests) and continue in the browser.
 After the review: `make rebuild` (clean build plus tests, about 1.5 min) tells
 you whether it was stale objects.
@@ -173,18 +174,36 @@ changed the engine's answer, or the three runs were made by different binaries
 **Recovery:** `make review` (a full rerun, 35 s) regenerates all three runs with
 the same binary. If it still differs, say so honestly: it is exactly the kind of
 failure the check exists to catch, and the differential test suite and CI are
-green on this commit. Continue with `tools/review.sh 5`.
+green on this code. Continue with `tools/review.sh 5`.
 
-### GitHub Pages is outdated
+### The live site's numbers differ from the demo's
 
-**Symptom:** someone opens https://adivishall.github.io/safetrail/ or
-`/slides.html` and sees an old dashboard or the course deck.
-**Cause:** Pages deploys only from `main`; the audited branch is in an unmerged
-pull request. The live site is the 17 September deployment.
+**Symptom:** someone opens slide 8 at https://adivishall.github.io/safetrail/slides.html,
+or the live dashboard's "main experiment" panel, and sees timings that differ
+from step 8 and the PDF (the deploy of the merge commit, for example, showed brute force 329 µs, quadtree 36.0× and R-tree 198× at 100,000 zones, instead of 239 µs, 33.7× and 224×).
+**Cause:** the workflow's build job runs `make bench` on GitHub's shared CI
+runner before building the site. Slide 8's table (its ranges mixed with the
+committed laptop runs) and its chart, and the dashboard's experiment table, are
+generated from that run, while slide 8 is still captioned one laptop (Apple M4)
+and the dashboard table one laptop. Every deploy shows different numbers.
+**Recovery:** say so plainly: "the website regenerates those numbers on GitHub's
+build server at every deploy; the numbers I quote are the committed laptop
+results in RESULTS.md, with the commit and machine recorded". Present slide 8
+from the local deck or the PDF and the dashboard from the local `dashboard.html`.
+Do not try to change the pipeline during the review.
+
+### GitHub Pages is down or mid-deploy
+
+**Symptom:** the live site does not load, or shows an older version than expected.
+**Cause:** no network, a GitHub Pages problem, a deploy still running after a
+push to `main` (about 7 minutes), or a deploy cancelled by a newer run of the
+same workflow, including one started by a pull request. A cancelled deploy is
+not retried automatically: the site stays on the previous version until another
+run on `main` succeeds, from a push, "Run workflow" on the Actions tab, or a
+re-run of the cancelled run (this happened on 2 October). None of that is a
+thing to do during the review.
 **Recovery:** do not present from the live site. Show the local `dashboard.html`
-and `docs/REVIEW_SLIDES.html`, and say: "the live site refreshes when the pull
-request is merged; the current version is what you see here and in the attached
-PDF". Merging is a decision for after the review, not a live action.
+and `docs/REVIEW_SLIDES.html` or the PDF; nothing in the demo depends on the site.
 
 ### Wi-Fi fails
 
@@ -193,8 +212,8 @@ PDF". Merging is a decision for after the review, not a live action.
 the slides uses the network.
 **Recovery:** carry on. The only things you lose are opening the GitHub links
 during Q&A; `docs/RESULTS.md`, `docs/TESTING.md` and `docs/DEFECT_LOG.md` are on
-disk and say the same things. If asked about CI, say the run is green on this
-commit and offer to send the link afterwards.
+disk and say the same things. If asked about CI, say it is green on this code
+and offer to send the link afterwards.
 
 ### The projector or mirroring shrinks the terminal
 

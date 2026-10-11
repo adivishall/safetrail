@@ -17,9 +17,9 @@ actually supports on 2026-10-11.
       ```bash
       cd "/Users/adivishal/Projects/Data Structures CP"
       ```
-- [ ] `git branch --show-current` → `flagship-hardening`.
-- [ ] `git log -1 --oneline` → the commit you expect (`76b63af` when this kit was written, or your newer commit).
-- [ ] `git status --short` → nothing unexpected. Untracked kit files are fine; a modified `src/`, `include/`, `apps/`, `Makefile` or `tools/` file is not — do **not** fix it now, note it, present from what is built.
+- [ ] `git branch --show-current` → `main` (pull request #3 is merged into it).
+- [ ] `git log -1 --oneline` → the commit you expect: merge commit `e794816` or a later documentation-only commit (the code is unchanged since `76b63af`, when this kit was written).
+- [ ] `git status --short` → empty. A modified `src/`, `include/`, `apps/`, `Makefile` or `tools/` file is a problem — do **not** fix it now, note it, present from what is built.
 - [ ] `make` → prints nothing (nothing to build). If it starts compiling, let it finish (about a minute); do not interrupt it.
 
 ## Build and tests confirmed
@@ -36,7 +36,8 @@ actually supports on 2026-10-11.
 - [ ] Do **not** run `make bench`, `make validate`, `make mutation`, `make clean`
       or `make rebuild` now. Each takes minutes, and `make clean` / `make rebuild`
       delete the build you are about to use. The committed benchmark results are
-      what step 8 shows; rerunning them changes nothing you will present.
+      what step 8, slide 8 and the dashboard show; `make bench` would overwrite
+      them with new timings and leave the tree modified.
 - [ ] Do **not** edit any source file now.
 
 ## Browser

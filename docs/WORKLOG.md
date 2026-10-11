@@ -6,6 +6,38 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-11 — Presentation kit updated after pull request #3 merged
+
+**What:** The kit's statements about the pull request and the live site were
+brought up to date after the merge into `main` (merge commit `e794816`, run
+38134207816 green including the Pages deploy): the state note, the branch to
+check and the links to share in `00_START_HERE.md`; the live-site section, the
+link table (GitHub file links now point at `main`) and what to send the teacher
+in `05_LINKS_AND_RESOURCES.md`; the branch and commit checks in
+`06_LAST_MINUTE_CHECKLIST.md`; the CI run cited in `02` and `07`; and the
+"GitHub Pages is outdated" entry in `07_DEMO_FAILURE_PLAYBOOK.md`, replaced by
+two entries for the situations that can now happen.
+
+**Why:** The live site was checked, not assumed: `slides.html` now serves the
+review deck and the dashboard is the current build. It also showed something
+the kit did not say. The workflow's build job runs `make bench` on GitHub's CI
+runner before it builds the site, so slide 8's table and chart and the
+dashboard's experiment table on the live site are that runner's timings (at
+this deploy: brute force 329 µs, quadtree 36.0×, R-tree 198× at 100,000 zones,
+against the committed 239 µs, 33.7× and 224×), under captions that say one
+laptop (slide 8 adds "Apple M4"). The kit now says so, directs slide 8 to the
+local deck or the PDF, and gives a sentence to say when sharing a live link.
+Two rounds of independent read-only review then found further problems, all
+fixed: the live chart is CI data too; the CI job count; which caption says what;
+which job runs the benchmark; how a deploy can be cancelled and restarted;
+live-site lines that would have gone stale on the next push; leftover "until
+committed" and "this commit" wording, including in the spoken script; differing
+advice on sharing live links; and a wrong reason given for not rerunning
+`make bench` before the review.
+
+**Impact:** Documentation only. The deploy behaviour itself is unchanged and is
+the remaining fix: the site should be built from the committed results.
+
 ### 2026-10-11 — Presentation kit for the guide review (`docs/presentation/`)
 
 **What:** Nine documents and one PDF under `docs/presentation/`, written for

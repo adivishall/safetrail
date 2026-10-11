@@ -106,7 +106,7 @@ versus `nodes 753 / depth 4`.
 
 **Action:** Enter; about twenty seconds of test output.
 
-> Forty-five test files, all passing. Same seed, byte-identical output. And the dashboard is one HTML file, no server. Not run here because they take minutes: mutation testing, 22 of 22 injected bugs caught; sanitizers; static analysis. All green in CI on this exact commit.
+> Forty-five test files, all passing. Same seed, byte-identical output. And the dashboard is one HTML file, no server. Not run here because they take minutes: mutation testing, 22 of 22 injected bugs caught; sanitizers; static analysis. All green in CI on this code.
 
 **Closing line:**
 
@@ -207,7 +207,7 @@ correctness is established, how the benchmark is run, and the limitations.
 
 **Action:** Enter; about twenty seconds.
 
-> Forty-five test files, 11,844 checks, every structure against an independent oracle. Determinism is gated: the same seed must give byte-identical output, and the Make and CMake builds must agree byte for byte, which is why floating-point contraction is switched off. Not run here because they take minutes: the mutation check, 22 of 22; the sanitizers; the static analyser, zero findings. All seven CI jobs are green on this commit.
+> Forty-five test files, 11,844 checks, every structure against an independent oracle. Determinism is gated: the same seed must give byte-identical output, and the Make and CMake builds must agree byte for byte, which is why floating-point contraction is switched off. Not run here because they take minutes: the mutation check, 22 of 22; the sanitizers; the static analyser, zero findings. All eight CI jobs, including the Pages deploy, are green on this code.
 
 **Point out:** `ALL TESTS PASS`, the determinism line, `720 frames`.
 **Transition:** *"The dashboard puts the structures on the real map."*
