@@ -6,6 +6,17 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-11 — One-page link sheet for the teacher
+
+**What:** Added `docs/presentation/09_TEACHER_LINKS.md`: the five verified links
+(repository, live deck, live dashboard, slides PDF, benchmark results), the
+offline backup and the command to run on the day.
+
+**Why:** Requested as a single file to keep and send, separate from the fuller
+link table in `05_LINKS_AND_RESOURCES.md`.
+
+**Impact:** Documentation only.
+
 ### 2026-10-11 — Deploy fix verified on the live site
 
 **What:** Recorded in the presentation kit (`00`, `05`) that the deploy-workflow
