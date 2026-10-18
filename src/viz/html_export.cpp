@@ -563,12 +563,12 @@ function experimentPanel() {
       <code>RESULTS.md</code> uses; one laptop, see its environment note). Speedups are
       paired ratios vs our own brute force and vary between runs. The
       <b>candidate count is identical across all three</b>: they return the same
-      true positives, so the ceiling is output size <b>k</b>, exactly as
-      O(log n + k) predicts.</div>
+      candidates. The quadtree also tests every box straddling a cell boundary on
+      its path, O(depth + s + k), which is why it levels off well below the R-tree.</div>
     <div class="note" style="margin-top:6px">
       <b class="${ok ? '' : 'bad'}" style="color:${ok ? 'var(--g)' : 'var(--r)'};font-weight:700">
       ${ok ? '✓' : '✗'} correctness:</b> ${(eq.queries || 0).toLocaleString()} random
-      queries over ${(eq.zones || 0).toLocaleString()} zones, just measured live —
+      queries over ${(eq.zones || 0).toLocaleString()} zones, measured when this page was generated —
       <b style="color:${ok ? 'var(--g)' : 'var(--r)'}">${eq.mismatches | 0} mismatches</b>
       between quadtree/R-tree and the brute-force oracle.</div>`;
 }
@@ -578,9 +578,10 @@ function whyPanel() {
   document.getElementById('why').innerHTML = `<div class="why note" style="font-size:12px">
     <div><b class="bf">brute force</b> tests <i>every</i> zone against the query — O(n).</div>
     <div><b class="qt">quadtree</b> descends only the space quadrants the query can
-      overlap and skips the rest — O(log n + k).</div>
+      overlap and skips the rest, but tests every box straddling a cell boundary on
+      the way — O(depth + s + k).</div>
     <div><b class="rt">R-tree</b> walks only the bounding-box envelopes that intersect
-      the query; envelopes overlap, so it may enter a few branches — O(log n + k).</div>
+      the query; envelopes overlap, so it may enter a few branches — O(log n + k) typical.</div>
     <div style="margin-top:5px">All three return the same answer; the tree just avoids
       looking where the answer cannot be. Toggle <b>index:</b> below and select a dot
       to see the cells each one touches.</div></div>`;

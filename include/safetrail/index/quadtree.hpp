@@ -10,10 +10,14 @@
 //
 // Complexity, stated honestly -- see docs/DATA_STRUCTURES.md for the full table:
 //   build   O(n log n) expected on spatially spread data
-//   query   O(log n + k) expected; O(n) worst case, when the boxes are large
-//           enough that most of them settle at the root and no split separates
-//           them. The pathological case is real, not theoretical: give every zone
-//           the same bounding box and the tree degenerates to one node.
+//   query   O(depth + s + k), where s is the number of boxes stored on the
+//           visited nodes because they straddle a split; every query reaching a
+//           node tests them all. For fixed-size boxes s grows with n (roughly
+//           linearly in a fixed area, roughly sqrt(n) at constant density).
+//           O(n) worst case, when the boxes are large enough that most of them
+//           settle at the root and no split separates them. The pathological
+//           case is real, not theoretical: give every zone the same bounding box
+//           and the tree degenerates to one node.
 //   insert  O(log n) expected, plus an amortised O(log R) root expansion when the
 //           box falls outside the current root (R = how far outside).
 //   remove  O(n) worst case -- the id is found by searching, since there is no

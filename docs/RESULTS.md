@@ -34,8 +34,9 @@ make bench-variation   # sections 1-3 three more times, for the ranges
   within 26–35×. Read ~100× as the R-tree's floor on
   this machine and the tables as one session's measurement.
 - **Measured, theoretical, simulated.** Everything on this page is measured.
-  Bounds — O(log n + k) expected, O(min(n, (k + 1) log n)) for the interval
-  tree — are theory, stated and checked against the code in
+  Bounds — O(log n + k) typical for the STR R-tree, O(depth + s + k) for the
+  quadtree (s = straddling boxes on the query's path), O(min(n, (k + 1) log n))
+  for the interval tree — are theory, stated and checked against the code in
   [DATA_STRUCTURES.md](DATA_STRUCTURES.md). Zones in §1–9 are synthetic; §10
   and §18 use the real OpenStreetMap zones (§18 adds synthetic ones); people and
   their GPS error are simulated everywhere.
@@ -104,12 +105,16 @@ overlapping each query, **k**, grows in proportion to n.
 | 100,000 | 239 | 7.07 | 1.07 | **33.7×** | **224×** | 98.45 | 31.7–33.7× | 211–224× | 4% |
 <!-- /results:scaling -->
 
-Brute force is linear. The trees are O(log n + k) and here **k dominates**: at
-100,000 zones about a hundred zones really do overlap each query, and every
-index must return all of them. That caps the speedup — no index returns fewer
-results than exist — and it is why the quadtree's ratio stops growing after a
-few thousand zones instead of rising with n. The R-tree keeps gaining because STR packing lets it
-reach those k results through fewer nodes. The candidate counts are identical
+Brute force is linear. At 100,000 zones about a hundred zones (**k**) really do
+overlap each query, and every index must return all of them — no index returns
+fewer results than exist. But k is not what stops the quadtree's ratio after a
+few thousand zones: the R-tree returns the same k at least ~100× faster than
+the scan in every session measured. The quadtree keeps every box that straddles a cell boundary at that cell,
+and every query reaching the cell tests it, so a query costs O(depth + s + k),
+where s counts those straddlers; for fixed-size zones in a fixed area s grows
+roughly linearly with n, which is consistent with the plateau. The R-tree has no
+such term and keeps gaining because STR packing lets it reach those k results
+through fewer nodes. The candidate counts are identical
 across indexes by construction; the checksum gate verifies it on every row.
 
 ![Query latency vs zone count](../bench/plots/index_scaling.svg)
@@ -127,8 +132,10 @@ each query overlaps about one zone at every size.
 | 100,000 | 216 | 0.398 | 0.211 | **543×** | **1042×** | 0.99 | 423–543× | 845–1042× | 10% |
 <!-- /results:density -->
 
-With k fixed, what is left is the tree's depth, and the speedup keeps rising
-with n — hundreds of times at 100,000 zones. Sections 1 and 2 together are the
+With k fixed, the speedup keeps rising with n — hundreds of times at 100,000
+zones. The quadtree's straddler term is still there (for fixed-size zones at
+constant density it grows roughly like √n), which is why its query time grows
+about 2.6–2.7× per tenfold n while the R-tree's grows about 1.8–1.9×. Sections 1 and 2 together are the
 honest answer to "how does it scale?": the index removes the O(n) scan; it
 cannot remove the answer.
 
