@@ -104,7 +104,8 @@ The build runs on Vercel's build image (Amazon Linux 2023), whose pre-installed
 packages include `gcc-c++`, `make` and `git`, so the engine compiles there from
 source: the executable is a build-time tool, not a hosted service, and no binary
 from a laptop is involved. Before anything is published the script makes the
-same checks as CI's `build` job: no tracked file changed, the dashboard's
+same checks as CI's `build` job: no tracked file changed (except `vercel.json`,
+which Vercel's Git builds rewrite in the checkout), the dashboard's
 benchmark table equals the committed `bench/results/index_scaling.csv` field for
 field, and the page loads nothing from anywhere. A build that would publish
 something else fails instead.

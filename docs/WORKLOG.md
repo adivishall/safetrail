@@ -13,7 +13,10 @@ Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 `dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built by Vercel from `df1df0d`). Anchored
 the `.vercelignore` patterns to the repository root, ignored the `.env.local`
 that `vercel link` writes, recorded the live URL and its checks in
-`docs/DEPLOYMENT.md` and added the mirror to the teacher's link sheet.
+`docs/DEPLOYMENT.md` and added the mirror to the teacher's link sheet. The
+script's "no tracked file changed" check now leaves out `vercel.json`, which
+Vercel's Git builds rewrite in the checkout before the build command runs; the
+first Git-triggered preview failed on exactly that file.
 
 **Why:** The first upload failed on Vercel with "tools/build/warnings.flags is
 missing": the unanchored `build/` pattern also excluded `tools/build/`, where

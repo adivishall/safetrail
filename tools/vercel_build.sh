@@ -29,8 +29,10 @@ cp dashboard.html public/index.html
 # Evidence checks, as in .github/workflows/deploy.yml.
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   # The build writes only ignored files, so a changed tracked file means a
-  # step rewrote evidence before publishing.
-  git diff --exit-code --stat HEAD
+  # step rewrote evidence before publishing. Vercel's Git builds rewrite
+  # vercel.json in the checkout before running this command; it is
+  # configuration, not evidence, so it is the one file left out.
+  git diff --exit-code --stat HEAD -- . ':(exclude)vercel.json'
 fi
 rows=$(awk -F, 'NR > 1 && NF >= 7 { printf "%s{\"zones\":%s,\"brute\":%s,\"quad\":%s,\"rtree\":%s,\"qgain\":%s,\"rgain\":%s,\"cand\":%s}", sep, $1, $2, $3, $4, $5, $6, $7; sep = "," }' bench/results/index_scaling.csv)
 test -n "$rows"
