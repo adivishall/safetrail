@@ -6,6 +6,30 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-20 — Vercel site live and verified
+
+**What:** The dashboard is live at <https://safetrail-adivishall.vercel.app>
+(project `safetrail`, personal Hobby team, deployment
+`dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built by Vercel from `df1df0d`). Anchored
+the `.vercelignore` patterns to the repository root, ignored the `.env.local`
+that `vercel link` writes, recorded the live URL and its checks in
+`docs/DEPLOYMENT.md` and added the mirror to the teacher's link sheet.
+
+**Why:** The first upload failed on Vercel with "tools/build/warnings.flags is
+missing": the unanchored `build/` pattern also excluded `tools/build/`, where
+the compiler flags live (a Git-clone deploy never sees `.vercelignore`). With the
+pattern anchored the build passed on Vercel in 34 s and published 1,611,679
+bytes with sha256 `77a6f012…`, byte-identical to the GitHub Pages file. Vercel's
+new-project default protected the production domain with its sign-in page, so
+Deployment Protection was set to "Only Preview Deployments" with the owner's
+approval; the public URL then answered 200, loaded nothing but itself, logged
+nothing to the console, honoured the `#index=rtree&frame=400` deep link, and its
+pause, index, dispatch and slider controls worked.
+
+**Impact:** Configuration and documentation only. Nothing paid was created.
+`vercel link` also connected the GitHub repository to the project, so merging
+the pull request will deploy `main` to the same URL automatically.
+
 ### 2026-10-20 — Vercel deployment of the dashboard
 
 **What:** Added `vercel.json`, `tools/vercel_build.sh` and `.vercelignore`,

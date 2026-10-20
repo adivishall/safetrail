@@ -136,6 +136,19 @@ project's Settings → Git (free; it installs Vercel's GitHub app on the
 repository): pull requests then get preview deployments and `main` the
 production one, each built by the same script.
 
+**Live:** <https://safetrail-adivishall.vercel.app> — project `safetrail` on the
+personal Hobby team, deployment `dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built by Vercel
+on 20 October 2026 from `df1df0d` (uploaded with the CLI; GCC 11.5, 2 cores, 34 s).
+Checked that day: HTTP/2 200 over HTTPS, 1,611,679 bytes, sha256 `77a6f012…` —
+byte-identical to the file GitHub Pages serves; one network request (the page
+itself) and no console output; `#index=rtree&frame=400` opens with the R-tree
+overlay at frame 400; pause, index, dispatch and the frame slider work. Deployment
+Protection is "Only Preview Deployments": the new-project default had put Vercel's
+sign-in in front of the production domain as well. The project is connected to the
+GitHub repository with `main` as the production branch, so a push to `main` deploys
+production and a pull request gets a sign-in-protected preview, each built by the
+same script. No payment method, trial, custom domain or paid resource is involved.
+
 What Vercel does not do: measure anything. As on Pages, the site's benchmark
 numbers are the committed results.
 

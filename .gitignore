@@ -18,3 +18,5 @@ dashboard.html
 
 # written by `vercel link` (project and account ids for the CLI on this machine)
 /.vercel/
+# `.env.local` is written by `vercel link` too, and holds a token
+.env*
