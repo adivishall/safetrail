@@ -1,0 +1,11 @@
+# What Vercel CLI must not upload when deploying from a working tree. Git
+# deployments clone the repository and never see these. Keep in step with
+# .gitignore.
+build/
+build-cmake/
+build-rel/
+compile_commands.json
+dashboard.html
+public/
+.DS_Store
+.claude/

@@ -6,6 +6,26 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-20 — Vercel deployment of the dashboard
+
+**What:** Added `vercel.json`, `tools/vercel_build.sh` and `.vercelignore`,
+ignored `public/` and `.vercel/`, and documented the deployment in
+`docs/DEPLOYMENT.md` (new §2; the later sections are renumbered). The build
+command compiles the engine on Vercel's Amazon Linux build image with
+`make dashboard CXX=g++`, copies `dashboard.html` to `public/index.html`, and
+repeats CI's evidence checks (no tracked file changed, benchmark table equal to
+the committed CSV, nothing loaded from the network) before that file is
+published as the site's only page.
+
+**Why:** A second free host for the same dashboard, built from the repository
+rather than from a file copied off a laptop. Rehearsed in a container built
+from `amazonlinux:2023` plus Vercel's documented package list: GCC 11.5, 8 s,
+output byte-identical to the file GitHub Pages serves from the same commit.
+
+**Impact:** Deployment configuration and documentation only; no engine, test,
+benchmark or CI change. GitHub Pages is unchanged and remains the fallback. The
+live URL goes into `docs/DEPLOYMENT.md` once the first deployment is verified.
+
 ### 2026-10-11 — One-page link sheet for the teacher
 
 **What:** Added `docs/presentation/09_TEACHER_LINKS.md`: the five verified links

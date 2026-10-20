@@ -199,7 +199,7 @@ change at production scale.
 | [DEFECT_LOG.md](docs/DEFECT_LOG.md) | every real defect found, its fix, and the test that pins it |
 | [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) · [REVIEW_QA.md](docs/REVIEW_QA.md) · [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html) | the 5-minute live demo on `make review`, the questions it raises, and ten slides |
 | [INTERVIEW.md](docs/INTERVIEW.md) · [RESUME.md](docs/RESUME.md) | the project explained at 30 s / 60 s / 3 min, and résumé bullets with sources |
-| [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) · [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) · [DEPLOYMENT.md](docs/DEPLOYMENT.md) | why the extensions exist; where the dashboard's data comes from; CI and Pages |
+| [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) · [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) · [DEPLOYMENT.md](docs/DEPLOYMENT.md) | why the extensions exist; where the dashboard's data comes from; CI, Pages and Vercel |
 | [docs/course/](docs/course/README.md) | the original course submission (viva prep, slides), archived |
 
 SafeTrail started as a Data Structures course project derived from Smart India
