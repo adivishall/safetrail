@@ -44,7 +44,12 @@ Apple clang/libc++ on macos-15 and g++/libstdc++ on ubuntu-24.04. The gate
 proves that one run and no other input; the libm last-ulp question (TESTING
 §7) did not show in it, and nothing exercises it separately. The deploy waits
 for one more job, of a few seconds, after `build`; each run keeps two 1.6 MB
-dashboard artifacts. No code changes, so no output changes.
+dashboard artifacts. No code changes, so no output changes. Verified on this
+branch's pull-request run 39747408914: the `macos` job printed sha256
+`37293065a4a30ba55d35109f18a44ce2b47ac57e3ada31f0d69dbe0096a73707` for the
+Apple clang file, the gate printed the same hash for it and for the g++ file
+and reported them identical, every job passed, and `deploy` was skipped as it
+is on every pull request.
 
 ### 2026-10-22 — Cross-platform dashboard: incident ranking made a pure function of the incident set
 
