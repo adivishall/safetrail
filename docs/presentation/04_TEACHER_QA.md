@@ -152,7 +152,7 @@ Three rules while answering:
 
 **Q24. What does deterministic output mean here?**
 **Say:** Same seed, same input, byte-identical output, every run, on this platform. It is a gated test, not a promise: `make determinism` runs the same seed twice and compares the files, and the Make and CMake builds must agree byte for byte.
-**If they follow up:** What makes it hold: a fixed-seed PRNG, explicit tie-breaks in every ordered structure, candidates evaluated in zone-id order so the index is invisible in the output, and `-ffp-contract=off` so the compiler cannot fuse multiply-adds differently at different optimisation levels. Not gated across operating systems: libm differs in the last ulp of `asin`/`sin`/`cos`.
+**If they follow up:** What makes it hold: a fixed-seed PRNG, explicit tie-breaks in every ordered structure, candidates evaluated in zone-id order so the index is invisible in the output, and `-ffp-contract=off` so the compiler cannot fuse multiply-adds differently at different optimisation levels. Across operating systems CI compares one run, the default dashboard built on macOS and on Linux, byte for byte; beyond that run nothing is compared, and libm differs in the last ulp of `asin`/`sin`/`cos`.
 **Source:** `Makefile` (`determinism`, `validate`); `tests/golden/determinism_test.cpp`; `docs/TESTING.md` §7.
 
 **Q25. What are the limitations of randomized testing?**
@@ -246,7 +246,7 @@ Three rules while answering:
 
 **Q40. What are the biggest current limitations?**
 **Say:** Simulated people over real geography. O(n) worst-case queries for both spatial trees and O(n) removal in every index. Tolerance-based geometry, not exact predicates. No antimeridian support. Single-threaded, in memory, one process. Benchmarks from one laptop, quoted as ranges. And no production-scale load test.
-**If they follow up:** Also: a GPS jump inflates the speed estimate and therefore the query radius for about a minute, collapsing pruning for that person (correct but slow); cross-OS determinism has one known gap in the dispatch extension and is not gated.
+**If they follow up:** Also: a GPS jump inflates the speed estimate and therefore the query radius for about a minute, collapsing pruning for that person (correct but slow); cross-OS determinism is gated for the default dashboard run only, and has one known gap in the dispatch extension (libm's last ulp).
 **Source:** `README.md` "Limitations"; `docs/ARCHITECTURE.md` "Limitations".
 
 **Q41. What would you change with another month?**

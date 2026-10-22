@@ -187,24 +187,35 @@ not the last word.
 Same seed → byte-identical output, on one platform, gated by `make determinism`
 and `tests/golden/`; `make validate` and CI also require the Make build (library
 `-O2`, tests `-O1`) and the CMake Release build (`-O3`, `NDEBUG` — there are no
-`assert`s to lose) to agree byte for byte. What makes it hold: a fixed-seed PRNG,
-explicit tie-breaks in every ordered structure (heaps, sorts, k-d tree medians,
-Hungarian ties, the sweep's event order), candidates evaluated in zone-id order,
-and `-ffp-contract=off` so the compiler cannot fuse `a*b + c` differently at
-different optimisation levels. Across operating systems nothing is gated. Two
-comparisons are on record. On 2026-09-05 (before the pass-6 fixes) a macOS and a
-Linux build agreed byte for byte in the evaluation core and differed in the last
-digits of the dispatch travel totals, attributed to Apple's libm and glibc
-differing in the last ulp of `asin`/`sin`/`cos` — a boundary documented rather
-than closed, since closing it would mean shipping transcendental functions. On
-2026-10-22 the whole `make dashboard` page was compared, Apple clang 17 against
-g++ 13 (CI) and g++ 11.5 (a container): every frame, event and coordinate
-matched; the dispatch totals, incident cards and dispatch lines did not, because
-the incident ranking had no tie-break and `std::sort` orders equal elements
-differently in libc++ and libstdc++ (DEFECT_LOG pass 8). With the id tie-break
-(`alert::outranks`) the page is byte-identical across the two, and
+`assert`s to lose) to agree byte for byte. What makes it hold: a fixed-seed
+PRNG, explicit tie-breaks in every ordered structure (heaps, sorts, k-d tree
+medians, Hungarian ties, the sweep's event order), candidates evaluated in
+zone-id order, and `-ffp-contract=off` so the compiler cannot fuse `a*b + c`
+differently at different optimisation levels. Across operating systems one run
+is gated, since 2026-10-22: the `cross-platform` job in CI fails the run, and
+with it the deploy, unless the `make dashboard` page built on `macos-15` (Apple
+clang, libc++) is byte-identical to the one built on `ubuntu-24.04` (g++,
+libstdc++), which is the file published ([DEPLOYMENT.md](DEPLOYMENT.md)). The
+two runners' files are compared with each other, not against a recorded hash,
+because the page embeds the committed benchmark CSV and changes whenever `make
+bench` results are committed. Two hand comparisons preceded the gate. On
+2026-09-05 (before the pass-6 fixes) a macOS and a Linux build agreed byte for
+byte in the evaluation core and differed in the last digits of the dispatch
+travel totals, attributed to Apple's libm and glibc differing in the last ulp of
+`asin`/`sin`/`cos` — a boundary documented rather than closed, since closing it
+would mean shipping transcendental functions. On 2026-10-22 the whole `make
+dashboard` page was compared, Apple clang 17 against g++ 13 (CI) and g++ 11.5 (a
+container): every frame, event and coordinate matched; the dispatch totals,
+incident cards and dispatch lines did not, because the incident ranking had no
+tie-break and `std::sort` orders equal elements differently in libc++ and
+libstdc++ (DEFECT_LOG pass 8). With the id tie-break (`alert::outranks`) the
+page is byte-identical across the two, and
 `tests/alert/incident_ranking_test.cpp` pins the order. The libm gap did not
-show in that run; it is still not gated.
+show in that run, and the gate does not close it: it proves that one run — the
+default dashboard, 60 tourists for 2 hours over the OSM zones plus 400 synthetic
+ones — matches across the two platforms, and nothing constructs an input on
+which the two libms' last ulp would differ. A difference that appears only on
+other inputs is still found by hand or not at all.
 
 ## 8. What the suite does not cover
 

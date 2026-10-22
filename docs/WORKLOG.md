@@ -6,6 +6,46 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-22 — CI gates the dashboard across operating systems
+
+**What:** `.github/workflows/deploy.yml` gains a `cross-platform` job, and
+`deploy` waits for it. The `macos` job now also runs `make dashboard
+CXX=clang++`, prints the file's sha256 and uploads it as the `dashboard-macos`
+artifact; the `build` job uploads the dashboard it assembled with g++ — the
+file that becomes the site — as `dashboard-linux`; the new job downloads both,
+prints both hashes and `cmp`s them, and fails the run when they differ, with
+the count of differing bytes and the first differences (the page split at
+commas, so its JSON summary reads line by line). The concurrency groups, the
+informational `bench` job and `build`'s committed-files guard are unchanged.
+DEPLOYMENT.md (diagram, gate table), TESTING §7, the cross-OS bullets in
+ARCHITECTURE and RESULTS, the DEFECT_LOG pass 8 test cell and the three
+presentation-kit sentences that said cross-OS determinism was not gated
+(`03` determinism, `04` Q24 and Q40) now say what is gated and what is not.
+
+**Why:** The previous entry's defect was found by comparing two builds by
+hand, and every document said so: "across operating systems nothing is
+gated". A comparison done by hand once is one that will not be done the next
+time an unstable sort or a last-ulp difference creeps in, and the README's
+determinism claim does not say "on one platform". The two files are compared
+with each other, not against a recorded hash, because the dashboard embeds the
+committed benchmark CSV: its hash changes every time `make bench` results are
+committed, and a pinned hash would fail every such commit. The Linux side is
+the file `build` publishes rather than a second Linux build, so the gate is a
+statement about the live site. The comparison step was run locally under the
+runner's `bash -eo pipefail` on an identical pair (exit 0) and a differing
+pair (exit 1, with the diff). actionlint 1.7.12 with shellcheck 0.11.0 reports
+nothing on the new lines; its ten pre-existing findings (SC2046 on the
+unquoted `-j$(nproc)` and `-j$(sysctl -n hw.ncpu)`, SC2086 on `$args` in the
+cmake job) are on untouched lines and are left as they are.
+
+**Impact:** Nothing deploys unless the default dashboard run — 60 tourists for
+2 hours over the OSM zones plus 400 synthetic ones — is byte-identical between
+Apple clang/libc++ on macos-15 and g++/libstdc++ on ubuntu-24.04. The gate
+proves that one run and no other input; the libm last-ulp question (TESTING
+§7) did not show in it, and nothing exercises it separately. The deploy waits
+for one more job, of a few seconds, after `build`; each run keeps two 1.6 MB
+dashboard artifacts. No code changes, so no output changes.
+
 ### 2026-10-22 — Cross-platform dashboard: incident ranking made a pure function of the incident set
 
 **What:** `alert::outranks` in `include/safetrail/alert/correlator.hpp` defines
