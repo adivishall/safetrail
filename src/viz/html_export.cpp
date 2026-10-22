@@ -930,14 +930,12 @@ bool TraceRecorder::write_html(const sim::Simulator& s, const std::string& path)
 
   // The GAP 5 headline made visible: the largest correlated incidents, each ONE
   // card standing in for many alerts. Labelled by the nearest authored hazard.
+  // Ranked by alert::outranks, the same total order dispatch uses, so the cards
+  // are the same on every platform (tests/alert/incident_ranking_test.cpp).
   d += ",\"incidents_top\":[";
   {
     auto inc = s.correlator().open_incidents();
-    std::sort(inc.begin(), inc.end(),
-              [](const alert::Incident* a, const alert::Incident* b) {
-                if (a->people() != b->people()) return a->people() > b->people();
-                return a->max_severity > b->max_severity;
-              });
+    alert::rank_by_seriousness(inc);
     size_t shown = 0;
     for (const auto* i : inc) {
       if (i->people() < 2) continue;          // a lone alert is not an "incident card"

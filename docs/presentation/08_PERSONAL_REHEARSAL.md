@@ -14,7 +14,7 @@ Every one is from the committed CSVs, the test output or the code at `76b63af`.
 5. **Why the speedup caps:** k. About 98 zones genuinely overlap each query at 100,000 zones in one district and every index must return them all. At constant density (k ≈ 1) the same code is 543× / 1042× faster at 100,000 zones.
 6. **The demo scenario:** 38 real OpenStreetMap zones + 5,000 synthetic = 5,038; 40 simulated tourists; one hour; 141,130 queries; 13.91 candidates per query; 711 million box tests under brute force; 27,935 events, byte-identical under all three indexes.
 7. **Hysteresis:** ENTER needs 15 m inside, 3 agreeing fixes, 5 s dwell; EXIT needs 25 m outside, 3 fixes; Uncertain is reported, never acted on. Filter off: 17,906 entries vs 602. Against noise-free truth the filter reports 502 of 521 transitions (96%) under realistic drift, 343 (66%) under white noise.
-8. **Correctness evidence:** differential tests, ~55,000 hostile queries per index configuration over 7 profiles, invariants audited after every operation; bit-identical event streams under all four indexes; mutation testing 22/22; UBSan locally, ASan+UBSan and g++ -Werror in CI; 45 test files, 11,844 checks; determinism gated.
+8. **Correctness evidence:** differential tests, ~55,000 hostile queries per index configuration over 7 profiles, invariants audited after every operation; bit-identical event streams under all four indexes; mutation testing 23/23; UBSan locally, ASan+UBSan and g++ -Werror in CI; 46 test files, 11,856 checks; determinism gated.
 9. **Ten real defects**, eight in the engine and two in measurement, in code that passed its tests. The three to tell: zones that left the candidate window were never observed again (60 entries, 0 exits); hysteresis let Uncertain through (about 60% of the demo's enter/exit events; 2,440 → 987 entries); the query box was 0.11% too narrow (1,728 of 160,000 sampled points outside it).
 10. **Limitations:** simulated people over real geography; O(n) worst cases and O(n) removal; tolerance-based geometry; no antimeridian; single-threaded, in-memory, one process; one laptop's benchmarks; no production-scale load test.
 
@@ -42,7 +42,7 @@ Say each answer aloud in under 20 seconds, then check it against
 2. Is O(log n + k) guaranteed for your quadtree and R-tree?
 3. Why does the R-tree's speedup keep growing while the quadtree's plateaus?
 4. How do you know the indexes return the same answers as brute force?
-5. What does 22/22 in mutation testing prove, and what does it not prove?
+5. What does 23/23 in mutation testing prove, and what does it not prove?
 6. Why did GPS gaps cause missed exits, and what fixed it?
 7. What does hysteresis do, and what does it cost?
 8. What is the interval tree used for, and what is its bound?
@@ -56,7 +56,7 @@ Say each answer aloud in under 20 seconds, then check it against
 | "The R-tree is 224× faster." | "About 224× in that session on this laptop, against my own brute force; it has ranged from about 100× to 235× across sessions." |
 | "O(log n + k) queries." | "O(log n + k) expected; O(n) worst case on adversarial data." |
 | "The interval tree is O(log n + k)." | "Finding one is O(log n); reporting k is O(min(n, (k + 1) log n)), a guarantee from the AVL height but not O(log n + k)." |
-| "Proven correct." | "Differentially tested against an oracle on hostile workloads, with invariants audited and mutation testing at 22/22." |
+| "Proven correct." | "Differentially tested against an oracle on hostile workloads, with invariants audited and mutation testing at 23/23." |
 | "Tested with real users / real GPS." | "Real OpenStreetMap geography; simulated people and a GPS error model, because simulation gives ground truth." |
 | "Faster than PostGIS." | "Faster than my own brute-force scan. No library comparison was made." |
 | "Production-ready / scales to millions." | "Single-threaded, in memory, one process; no load test has been run; the scaling plan is reasoning, not evidence." |

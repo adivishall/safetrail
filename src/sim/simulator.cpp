@@ -301,14 +301,15 @@ void Simulator::dispatch_responders() {
   }
 
   // Dispatch to the most SERIOUS open incidents (most people, then highest
-  // severity), capped near the responder count so the assignment is a real
-  // contest -- this is where greedy nearest-first and the Hungarian optimum
-  // actually diverge. It also bounds the work on a large real road graph.
+  // severity, then the one opened first -- alert::outranks), capped near the
+  // responder count so the assignment is a real contest -- this is where greedy
+  // nearest-first and the Hungarian optimum actually diverge. It also bounds the
+  // work on a large real road graph. The ranking has to be a pure function of
+  // the incident set: most open incidents tie on (people, severity) and the cap
+  // cuts through a tie group, so a sort with no tie-break admitted different
+  // incidents on macOS (libc++) and on Linux (libstdc++) from the same seed.
   auto open = corr_->open_incidents();
-  std::sort(open.begin(), open.end(), [](const alert::Incident* a, const alert::Incident* b) {
-    if (a->people() != b->people()) return a->people() > b->people();
-    return a->max_severity > b->max_severity;
-  });
+  alert::rank_by_seriousness(open);
   const size_t cap = cfg_.responders * 3 + 1;
   std::vector<dispatch::Incident> incidents;
   for (size_t i = 0; i < open.size() && i < cap; ++i)

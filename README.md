@@ -26,7 +26,7 @@ trustworthy transitions, a benchmark harness, and a one-file dashboard.
 faster, never different. Every structure is compared with a brute-force oracle on
 randomized hostile workloads with its invariants audited after every operation;
 the whole engine must emit bit-identical events under all four indexes; and 22
-injected bugs must each be caught by a test (22/22). That process found **ten
+injected bugs must each be caught by a test (23/23). That process found **ten
 real defects** in code that was passing its tests.
 
 - **Result (measured):** at 100,000 zones in one district,
@@ -117,7 +117,7 @@ What the numbers say, and why:
 | **Differential tests** | ~55,000 queries per index over seven hostile workload profiles (identical boxes, zero-area boxes, touching edges, both hemispheres, poles, past lon 180, far inserts), mixed with inserts, removals and rebuilds |
 | **Invariant audits** | each core structure's `check_invariants()` runs after **every** operation in those tests |
 | **End to end** | the whole engine under all four indexes must emit bit-identical event streams |
-| **Mutation testing** | 22 realistic bugs injected into the core; the suite must fail on each (`make mutation`: 22/22) |
+| **Mutation testing** | 23 realistic bugs injected into the core; the suite must fail on each (`make mutation`: 23/23) |
 | **Sanitizers, warnings, analysis** | the whole suite is UBSan-clean on macOS and gated under ASan + UBSan in Linux CI; `-Werror` builds with clang, and with g++ 13 in CI; Clang Static Analyzer: 0 findings |
 
 This process found **ten defects** in code that was already passing its tests —
@@ -135,7 +135,7 @@ fix; the measurement defect is pinned by the benchmark's own gates
 make review       # the project walkthrough: every index, identical answers,
                   # transitions, noise, history, the benchmark results, tests,
                   # dashboard (PAUSE=1 to step through it while presenting)
-make test         # 45 test files, ~11,800 checks (~20 s once built)
+make test         # 46 test files, ~11,850 checks (~20 s once built)
 make demo         # the engine on real OSM zones: event stream + counters
 make dashboard    # writes dashboard.html; just open it
 make bench        # every benchmark (~2–3 min), regenerates the tables above
