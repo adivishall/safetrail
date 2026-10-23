@@ -166,17 +166,23 @@ default (Automatic); no custom skip command is saved, and none is needed once
 the script is on every branch cut from `main`.
 
 **Live:** <https://safetrail-adivishall.vercel.app> — project `safetrail` on the
-personal Hobby team, deployment `dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built by Vercel
-on 20 October 2026 from `df1df0d` (uploaded with the CLI; GCC 11.5, 2 cores, 34 s).
-Checked that day: HTTP/2 200 over HTTPS, 1,611,679 bytes, sha256 `77a6f012…` —
-byte-identical to the file GitHub Pages serves; one network request (the page
-itself) and no console output; `#index=rtree&frame=400` opens with the R-tree
-overlay at frame 400; pause, index, dispatch and the frame slider work. Deployment
-Protection is "Only Preview Deployments": the new-project default had put Vercel's
-sign-in in front of the production domain as well. The project is connected to the
-GitHub repository with `main` as the production branch, so a push to `main` deploys
-production and a pull request gets a sign-in-protected preview, each built by the
-same script. No payment method, trial, custom domain or paid resource is involved.
+personal Hobby team, production deployment `dpl_DY5q7MCWz6T6UpRN5WCgxt4sqm1Z`,
+built by Vercel's Git integration on 23 October 2026 from `main` at `28f0e47`
+(GCC 11.5, 2 cores, 38 s). Checked that day: HTTP/2 200 over HTTPS, 1,611,681
+bytes, sha256 `37293065…` — byte-identical to the file GitHub Pages serves and
+to an Apple clang build of the same tree; the benchmark table equals the
+committed `bench/results/index_scaling.csv` field for field; one network request
+(the page itself) and no console output; `#index=rtree&frame=400` opens with the
+R-tree overlay at frame 400; pause, the index switch and the frame slider work;
+the sources, `vercel.json`, the build script and `build/` answer 404. The first
+production deployment, `dpl_14HUP4Z3VwkStYdvV3ygsQDthycW` from `df1df0d` on 20
+October (uploaded with the CLI, 34 s), served the pre-fix dashboard (sha256
+`77a6f012…`) until then. Deployment Protection is "Only Preview Deployments":
+the new-project default had put Vercel's sign-in in front of the production
+domain as well. The project is connected to the GitHub repository with `main`
+as the production branch, so a push to `main` deploys production and a pull
+request gets a sign-in-protected preview, each built by the same script. No
+payment method, trial, custom domain or paid resource is involved.
 
 What Vercel does not do: measure anything. As on Pages, the site's benchmark
 numbers are the committed results.

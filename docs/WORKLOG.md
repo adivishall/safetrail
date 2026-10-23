@@ -6,6 +6,29 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-23 — Vercel production rebuilt from `main` and verified
+
+**What:** Pull request #6 merged as `28f0e47`, so `main` now carries
+`vercel.json`, `.vercelignore` and `tools/vercel_build.sh`. Vercel's Git
+integration built production deployment `dpl_DY5q7MCWz6T6UpRN5WCgxt4sqm1Z` from
+that commit (GCC 11.5, 2 cores, 38 s) and <https://safetrail-adivishall.vercel.app>
+now serves it. DEPLOYMENT.md §2 ("Live") and the teacher link sheet record the
+verified state.
+
+**Why:** Until this merge the domain served the 20 October deployment of the
+pre-fix dashboard, because every production build of `main` since the ranking
+fix had failed on the missing script (previous entry). Verified rather than
+assumed: the production page answers HTTP/2 200 with 1,611,681 bytes and sha256
+`37293065…`, byte for byte the GitHub Pages file and an Apple clang build of the
+same tree; its benchmark rows equal the committed `index_scaling.csv`; it makes
+one network request and logs nothing; `#index=rtree&frame=400`, pause, the index
+switch and the frame slider work; the sources, configuration and `build/` answer
+404. The pull request's own preview had already built from `150c3ba` in 36 s.
+
+**Impact:** Documentation only. Pushes to `main` now deploy to Vercel as well as
+to GitHub Pages, from the same script; pull requests get sign-in-protected
+previews. No paid feature, payment method, custom domain or trial is involved.
+
 ### 2026-10-23 — Vercel configuration brought up to date with `main`
 
 **What:** Merged `main` (`980c2bd`: the incident-ranking fix and the
