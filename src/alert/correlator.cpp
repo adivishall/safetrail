@@ -208,4 +208,9 @@ bool Correlator::close(IncidentId id, int64_t at_ms) {
   return true;
 }
 
+void rank_by_seriousness(std::vector<const Incident*>& v) {
+  std::sort(v.begin(), v.end(),
+            [](const Incident* a, const Incident* b) { return outranks(*a, *b); });
+}
+
 }  // namespace safetrail::alert

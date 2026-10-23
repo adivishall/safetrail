@@ -26,6 +26,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # (name, file, exact text to replace, replacement, tests that must catch it)
 MUTANTS = [
+    # ── incident ranking ────────────────────────────────────────────────────
+    ("incident ranking has no id tie-break (platform-dependent order)",
+     "include/safetrail/alert/correlator.hpp",
+     "  return a.id < b.id;\n}",
+     "  return false;\n}",
+     ["alert/incident_ranking_test"]),
     # ── spatial indexes ─────────────────────────────────────────────────────
     ("quadtree query skips the NE child",
      "src/index/quadtree.cpp",

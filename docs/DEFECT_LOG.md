@@ -20,8 +20,8 @@ you stop reading the docs and start reading the code), **5** claim–code alignm
 (complexity claims true in general but not for this data, a module built and
 never called, an oracle that had been quietly invalid), **6** a hostile audit
 driven by differential tests against oracles, invariant audits after every
-operation, and mutation testing. Pass 6, the most recent and the deepest, is
-listed first.
+operation, and mutation testing. Pass 6, the deepest, is listed directly after
+the two passes that followed it.
 
 **Passes 4, 5 and 6 are not victory laps.** Each records a later, deeper audit
 that found real defects the earlier ones had not looked for — pass 4 in the
@@ -38,6 +38,11 @@ cross-platform guarantee, a one-session benchmark range — two measuring
 instruments weaker than they said, and one regression test that did not test the
 defect it was named for.
 
+**Pass 8** did the one comparison pass 7 recorded as not gated: the same commit's
+dashboard built on macOS and on Linux, diffed byte for byte. It found one defect
+— an incident ranking with no tie-break, ordered differently by the two
+standard libraries — and fixed it.
+
 **How to read this file.** Every table is a dated record of what was true *then*.
 Current-state numbers are the ones in the most recent pass, in `README.md` and in
 [RESULTS.md](RESULTS.md) / [TESTING.md](TESTING.md); earlier figures are history,
@@ -45,6 +50,23 @@ not claims, and are left in place because the point of the ledger is the
 trajectory. In pass 6, every "Test" cell names a test that was run against the
 pre-fix code and **failed**, then passed after the fix; where a defect was found
 by a probe rather than a test, the probe's output is quoted.
+
+---
+
+## Pass 8 — Cross-platform comparison of the dashboard (2026-10-22)  ·  status: ✅ done
+
+One finding. `make dashboard` from `e091586` was byte-identical across Linux
+g++ builds (gcc 13 in CI, gcc 11.5 in an Amazon Linux 2023 container) and
+differed from the Apple clang 17 build in 163 bytes, all in the JSON summary.
+
+### The dispatch contest admitted different incidents on macOS and on Linux
+
+| | |
+|---|---|
+| **Before** | `sim::Simulator::dispatch_responders()` and the dashboard's `incidents_top` each ranked `open_incidents()` with `std::sort` and a comparator on (people, max_severity) alone. |
+| **Problem** | Most open incidents tie on that key — one person, one severity level — and the dispatch cap (`responders × 3 + 1`) cuts through a tie group. `std::sort` is unstable and its order among equal elements is implementation-defined; libc++ and libstdc++ differ. In the default dashboard run, 45 of the 223 open incidents tie at (1 person, severity 4) across ranks 4–48 and 22 of them are admitted; the two 33-person incidents tie as well. So `greedy_m` / `optimal_m` were 97811 / 97752 on macOS and 96571 / 96094 on Linux, the top two incident cards swapped and the dispatch lines differed, while the frames, the event stream and the Merkle root matched. Not a wrong answer — each admitted set is a valid top 25 — but a headline number ("saved by Hungarian") that depended on which standard library compiled the engine. Confirmed on one machine before comparing two: swapping the sorts for `std::stable_sort` on macOS moved the same fields and nothing else. |
+| **Fix** | `alert::outranks`: people, then severity, then the lower id. A strict total order, so the sequence is independent of the sort algorithm and of the input order; `alert::rank_by_seriousness` applies it and both call sites use it. The fixed tree's dashboard is byte-identical on macOS and Linux (sha256 `37293065…`). The reported totals change on every platform — 126,971 m greedy, 125,742 m optimal for the default run — because the earliest-opened of the tied incidents are now the ones admitted. |
+| **Test** | `tests/alert/incident_ranking_test.cpp`, 12 checks: the order is total; 50 permutations of twelve incidents in four tie groups rank to one sequence; the simulator's greedy and optimal totals equal a replay from the ranked incidents, with the tie group asserted to straddle the cap so the check cannot go vacuous; the dashboard's cards follow the ranking. The mutant "incident ranking has no id tie-break" in `tools/mutation_check.py` is killed by it. Found by a cross-platform diff, not by a test: the cross-OS comparison is still not gated (TESTING §7). |
 
 ---
 

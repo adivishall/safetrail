@@ -27,7 +27,7 @@ is not part of the bullet.
 
 2. **Tested correctness with randomized differential tests against a
    brute-force oracle, invariant audits after every operation, and mutation
-   testing (22/22 injected bugs caught), uncovering 8 latent defects in code that
+   testing (23/23 injected bugs caught), uncovering 8 latent defects in code that
    passed its tests.**
    <sub>`make test`, `make stress`, `make mutation`;
    [DEFECT_LOG.md](DEFECT_LOG.md) pass 6.</sub>
@@ -66,7 +66,7 @@ is not part of the bullet.
 - *Hand-built quadtree, STR R-tree, AVL interval tree and persistent quadtree in
   C++17; 100–235× faster range queries than a linear scan on a synthetic
   100k-zone benchmark, with identical results.*
-- *Differential and mutation testing (22/22 injected bugs caught) found 8 latent
+- *Differential and mutation testing (23/23 injected bugs caught) found 8 latent
   defects in code that already passed its tests.*
 
 ## Choosing bullets
@@ -84,7 +84,7 @@ three bullets are plenty.
   one laptop, synthetic zones, and ratios moved by more than 2× between sessions
   (102–114× in one, 223–235× in another). If one number is needed, use the
   floor: "over 100×". The bounds are O(log n + k) expected, O(n) worst case.
-- **Mutation score as proof of correctness.** 22/22 means those 22 hand-written
+- **Mutation score as proof of correctness.** 23/23 means those 23 hand-written
   bugs are caught; it says nothing about bugs unlike them.
 - **"Tested on real users."** Real OpenStreetMap geography, simulated movement.
 - **"Production-ready" or "scales to millions".** Single-threaded, in-memory,

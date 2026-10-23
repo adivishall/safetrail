@@ -477,7 +477,7 @@ CI job. Mutants include: quadtree query skips one child; R-tree insert does not
 grow the node box; interval tree `max_high` ignores the right subtree; persistent
 index filters history with today's validity; evaluator never reconciles;
 hysteresis lets an Uncertain fix complete an exit; ray casting ignores holes;
-query box without the 1/cos(lat) stretch. Result 22/22. Two earlier survivors
+query box without the 1/cos(lat) stretch. Result 23/23. Two earlier survivors
 were real findings (the quadtree audit gap; a redundant duplicate-vertex screen).
 Each write happens in a later wall-clock second than the last build because
 macOS's make 3.81 compares mtimes to the second. What it does not prove: the
