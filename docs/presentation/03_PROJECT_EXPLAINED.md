@@ -477,7 +477,7 @@ CI job. Mutants include: quadtree query skips one child; R-tree insert does not
 grow the node box; interval tree `max_high` ignores the right subtree; persistent
 index filters history with today's validity; evaluator never reconciles;
 hysteresis lets an Uncertain fix complete an exit; ray casting ignores holes;
-query box without the 1/cos(lat) stretch. Result 22/22. Two earlier survivors
+query box without the 1/cos(lat) stretch. Result 23/23. Two earlier survivors
 were real findings (the quadtree audit gap; a redundant duplicate-vertex screen).
 Each write happens in a later wall-clock second than the last build because
 macOS's make 3.81 compares mtimes to the second. What it does not prove: the
@@ -494,10 +494,12 @@ and CI require the Make build (−O2) and the CMake Release build (−O3) to agr
 byte for byte, which `-ffp-contract=off` guarantees (fused multiply-adds would
 otherwise differ by a last bit between optimisation levels, and a last bit flips
 threshold comparisons). Also: fixed-seed PRNG, explicit tie-breaks in every
-ordered structure, candidates in zone-id order. Not gated across operating
-systems: libm's `asin`/`sin`/`cos` differ in the last ulp between macOS and Linux
-(the one comparison matched in the evaluation core, differed in dispatch travel
-totals).
+ordered structure, candidates in zone-id order. Across operating systems CI
+compares one run: the default dashboard page built on macOS (Apple clang,
+libc++) and on Linux (g++, libstdc++) must be byte-identical. Not gated beyond
+that run: libm's `asin`/`sin`/`cos` differ in the last ulp between macOS and
+Linux (one comparison matched in the evaluation core and differed in dispatch
+travel totals; the dashboard run did not show it).
 
 ### Sanitizers and static analysis
 

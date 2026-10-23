@@ -152,7 +152,7 @@ Three rules while answering:
 
 **Q24. What does deterministic output mean here?**
 **Say:** Same seed, same input, byte-identical output, every run, on this platform. It is a gated test, not a promise: `make determinism` runs the same seed twice and compares the files, and the Make and CMake builds must agree byte for byte.
-**If they follow up:** What makes it hold: a fixed-seed PRNG, explicit tie-breaks in every ordered structure, candidates evaluated in zone-id order so the index is invisible in the output, and `-ffp-contract=off` so the compiler cannot fuse multiply-adds differently at different optimisation levels. Not gated across operating systems: libm differs in the last ulp of `asin`/`sin`/`cos`.
+**If they follow up:** What makes it hold: a fixed-seed PRNG, explicit tie-breaks in every ordered structure, candidates evaluated in zone-id order so the index is invisible in the output, and `-ffp-contract=off` so the compiler cannot fuse multiply-adds differently at different optimisation levels. Across operating systems CI compares one run, the default dashboard built on macOS and on Linux, byte for byte; beyond that run nothing is compared, and libm differs in the last ulp of `asin`/`sin`/`cos`.
 **Source:** `Makefile` (`determinism`, `validate`); `tests/golden/determinism_test.cpp`; `docs/TESTING.md` §7.
 
 **Q25. What are the limitations of randomized testing?**
@@ -179,7 +179,7 @@ Three rules while answering:
 **If they follow up:** Examples: the quadtree query skips one child; the R-tree insert does not grow the node box; the interval tree's `max_high` ignores the right subtree; the persistent index filters history with today's validity; the evaluator never reconciles; hysteresis lets Uncertain complete an exit. Two earlier survivors were real findings: the quadtree audit could not tell a quadtree from an arbitrary tree of boxes, and a duplicate-vertex screen in the sweep was redundant.
 **Source:** `tools/mutation_check.py`; `make mutation`; `docs/TESTING.md` §4.
 
-**Q29. What do the 22/22 mutation results actually prove?**
+**Q29. What do the 23/23 mutation results actually prove?**
 **Say:** That those 22 specific, hand-written faults are each caught by a test. Nothing more. They say nothing about faults unlike them. It is evidence that the tests have teeth, not a correctness proof.
 **If they follow up:** The mutants were chosen to cover each structure's core invariant and each pass-6 fix; a different fault class, say an off-by-one in the GeoJSON parser, is not represented. A larger automated mutation tool would sample more broadly; this one is 22 curated edits.
 **Source:** `tools/mutation_check.py`; `docs/RESUME.md` "Do not claim".
@@ -195,8 +195,8 @@ Three rules while answering:
 **If they follow up:** It is good at null dereferences, use after free, uninitialised reads along feasible paths within a translation unit; weak across calls it cannot see, and silent on logic.
 **Source:** `make analyze`; `docs/TESTING.md` §6.
 
-**Q32. Does 45 test files mean every possible case is correct?**
-**Say:** No. It means 45 files and 11,844 checks pass, covering the cases I thought of, the hostile cases I generated, and the real bugs I found. The suite is backed by invariant audits and mutation testing, which is more than a pass count, but it is still evidence, not proof.
+**Q32. Does 46 test files mean every possible case is correct?**
+**Say:** No. It means 46 files and 11,856 checks pass, covering the cases I thought of, the hostile cases I generated, and the real bugs I found. The suite is backed by invariant audits and mutation testing, which is more than a pass count, but it is still evidence, not proof.
 **If they follow up:** Known uncovered areas, stated in `docs/TESTING.md` §8: real GPS traces, exact arithmetic, concurrency (there is none), antimeridian-spanning zones (refused).
 **Source:** `make test`; `docs/TESTING.md` §8.
 
@@ -246,7 +246,7 @@ Three rules while answering:
 
 **Q40. What are the biggest current limitations?**
 **Say:** Simulated people over real geography. O(n) worst-case queries for both spatial trees and O(n) removal in every index. Tolerance-based geometry, not exact predicates. No antimeridian support. Single-threaded, in memory, one process. Benchmarks from one laptop, quoted as ranges. And no production-scale load test.
-**If they follow up:** Also: a GPS jump inflates the speed estimate and therefore the query radius for about a minute, collapsing pruning for that person (correct but slow); cross-OS determinism has one known gap in the dispatch extension and is not gated.
+**If they follow up:** Also: a GPS jump inflates the speed estimate and therefore the query radius for about a minute, collapsing pruning for that person (correct but slow); cross-OS determinism is gated for the default dashboard run only, and has one known gap in the dispatch extension (libm's last ulp).
 **Source:** `README.md` "Limitations"; `docs/ARCHITECTURE.md` "Limitations".
 
 **Q41. What would you change with another month?**

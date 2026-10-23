@@ -377,18 +377,18 @@ differential test could see it. That predicate has no direct test of its own; it
 is the gap I'd close first. (The oracle has been wrong once before: its candidate
 counter added the whole output buffer — DEFECT_LOG pass 4.)
 
-**Why does 22/22 on the mutation check matter?**
+**Why does 23/23 on the mutation check matter?**
 A passing suite shows the code satisfies the tests; a mutation check shows the
-tests constrain the code. Each of the 22 mutants is a realistic fault in a
+tests constrain the code. Each of the 23 mutants is a realistic fault in a
 different core mechanism — a pruning test that skips a child, a missing `max_high`
 refit, a skipped rebalance, history filtered by today's rules, a reconciliation
 never run, an Uncertain fix completing an exit — and each must make a named test
-fail. It found two real gaps in the tests themselves before reaching 22/22: the
-quadtree audit could not tell a quadtree from an arbitrary tree of boxes, and a
-duplicate-vertex screen in the sweep was redundant (removed). What it does *not*
-prove: the mutants are hand-picked, so 22/22 says those 22 faults are caught and
-nothing about faults unlike them; a mutant that happens to be equivalent would
-count as a survivor, not a gap; and a wrong requirement survives every mutant,
+fail. It found two real gaps in the tests themselves before first reaching a
+full score: the quadtree audit could not tell a quadtree from an arbitrary tree
+of boxes, and a duplicate-vertex screen in the sweep was redundant (removed).
+What it does *not* prove: the mutants are hand-picked, so 23/23 says those 23
+faults are caught and nothing about faults unlike them; a mutant that happens to
+be equivalent would count as a survivor, not a gap; and a wrong requirement survives every mutant,
 because the tests encode the same requirement. It is evidence about the tests,
 not proof about the code.
 

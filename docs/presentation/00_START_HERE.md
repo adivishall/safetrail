@@ -88,7 +88,7 @@ make test
 make determinism
 ```
 
-Expected endings: `ALL TESTS PASS` (45 test files, 11,844 checks) and
+Expected endings: `ALL TESTS PASS` (46 test files, 11,856 checks) and
 `determinism: identical output across runs`.
 
 ### 1.5 Warm-up run of the nine-step demo

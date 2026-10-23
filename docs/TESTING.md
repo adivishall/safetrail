@@ -40,7 +40,7 @@ make validate    # all of the above that gates a merge, in one command
 | Persistent index | A query "at time t" answers from the zone set *and the rules* as they stood at t | a replay model holding a full table per version | `tests/index/persistence_differential_test.cpp` |
 | State machine | An event is emitted exactly when confirmed containment changes; hysteresis filters every band (Inside, Outside and Uncertain); every zone with open state is observed every tick | hand-built scenarios with known answers | `tests/fence/hysteresis_test.cpp`, `tests/fence/state_reconciliation_test.cpp` |
 | Whole engine | The event stream is a function of zones and fixes only — identical, bit for bit, whichever index is plugged in | the same run under brute force | `tests/fence/index_independence_test.cpp` |
-| Determinism | Same seed → byte-identical output | a second run | `tests/golden/*`, `make determinism` |
+| Determinism | Same seed → byte-identical output; the incident ranking is a total order, independent of the sort algorithm | a second run; 50 input permutations | `tests/golden/*`, `tests/alert/incident_ranking_test.cpp`, `make determinism` |
 
 ## 2. Structural invariants
 
@@ -122,6 +122,7 @@ by the previous build's binary ([DEFECT_LOG.md](DEFECT_LOG.md)).
 
 | Mutant | Killed by |
 |---|---|
+| incident ranking has no id tie-break (platform-dependent order) | `alert/incident_ranking_test` |
 | quadtree query skips one child | `index/differential_test` |
 | quadtree collapse loses grandchildren | `index/differential_test` |
 | quadtree root expansion puts the old root in the wrong quadrant | `index/differential_test` (tiling invariant) |
@@ -145,7 +146,7 @@ by the previous build's binary ([DEFECT_LOG.md](DEFECT_LOG.md)).
 | sweep line tests only the immediate neighbour | `geo/sweep_line_test` |
 | sweep line tests only the first non-exempt neighbour on insert | `geo/sweep_line_test` |
 
-**Result: 22 of 22 killed.** Two earlier survivors were real findings: the
+**Result: 23 of 23 killed.** Two earlier survivors were real findings: the
 quadtree audit could not distinguish a quadtree from an arbitrary tree of boxes
 (fixed by adding the tiling invariant), and a duplicate-vertex screen in the
 sweep turned out to be redundant (removed — the fuzz shows zero disagreements
@@ -186,16 +187,35 @@ not the last word.
 Same seed → byte-identical output, on one platform, gated by `make determinism`
 and `tests/golden/`; `make validate` and CI also require the Make build (library
 `-O2`, tests `-O1`) and the CMake Release build (`-O3`, `NDEBUG` — there are no
-`assert`s to lose) to agree byte for byte. What makes it hold: a fixed-seed PRNG,
-explicit tie-breaks in every ordered structure (heaps, sorts, k-d tree medians,
-Hungarian ties, the sweep's event order), candidates evaluated in zone-id order,
-and `-ffp-contract=off` so the compiler cannot fuse `a*b + c` differently at
-different optimisation levels. Across operating systems nothing is gated: the
-one comparison of a macOS and a Linux build (WORKLOG, 2026-09-05, before the
-pass-6 fixes) found the evaluation core byte-identical and dispatch travel totals
-different in the last digits, because Apple's libm and glibc differ in the last
-ulp of `asin`/`sin`/`cos`. That boundary is documented rather than closed —
-closing it would mean shipping transcendental functions.
+`assert`s to lose) to agree byte for byte. What makes it hold: a fixed-seed
+PRNG, explicit tie-breaks in every ordered structure (heaps, sorts, k-d tree
+medians, Hungarian ties, the sweep's event order), candidates evaluated in
+zone-id order, and `-ffp-contract=off` so the compiler cannot fuse `a*b + c`
+differently at different optimisation levels. Across operating systems one run
+is gated, since 2026-10-22: the `cross-platform` job in CI fails the run, and
+with it the deploy, unless the `make dashboard` page built on `macos-15` (Apple
+clang, libc++) is byte-identical to the one built on `ubuntu-24.04` (g++,
+libstdc++), which is the file published ([DEPLOYMENT.md](DEPLOYMENT.md)). The
+two runners' files are compared with each other, not against a recorded hash,
+because the page embeds the committed benchmark CSV and changes whenever `make
+bench` results are committed. Two hand comparisons preceded the gate. On
+2026-09-05 (before the pass-6 fixes) a macOS and a Linux build agreed byte for
+byte in the evaluation core and differed in the last digits of the dispatch
+travel totals, attributed to Apple's libm and glibc differing in the last ulp of
+`asin`/`sin`/`cos` — a boundary documented rather than closed, since closing it
+would mean shipping transcendental functions. On 2026-10-22 the whole `make
+dashboard` page was compared, Apple clang 17 against g++ 13 (CI) and g++ 11.5 (a
+container): every frame, event and coordinate matched; the dispatch totals,
+incident cards and dispatch lines did not, because the incident ranking had no
+tie-break and `std::sort` orders equal elements differently in libc++ and
+libstdc++ (DEFECT_LOG pass 8). With the id tie-break (`alert::outranks`) the
+page is byte-identical across the two, and
+`tests/alert/incident_ranking_test.cpp` pins the order. The libm gap did not
+show in that run, and the gate does not close it: it proves that one run — the
+default dashboard, 60 tourists for 2 hours over the OSM zones plus 400 synthetic
+ones — matches across the two platforms, and nothing constructs an input on
+which the two libms' last ulp would differ. A difference that appears only on
+other inputs is still found by hand or not at all.
 
 ## 8. What the suite does not cover
 

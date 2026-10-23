@@ -6,6 +6,99 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-22 — CI gates the dashboard across operating systems
+
+**What:** `.github/workflows/deploy.yml` gains a `cross-platform` job, and
+`deploy` waits for it. The `macos` job now also runs `make dashboard
+CXX=clang++`, prints the file's sha256 and uploads it as the `dashboard-macos`
+artifact; the `build` job uploads the dashboard it assembled with g++ — the
+file that becomes the site — as `dashboard-linux`; the new job downloads both,
+prints both hashes and `cmp`s them, and fails the run when they differ, with
+the count of differing bytes and the first differences (the page split at
+commas, so its JSON summary reads line by line). The concurrency groups, the
+informational `bench` job and `build`'s committed-files guard are unchanged.
+DEPLOYMENT.md (diagram, gate table), TESTING §7, the cross-OS bullets in
+ARCHITECTURE and RESULTS, the DEFECT_LOG pass 8 test cell and the three
+presentation-kit sentences that said cross-OS determinism was not gated
+(`03` determinism, `04` Q24 and Q40) now say what is gated and what is not.
+
+**Why:** The previous entry's defect was found by comparing two builds by
+hand, and every document said so: "across operating systems nothing is
+gated". A comparison done by hand once is one that will not be done the next
+time an unstable sort or a last-ulp difference creeps in, and the README's
+determinism claim does not say "on one platform". The two files are compared
+with each other, not against a recorded hash, because the dashboard embeds the
+committed benchmark CSV: its hash changes every time `make bench` results are
+committed, and a pinned hash would fail every such commit. The Linux side is
+the file `build` publishes rather than a second Linux build, so the gate is a
+statement about the live site. The comparison step was run locally under the
+runner's `bash -eo pipefail` on an identical pair (exit 0) and a differing
+pair (exit 1, with the diff). actionlint 1.7.12 with shellcheck 0.11.0 reports
+nothing on the new lines; its ten pre-existing findings (SC2046 on the
+unquoted `-j$(nproc)` and `-j$(sysctl -n hw.ncpu)`, SC2086 on `$args` in the
+cmake job) are on untouched lines and are left as they are.
+
+**Impact:** Nothing deploys unless the default dashboard run — 60 tourists for
+2 hours over the OSM zones plus 400 synthetic ones — is byte-identical between
+Apple clang/libc++ on macos-15 and g++/libstdc++ on ubuntu-24.04. The gate
+proves that one run and no other input; the libm last-ulp question (TESTING
+§7) did not show in it, and nothing exercises it separately. The deploy waits
+for one more job, of a few seconds, after `build`; each run keeps two 1.6 MB
+dashboard artifacts. No code changes, so no output changes. Verified on this
+branch's pull-request run 39747408914: the `macos` job printed sha256
+`37293065a4a30ba55d35109f18a44ce2b47ac57e3ada31f0d69dbe0096a73707` for the
+Apple clang file, the gate printed the same hash for it and for the g++ file
+and reported them identical, every job passed, and `deploy` was skipped as it
+is on every pull request.
+
+### 2026-10-22 — Cross-platform dashboard: incident ranking made a pure function of the incident set
+
+**What:** `alert::outranks` in `include/safetrail/alert/correlator.hpp` defines
+the order open incidents are ranked in — most people, then highest severity,
+then the lower id (the incident opened first) — and `alert::rank_by_seriousness`
+sorts by it. The simulator's dispatch (`src/sim/simulator.cpp`) and the
+dashboard's incident cards (`src/viz/html_export.cpp`) both use it in place of
+their own `std::sort` on (people, severity) alone. `sim::Simulator::roads()`
+exposes the road graph read-only so a test can replay the dispatch. New test
+`tests/alert/incident_ranking_test.cpp` (12 checks) and a new mutant in
+`tools/mutation_check.py` that removes the tie-break and must be caught by it.
+TESTING §7, ARCHITECTURE, RESULTS and the test-file count in the README and the
+presentation kit updated; DEFECT_LOG pass 8 records the defect.
+
+**Why:** `make dashboard` from commit `e091586` produced a page that was
+byte-identical across Linux g++ builds (gcc 13 in CI, gcc 11.5 in a container;
+sha256 `77a6f012c04cc8bbfd23f55f2714340878aebfc9e512eb7c1bec22d569401d73`) but
+differed from the Apple clang 17 build in 163 bytes, all in the trailing JSON
+summary: `greedy_m` / `optimal_m` (macOS 97811 / 97752, Linux 96571 / 96094),
+the `incidents_top` cards and the `dispatch` lines. The 720 frames, the event
+stream, the Merkle root and every coordinate matched, and `make determinism`
+passed on both. Reproduced here first: an Amazon Linux 2023 container (g++
+11.5, arm64) built the same commit to exactly the reported hash and numbers, so
+the cause is the standard library, not the CPU or `libm`. Both call sites ranked
+`open_incidents()` with `std::sort` and a comparator on (people, severity) only.
+Of the run's 223 open incidents, 45 tie at (1 person, severity 4) and occupy
+ranks 4–48, while the dispatch cap (`responders × 3 + 1` = 25) admits 22 of
+them; which 22 was whatever the unstable sort left among equal elements, and
+libc++ (Apple clang) and libstdc++ (g++) leave different orders. The two
+33-person incidents (ids 0 and 9) tie the same way, which is why the top two
+cards swapped. Confirmed on macOS alone before touching Linux: swapping the two
+sorts for `std::stable_sort` changed the same fields and nothing else. This is
+not a wrong answer from the engine — every admitted set is a valid "top 25" and
+both plans are optimal for their own inputs — but a headline number ("saved by
+Hungarian") that depended on which standard library compiled the engine, in a
+project whose determinism claim is the point.
+
+**Impact:** The ranking is now a strict total order, so every sort algorithm
+yields the same sequence from any input order. The fixed tree's `make dashboard`
+is byte-identical on macOS (Apple clang 17) and Linux (g++ 11.5): sha256
+`37293065a4a30ba55d35109f18a44ce2b47ac57e3ada31f0d69dbe0096a73707`. The
+reported totals change on every platform, because the tie-break now admits the
+earliest-opened of the tied incidents: 126,971 m greedy and 125,742 m optimal
+for the default dashboard run, from 97,811 / 97,752 (macOS) and 96,571 / 96,094
+(Linux) before. No other output changes. `make validate` passed before and
+after; the new mutant is killed. The `libm` last-ulp gap recorded in TESTING §7
+is unchanged: it did not show in this run, and nothing gates it.
+
 ### 2026-10-20 — Vercel site live and verified
 
 **What:** The dashboard is live at <https://safetrail-adivishall.vercel.app>

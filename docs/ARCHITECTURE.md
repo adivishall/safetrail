@@ -141,11 +141,17 @@ Stated here so they are not discovered:
   the read-only index and zone store.
 - **Simulated tourists.** Real OSM geography, synthetic movement with a GPS error
   model. No field data.
-- **Cross-OS determinism has one known gap and is not gated:** dispatch travel
-  totals can differ across operating systems because libm's `asin`/`sin`/`cos`
-  differ in the last ulp. The evaluation core matched byte for byte the one time
-  a macOS and a Linux build were compared (WORKLOG, 2026-09-05); CI checks
-  determinism within each platform, not across them.
+- **Cross-OS determinism is gated for one run.** Since 2026-10-22 CI builds the
+  default `make dashboard` page on macOS (Apple clang, libc++) and on Linux
+  (g++, libstdc++) and fails unless the two files are byte-identical (the
+  `cross-platform` job; [DEPLOYMENT.md](DEPLOYMENT.md)). Two hand comparisons
+  preceded it: 2026-09-05, evaluation core byte-identical and dispatch travel
+  totals apart in the last digits (libm's `asin`/`sin`/`cos` differ in the last
+  ulp — a known, open gap); 2026-10-22, the whole dashboard page, whose only
+  difference was an incident ranking with no tie-break, ordered differently by
+  libc++ and libstdc++ — fixed with `alert::outranks` (DEFECT_LOG pass 8), after
+  which the page matched byte for byte. The gate covers that one run and no
+  other input; the libm gap did not show in it, and nothing exercises it.
 
 ## What would change at production scale
 

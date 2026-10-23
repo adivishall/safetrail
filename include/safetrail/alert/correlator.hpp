@@ -79,6 +79,32 @@ struct Incident {
   bool   is_open() const { return status == IncidentStatus::Open; }
 };
 
+// The order open incidents are ranked in -- for dispatch, where sim::Simulator
+// admits the top `responders * 3 + 1` to the greedy-vs-optimal contest, and for
+// the dashboard's incident cards: most people first, then highest severity, then
+// the LOWER id, i.e. the incident opened first. Ids are unique, so this is a
+// strict total order: every sort algorithm yields the same sequence from every
+// input permutation.
+//
+// The id tie-break is load-bearing. Without it the order among incidents with
+// equal (people, severity) -- which is most of them: one person, one severity
+// level -- was whatever std::sort left, and std::sort is unstable with an
+// implementation-defined tie order that differs between libc++ (Apple clang) and
+// libstdc++ (g++). The cap cut through a tie group, so the same commit's
+// `make dashboard` admitted different incidents to the dispatch contest on macOS
+// and on Linux: the greedy and optimal travel totals and the incident cards
+// disagreed between the two builds while the other 1.6 MB of the page matched
+// byte for byte (DEFECT_LOG, 2026-10-22). tests/alert/incident_ranking_test.cpp
+// pins the order and the two call sites.
+inline bool outranks(const Incident& a, const Incident& b) {
+  if (a.people() != b.people()) return a.people() > b.people();
+  if (a.max_severity != b.max_severity) return a.max_severity > b.max_severity;
+  return a.id < b.id;
+}
+
+// Sorts `v` by `outranks`, most serious first.
+void rank_by_seriousness(std::vector<const Incident*>& v);
+
 class Correlator {
  public:
   explicit Correlator(CorrelationConfig cfg = {});
