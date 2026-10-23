@@ -6,6 +6,36 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-23 — Vercel configuration brought up to date with `main`
+
+**What:** Merged `main` (`980c2bd`: the incident-ranking fix and the
+cross-platform CI gate) into the Vercel branch; WORKLOG keeps both sides'
+entries, README and DEPLOYMENT.md merged without conflict. DEPLOYMENT.md §2
+now records that the project's settings on vercel.com mirror `vercel.json`,
+what happens on a branch without the build script, that no Ignored Build Step
+is saved, and the 23 October rehearsal result. No change to `vercel.json`,
+`.vercelignore` or `tools/vercel_build.sh`.
+
+**Why:** Diagnosed from Vercel's own records, not inferred. The project's saved
+Build Command is `sh tools/vercel_build.sh`, its Root Directory is the
+repository root and its `commandForIgnoringBuildStep` is empty. Every Git build
+of a branch without the script therefore fails with exit 127, "No such file or
+directory": the previews of pull requests #7 and #8 (22 October) and the
+production builds of `main` at `0fa61e2` and `980c2bd` (23 October, right after
+those PRs merged). The production domain was still serving
+`dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built from `df1df0d` on 20 October, so
+Vercel showed the pre-fix dashboard while GitHub Pages showed the fixed one. The
+Ignored Build Step set from the dashboard on 22 October was never saved, which
+is why it skipped nothing; with the script on `main` there is nothing to skip,
+and the default behaviour is the right one.
+
+**Impact:** Configuration and documentation only; the engine, tests, benchmarks
+and the Pages workflow are untouched. `sh tools/vercel_build.sh` on the merged
+tree gives sha256 `37293065…` both in an `amazonlinux:2023` container with GCC
+11.5 (Vercel's image) and on a Mac with Apple clang 17 — the file GitHub Pages
+serves from `980c2bd`. Merging this branch puts the script on `main`, so the
+next push to `main` builds production.
+
 ### 2026-10-22 — CI gates the dashboard across operating systems
 
 **What:** `.github/workflows/deploy.yml` gains a `cross-platform` job, and
@@ -98,6 +128,53 @@ for the default dashboard run, from 97,811 / 97,752 (macOS) and 96,571 / 96,094
 (Linux) before. No other output changes. `make validate` passed before and
 after; the new mutant is killed. The `libm` last-ulp gap recorded in TESTING §7
 is unchanged: it did not show in this run, and nothing gates it.
+
+### 2026-10-20 — Vercel site live and verified
+
+**What:** The dashboard is live at <https://safetrail-adivishall.vercel.app>
+(project `safetrail`, personal Hobby team, deployment
+`dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built by Vercel from `df1df0d`). Anchored
+the `.vercelignore` patterns to the repository root, ignored the `.env.local`
+that `vercel link` writes, recorded the live URL and its checks in
+`docs/DEPLOYMENT.md` and added the mirror to the teacher's link sheet. The
+script's "no tracked file changed" check now leaves out `vercel.json`, which
+Vercel's Git builds rewrite in the checkout before the build command runs; the
+first Git-triggered preview failed on exactly that file.
+
+**Why:** The first upload failed on Vercel with "tools/build/warnings.flags is
+missing": the unanchored `build/` pattern also excluded `tools/build/`, where
+the compiler flags live (a Git-clone deploy never sees `.vercelignore`). With the
+pattern anchored the build passed on Vercel in 34 s and published 1,611,679
+bytes with sha256 `77a6f012…`, byte-identical to the GitHub Pages file. Vercel's
+new-project default protected the production domain with its sign-in page, so
+Deployment Protection was set to "Only Preview Deployments" with the owner's
+approval; the public URL then answered 200, loaded nothing but itself, logged
+nothing to the console, honoured the `#index=rtree&frame=400` deep link, and its
+pause, index, dispatch and slider controls worked.
+
+**Impact:** Configuration and documentation only. Nothing paid was created.
+`vercel link` also connected the GitHub repository to the project, so merging
+the pull request will deploy `main` to the same URL automatically.
+
+### 2026-10-20 — Vercel deployment of the dashboard
+
+**What:** Added `vercel.json`, `tools/vercel_build.sh` and `.vercelignore`,
+ignored `public/` and `.vercel/`, and documented the deployment in
+`docs/DEPLOYMENT.md` (new §2; the later sections are renumbered). The build
+command compiles the engine on Vercel's Amazon Linux build image with
+`make dashboard CXX=g++`, copies `dashboard.html` to `public/index.html`, and
+repeats CI's evidence checks (no tracked file changed, benchmark table equal to
+the committed CSV, nothing loaded from the network) before that file is
+published as the site's only page.
+
+**Why:** A second free host for the same dashboard, built from the repository
+rather than from a file copied off a laptop. Rehearsed in a container built
+from `amazonlinux:2023` plus Vercel's documented package list: GCC 11.5, 8 s,
+output byte-identical to the file GitHub Pages serves from the same commit.
+
+**Impact:** Deployment configuration and documentation only; no engine, test,
+benchmark or CI change. GitHub Pages is unchanged and remains the fallback. The
+live URL goes into `docs/DEPLOYMENT.md` once the first deployment is verified.
 
 ### 2026-10-11 — One-page link sheet for the teacher
 

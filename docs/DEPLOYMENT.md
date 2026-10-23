@@ -15,7 +15,7 @@ So "deployment" here means three separate, simple things, not one complicated on
 
 | What | Is really | Deployed as |
 |---|---|---|
-| **The dashboard** (what people see) | one static HTML file | GitHub Pages / any static host |
+| **The dashboard** (what people see) | one static HTML file | GitHub Pages, Vercel, or any static host |
 | **The engine** (the actual project) | a C++ library + CLI | source + `make`, or prebuilt binaries |
 | **On-device** (the real-world target) | the same engine, cross-compiled | an embeddable library — no cloud |
 
@@ -98,7 +98,92 @@ gh api -X POST repos/adivishall/safetrail/pages -f build_type=workflow
 
 ---
 
-## 2. Deploying the dashboard — any static host (manual)
+## 2. Deploying the dashboard — Vercel (Hobby plan, no cost)
+
+The same dashboard, built by Vercel from the repository on every deploy.
+`vercel.json` carries the whole configuration; the project's settings on
+vercel.com hold the same values (Framework Other, Root Directory the repository
+root, Build Command `sh tools/vercel_build.sh`, Output Directory `public`, no
+Install Command), so the two cannot disagree:
+
+| Setting | Value | Why |
+|---|---|---|
+| Framework preset | Other (`"framework": null`) | a static page; nothing to detect |
+| Install command | `""` (skipped) | no `package.json`; the C++ build needs nothing installed |
+| Build command | `sh tools/vercel_build.sh` | `make dashboard CXX=g++`, then `dashboard.html` → `public/index.html` |
+| Output directory | `public` | that one file is the whole site; `build/` and the sources are never served |
+
+The build runs on Vercel's build image (Amazon Linux 2023), whose pre-installed
+packages include `gcc-c++`, `make` and `git`, so the engine compiles there from
+source: the executable is a build-time tool, not a hosted service, and no binary
+from a laptop is involved. Before anything is published the script makes the
+same checks as CI's `build` job: no tracked file changed (except `vercel.json`,
+which Vercel's Git builds rewrite in the checkout), the dashboard's
+benchmark table equals the committed `bench/results/index_scaling.csv` field for
+field, and the page loads nothing from anywhere. A build that would publish
+something else fails instead.
+
+Rehearsed on 20 October 2026 in a container built from `amazonlinux:2023` plus
+Vercel's documented package list: GCC 11.5, 7–8 s with four jobs, and the output
+byte-identical (sha256 `77a6f012…`) to the file GitHub Pages was serving from
+the same commit — both are Linux g++ builds. At the time a macOS clang build of
+the same commit differed in 163 bytes of the dispatch summary; that was an
+unstable sort over tied incidents, fixed on 22 October (DEFECT_LOG pass 8), and
+since then CI's `cross-platform` job requires the two to match. Rehearsed again
+on 23 October 2026 with that fix merged: the script run in the same container
+(GCC 11.5) and on a Mac (Apple clang 17) produced one file, sha256
+`37293065…`, byte-identical to the Pages dashboard built from `980c2bd`.
+
+To deploy from a laptop with Vercel CLI — the Hobby plan is free, needs no
+payment method, and pauses rather than charges when a limit is reached:
+
+```bash
+npx vercel@latest login                          # once; opens a browser
+npx vercel@latest link --yes --project safetrail # creates the project if needed
+npx vercel@latest deploy --prod --skip-domain    # builds on Vercel, prints the URL,
+                                                 # does not point the production domain at it
+#   open that URL and check the dashboard
+npx vercel@latest promote <that URL>             # now it is the production site
+```
+
+The first deployment of a new project is always a production deployment, which
+is why the staged (`--skip-domain`) form is used for it; afterwards a plain
+`npx vercel@latest deploy` makes a preview and `--prod` a production deploy. To
+have every push to `main` deploy by itself, connect the repository under the
+project's Settings → Git (free; it installs Vercel's GitHub app on the
+repository): pull requests then get preview deployments and `main` the
+production one, each built by the same script.
+
+Because the build command is also saved in the project settings, Vercel runs it
+on every branch it builds, including one that does not carry
+`tools/vercel_build.sh`. Such a build fails at once with `sh:
+tools/vercel_build.sh: No such file or directory` (exit 127). That is what the
+failing "Vercel" status on pull requests #7 and #8 was, and why the production
+builds of `main` at `0fa61e2` and `980c2bd` on 23 October failed while the
+domain kept serving the 20 October deployment: `main` did not have the script
+until this configuration was merged. The Ignored Build Step is left at its
+default (Automatic); no custom skip command is saved, and none is needed once
+the script is on every branch cut from `main`.
+
+**Live:** <https://safetrail-adivishall.vercel.app> — project `safetrail` on the
+personal Hobby team, deployment `dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built by Vercel
+on 20 October 2026 from `df1df0d` (uploaded with the CLI; GCC 11.5, 2 cores, 34 s).
+Checked that day: HTTP/2 200 over HTTPS, 1,611,679 bytes, sha256 `77a6f012…` —
+byte-identical to the file GitHub Pages serves; one network request (the page
+itself) and no console output; `#index=rtree&frame=400` opens with the R-tree
+overlay at frame 400; pause, index, dispatch and the frame slider work. Deployment
+Protection is "Only Preview Deployments": the new-project default had put Vercel's
+sign-in in front of the production domain as well. The project is connected to the
+GitHub repository with `main` as the production branch, so a push to `main` deploys
+production and a pull request gets a sign-in-protected preview, each built by the
+same script. No payment method, trial, custom domain or paid resource is involved.
+
+What Vercel does not do: measure anything. As on Pages, the site's benchmark
+numbers are the committed results.
+
+---
+
+## 3. Deploying the dashboard — any static host (manual)
 
 Because it is one file with zero dependencies, it hosts anywhere:
 
@@ -106,7 +191,7 @@ Because it is one file with zero dependencies, it hosts anywhere:
 make dashboard
 # then drop dashboard.html on any of:
 #   - Netlify:  drag it onto app.netlify.com/drop
-#   - Vercel:   vercel deploy dashboard.html
+#   - Vercel:   vercel deploy dashboard.html   (one file, by hand; §2 is the build)
 #   - S3:       aws s3 cp dashboard.html s3://bucket/ --acl public-read
 #   - a USB stick handed to an examiner — it opens over file://
 ```
@@ -116,7 +201,7 @@ whole site.
 
 ---
 
-## 3. Distributing the engine
+## 4. Distributing the engine
 
 For a course project the distribution is the source plus the Makefile:
 
@@ -137,7 +222,7 @@ The binaries are self-contained — they link only the C++ standard library.
 
 ---
 
-## 4. The real-world deployment story (what we'd argue in the report)
+## 5. The real-world deployment story (what we'd argue in the report)
 
 The problem statement targets remote terrain with no connectivity. A cloud
 deployment is therefore the *wrong* architecture for the actual field use — which
@@ -162,7 +247,7 @@ on the device.
 
 ---
 
-## 5. What is NOT deployed, and why
+## 6. What is NOT deployed, and why
 
 | Not deployed | Because |
 |---|---|
@@ -177,7 +262,7 @@ on the device.
 ## Summary
 
 ```
-dashboard   →  GitHub Pages (CI, automatic) or any static host — it's one file
+dashboard   →  GitHub Pages (CI) and Vercel (built from the repo), or any static host — it's one file
 engine      →  git clone && make, or release binaries
 field use   →  on-device library, no cloud (by design; engine + sync built,
                device packaging is not)
