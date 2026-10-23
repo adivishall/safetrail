@@ -101,8 +101,10 @@ gh api -X POST repos/adivishall/safetrail/pages -f build_type=workflow
 ## 2. Deploying the dashboard — Vercel (Hobby plan, no cost)
 
 The same dashboard, built by Vercel from the repository on every deploy.
-`vercel.json` carries the whole configuration, so the project needs no settings
-in the Vercel dashboard:
+`vercel.json` carries the whole configuration; the project's settings on
+vercel.com hold the same values (Framework Other, Root Directory the repository
+root, Build Command `sh tools/vercel_build.sh`, Output Directory `public`, no
+Install Command), so the two cannot disagree:
 
 | Setting | Value | Why |
 |---|---|---|
@@ -124,9 +126,13 @@ something else fails instead.
 Rehearsed on 20 October 2026 in a container built from `amazonlinux:2023` plus
 Vercel's documented package list: GCC 11.5, 7–8 s with four jobs, and the output
 byte-identical (sha256 `77a6f012…`) to the file GitHub Pages was serving from
-the same commit — both are Linux g++ builds. (A macOS clang build of the same
-commit differs in 163 bytes of the dispatch summary; the frames and the event
-stream are identical.)
+the same commit — both are Linux g++ builds. At the time a macOS clang build of
+the same commit differed in 163 bytes of the dispatch summary; that was an
+unstable sort over tied incidents, fixed on 22 October (DEFECT_LOG pass 8), and
+since then CI's `cross-platform` job requires the two to match. Rehearsed again
+on 23 October 2026 with that fix merged: the script run in the same container
+(GCC 11.5) and on a Mac (Apple clang 17) produced one file, sha256
+`37293065…`, byte-identical to the Pages dashboard built from `980c2bd`.
 
 To deploy from a laptop with Vercel CLI — the Hobby plan is free, needs no
 payment method, and pauses rather than charges when a limit is reached:
@@ -147,6 +153,17 @@ have every push to `main` deploy by itself, connect the repository under the
 project's Settings → Git (free; it installs Vercel's GitHub app on the
 repository): pull requests then get preview deployments and `main` the
 production one, each built by the same script.
+
+Because the build command is also saved in the project settings, Vercel runs it
+on every branch it builds, including one that does not carry
+`tools/vercel_build.sh`. Such a build fails at once with `sh:
+tools/vercel_build.sh: No such file or directory` (exit 127). That is what the
+failing "Vercel" status on pull requests #7 and #8 was, and why the production
+builds of `main` at `0fa61e2` and `980c2bd` on 23 October failed while the
+domain kept serving the 20 October deployment: `main` did not have the script
+until this configuration was merged. The Ignored Build Step is left at its
+default (Automatic); no custom skip command is saved, and none is needed once
+the script is on every branch cut from `main`.
 
 **Live:** <https://safetrail-adivishall.vercel.app> — project `safetrail` on the
 personal Hobby team, deployment `dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built by Vercel

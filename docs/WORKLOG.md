@@ -6,6 +6,36 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-23 — Vercel configuration brought up to date with `main`
+
+**What:** Merged `main` (`980c2bd`: the incident-ranking fix and the
+cross-platform CI gate) into the Vercel branch; WORKLOG keeps both sides'
+entries, README and DEPLOYMENT.md merged without conflict. DEPLOYMENT.md §2
+now records that the project's settings on vercel.com mirror `vercel.json`,
+what happens on a branch without the build script, that no Ignored Build Step
+is saved, and the 23 October rehearsal result. No change to `vercel.json`,
+`.vercelignore` or `tools/vercel_build.sh`.
+
+**Why:** Diagnosed from Vercel's own records, not inferred. The project's saved
+Build Command is `sh tools/vercel_build.sh`, its Root Directory is the
+repository root and its `commandForIgnoringBuildStep` is empty. Every Git build
+of a branch without the script therefore fails with exit 127, "No such file or
+directory": the previews of pull requests #7 and #8 (22 October) and the
+production builds of `main` at `0fa61e2` and `980c2bd` (23 October, right after
+those PRs merged). The production domain was still serving
+`dpl_14HUP4Z3VwkStYdvV3ygsQDthycW`, built from `df1df0d` on 20 October, so
+Vercel showed the pre-fix dashboard while GitHub Pages showed the fixed one. The
+Ignored Build Step set from the dashboard on 22 October was never saved, which
+is why it skipped nothing; with the script on `main` there is nothing to skip,
+and the default behaviour is the right one.
+
+**Impact:** Configuration and documentation only; the engine, tests, benchmarks
+and the Pages workflow are untouched. `sh tools/vercel_build.sh` on the merged
+tree gives sha256 `37293065…` both in an `amazonlinux:2023` container with GCC
+11.5 (Vercel's image) and on a Mac with Apple clang 17 — the file GitHub Pages
+serves from `980c2bd`. Merging this branch puts the script on `main`, so the
+next push to `main` builds production.
+
 ### 2026-10-22 — CI gates the dashboard across operating systems
 
 **What:** `.github/workflows/deploy.yml` gains a `cross-platform` job, and
