@@ -1,6 +1,9 @@
 # SafeTrail — links for the teacher
 
-All links checked on 11 October 2026, after the deploy of `main` at `9f107fe`.
+All links checked on 11 October 2026, after the deploy of `main` at `9f107fe`;
+the two dashboard links again on 23 October 2026, after `main` reached `28f0e47`.
+The Vercel mirror was added on 20 October 2026 and re-checked on 23 October: it
+serves the same file as the Pages dashboard, byte for byte.
 The live deck and dashboard were compared byte for byte with the committed files
 and show the committed benchmark results.
 
@@ -9,6 +12,7 @@ and show the committed benchmark results.
 | Repository | https://github.com/adivishall/safetrail |
 | Live review deck | https://adivishall.github.io/safetrail/slides.html |
 | Live dashboard | https://adivishall.github.io/safetrail/ |
+| Live dashboard, Vercel mirror (same file) | https://safetrail-adivishall.vercel.app |
 | Slides as a PDF | https://github.com/adivishall/safetrail/blob/main/docs/presentation/SafeTrail_review_slides.pdf |
 | Benchmark results | https://github.com/adivishall/safetrail/blob/main/docs/RESULTS.md |
 

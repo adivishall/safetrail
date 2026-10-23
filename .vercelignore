@@ -1,0 +1,14 @@
+# What Vercel CLI must not upload when deploying from a working tree. Git
+# deployments clone the repository and never see these. Same syntax as
+# .gitignore; the patterns are anchored to the root so that `tools/build/`,
+# which holds the compiler flags, is not matched by `/build/`.
+/build/
+/build-cmake/
+/build-rel/
+/compile_commands.json
+/dashboard.html
+/public/
+.DS_Store
+/.claude/
+# written by `vercel link`; holds a token
+.env*.local

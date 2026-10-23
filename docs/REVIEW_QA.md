@@ -131,11 +131,11 @@ does not grow the node box, the interval tree's `max_high` ignores the right
 subtree, the persistent index filters history with today's rules, the evaluator
 never reconciles zones outside the candidate window, hysteresis lets an
 Uncertain fix complete an exit — rebuilds, and requires one of the named tests
-to fail. 22 mutants, 22 killed (`make mutation`). It found two gaps in the tests
-before it reached 22/22: the quadtree audit could not tell a quadtree from an
-arbitrary tree of boxes, and a duplicate-vertex screen in the sweep line was
-redundant. What it does not prove: the mutants are hand-picked, so 22/22 says
-those 22 faults are caught and nothing about faults unlike them.
+to fail. 23 mutants, 23 killed (`make mutation`). It found two gaps in the tests
+before it first reached a full score: the quadtree audit could not tell a
+quadtree from an arbitrary tree of boxes, and a duplicate-vertex screen in the
+sweep line was redundant. What it does not prove: the mutants are hand-picked,
+so 23/23 says those 23 faults are caught and nothing about faults unlike them.
 
 **What bugs did you actually find?** ★
 Ten, in code that was passing its tests ([DEFECT_LOG.md](DEFECT_LOG.md), pass 6).

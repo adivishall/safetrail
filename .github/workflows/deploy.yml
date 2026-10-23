@@ -27,6 +27,13 @@
 #   macos        GATE. The README says the project builds with nothing but a
 #                compiler on macOS and Linux. A claim that is only checked on one
 #                of them is a claim about one of them, so libc++ gates too.
+#   cross-platform
+#                GATE. The dashboard that `build` publishes, compiled by g++
+#                against libstdc++ on ubuntu-24.04, must be byte for byte the
+#                file Apple clang and libc++ produce on macos-15 from the same
+#                commit. The README's determinism claim does not say "on one
+#                platform". Until this gate the two were compared by hand, and
+#                the one time they were (DEFECT_LOG pass 8) they differed.
 #   benchmarks   INFORMATIONAL. Timings on shared CI runners are noisy, so gating
 #                on them would produce flaky failures that teach people to ignore
 #                red builds. They run in their own job (`bench`), whose CSVs are
@@ -178,6 +185,20 @@ jobs:
       - name: Whole suite under UBSan (ASan cannot run on this platform; see Makefile)
         run: make -j$(sysctl -n hw.ncpu) ubsan CXX=clang++
 
+      # The page `build` makes with g++, here with Apple clang and libc++; the
+      # cross-platform job compares the two. The library objects compiled for
+      # the tests above are reused: -Werror changes no code, and the sanitizer
+      # build lives in its own directory.
+      - name: Dashboard with Apple clang, for the cross-platform gate
+        run: |
+          make dashboard CXX=clang++
+          shasum -a 256 dashboard.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-macos
+          path: dashboard.html
+          if-no-files-found: error
+
   # ── Informational benchmark ─────────────────────────────────────────────────
   # Its own job and workspace, because `make bench` rewrites committed evidence:
   # bench/results/*.csv and environment.txt, the chart bench/plots/index_scaling.svg,
@@ -252,13 +273,53 @@ jobs:
           grep -qF "\"experiment\":[$rows]" _site/index.html
           echo "site built from $(git rev-parse --short HEAD) as committed"
 
+      # The file the cross-platform gate compares with the macOS build: the one
+      # that becomes the site, not a second build of it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-linux
+          path: dashboard.html
+          if-no-files-found: error
+
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
+  # ── Cross-platform gate ─────────────────────────────────────────────────────
+  # The test and cmake jobs prove determinism within one platform; this proves
+  # it across two, on the file that is published. The comparison is between the
+  # two runners' files, not against a fixed hash: the dashboard embeds the
+  # committed benchmark CSV, so its hash changes whenever `make bench` results
+  # are committed, and a pinned hash would fail every such commit.
+  cross-platform:
+    needs: [macos, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dashboard-macos
+          path: macos
+      - uses: actions/download-artifact@v4
+        with:
+          name: dashboard-linux
+          path: linux
+      - name: Apple clang/libc++ (macos-15) and g++/libstdc++ (ubuntu-24.04) dashboards agree byte for byte
+        run: |
+          shasum -a 256 macos/dashboard.html linux/dashboard.html
+          if cmp macos/dashboard.html linux/dashboard.html; then
+            echo "identical: the published dashboard is byte for byte the macOS build"
+          else
+            echo "::error title=The dashboard differs between macOS and Linux::make dashboard from this commit is not byte-identical between macos-15 (Apple clang, libc++) and ubuntu-24.04 (g++, libstdc++). Every difference so far was an unstable sort over tied elements (DEFECT_LOG pass 8) or libm's last ulp (TESTING.md section 7)."
+            # Where: the page is one HTML file whose data is JSON, so split it at
+            # commas and the summary reads line by line.
+            echo "$(cmp -l macos/dashboard.html linux/dashboard.html | wc -l) differing byte(s); the first differences:"
+            diff <(tr ',' '\n' < macos/dashboard.html) <(tr ',' '\n' < linux/dashboard.html) | head -60
+            exit 1
+          fi
+
   deploy:
-    needs: build
+    needs: [build, cross-platform]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     environment:

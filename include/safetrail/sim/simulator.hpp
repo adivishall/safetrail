@@ -90,6 +90,10 @@ class Simulator {
   // For the dashboard: responder positions and the optimal responder->incident
   // dispatch lines (resp_lat, resp_lon, inc_lat, inc_lon).
   const dispatch::ResponderPool& responders() const { return responders_; }
+  // The road network dispatch ran over (loaded, or the synthetic grid built on
+  // the first dispatch), so a test can recompute the plan from the ranked
+  // incidents and compare it with summary().
+  const graph::RoadGraph& roads() const { return roads_; }
   const std::vector<std::array<double, 4>>& dispatch_lines() const { return dispatch_lines_; }
 
  private:
