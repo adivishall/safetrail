@@ -12,7 +12,7 @@ feeds this path or consumes its output.
    ▼
  query box = Bbox::around(fix, accuracy + speed × horizon)
    │
-   │ 2. spatial filter          SpatialIndex::query → candidate zone ids     O(log n + k)
+   │ 2. spatial filter          SpatialIndex::query → candidate zone ids     O(depth+s+k)
    │                            (quadtree by default; brute force / R-tree /
    │                             geohash are drop-in; ids sorted afterwards)
    ▼

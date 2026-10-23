@@ -1,10 +1,19 @@
 # SafeTrail
 
-**An efficient geofencing engine in C++17, built on hand-written spatial and
-temporal data structures, measured against brute force, and tested until the
-fast answer is provably the same as the slow one.**
+[![build-test-deploy](https://github.com/adivishall/safetrail/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/adivishall/safetrail/actions/workflows/deploy.yml?query=branch%3Amain)
 
-**What it is.** Given up to 100,000 hazard-zone polygons and a stream of noisy
+**An efficient geofencing engine in C++17, built on hand-written spatial and
+temporal data structures, measured against brute force, and differentially
+tested so that the fast answer matches the slow one on every query checked.**
+
+**Live demo:** [adivishall.github.io/safetrail](https://adivishall.github.io/safetrail/)
+— a replay the engine generated in CI: simulated tourists moving through real
+OpenStreetMap zones (plus synthetic ones), the event stream, and a switch that
+draws each index's structure on the same data. Playback only; `make dashboard`
+builds the same page locally.
+
+**What it is.** Given thousands of hazard-zone polygons (benchmarked to 100,000
+synthetic zones at the index level and 50,038 end to end) and a stream of noisy
 GPS fixes, SafeTrail decides, fix after fix, whether each person is **inside,
 outside or uncertain** relative to every zone near them, and emits an event only
 when that changes. Zones switch on and off over time, and every past
@@ -14,11 +23,11 @@ configuration stays queryable.
 box tests in one simulated hour of the demo scenario. Repeated containment is the
 whole cost of geofencing, and a spatial index is the data-structures answer to it.
 
-**What I built.** Five structures behind one interface, with no spatial library
-and no dependencies beyond a C++17 compiler: a brute-force scan (kept as the
-oracle), a **quadtree**, an **STR-packed R-tree**, an **AVL interval tree** for
-"which rules are in force at t", and a **persistent quadtree** for "what were the
-rules at 14:32". Around them: exact point-in-polygon geometry under GPS
+**What I built.** Three spatial indexes behind one interface — a brute-force
+scan (kept as the oracle), a **quadtree** and an **STR-packed R-tree** — and two
+temporal structures beside them: an **AVL interval tree** for "which rules are in
+force at t" and a **persistent quadtree** for "what were the rules at 14:32". No
+spatial library and no dependencies beyond a C++17 compiler. Around them: exact point-in-polygon geometry under GPS
 uncertainty, a hysteresis state machine that turns noisy positions into
 trustworthy transitions, a benchmark harness, and a one-file dashboard.
 
@@ -38,16 +47,11 @@ real defects** in code that was passing its tests.
   ending with the dashboard. Or piece by piece: `make test && make demo && make
   dashboard`. A C++17 compiler and `make`, nothing else.
 
-> **Project review:** [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) is the 5-minute live
-> demo built on `make review`; [REVIEW_QA.md](docs/REVIEW_QA.md) answers the
-> questions it raises from the code; [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html)
-> is ten slides whose numbers are generated from the committed benchmark results.
-
 | Structure | Answers | Bound (theoretical) | Implementation |
 |---|---|---|---|
 | **Brute force** | which zone boxes meet this box? (the oracle) | O(n) | a scanned vector, kept forever as the baseline |
-| **Quadtree** | same, partitioning **space** | O(log n + k) expected; O(n) worst | root fitted to data, doubling expansion, collapse on delete |
-| **R-tree** | same, partitioning **items** | O(log n + k) expected; O(n) worst | quadratic split, **STR bulk loading**, condensing delete |
+| **Quadtree** | same, partitioning **space** | O(depth + s + k), s = boxes straddling a cell boundary on the query's path, which grows with n for fixed-size zones; O(n) worst | root fitted to data, doubling expansion, collapse on delete |
+| **R-tree** | same, partitioning **items** | O(log n + k) typical on STR-packed data; O(n) worst | quadratic split, **STR bulk loading**, condensing delete |
 | **AVL interval tree** | which rules are in force at t? | O(log n) to find one; O(min(n, (k + 1) log n)) to report k, worst case | max-high augmentation, total-order key |
 | **Persistent quadtree** | what were the rules at 14:32? | O(depth) new nodes per change | path copying + append-only validity log |
 
@@ -84,12 +88,15 @@ their range over independent runs. Absolute times are one laptop's
 
 What the numbers say, and why:
 
-- **The speedup has a ceiling, and it is the answer size.** In one crowded
-  district, about 100 zones really do overlap each query at 100,000 zones, and
-  every index must return all of them, so the quadtree's ratio stops growing
-  after a few thousand zones. Hold the density constant so each query overlaps
-  about one zone, and the same code is hundreds of times faster at 100,000
-  zones. O(log n + k), measured both ways. (§1–2)
+- **Each tree has its own ceiling.** In one crowded district about 100 zones
+  (k) really do overlap each query at 100,000 zones, and every index must return
+  all of them. That is not what holds the quadtree near 30×: the R-tree returns
+  the same k at least ~100× faster than the scan in every session measured. The quadtree keeps every
+  box that straddles a cell boundary at that cell, and every query reaching the
+  cell tests it, so its query costs O(depth + s + k), and for fixed-size zones s
+  grows with n. The STR R-tree has no such term and keeps gaining. Hold the
+  density constant so each query overlaps about one zone, and both are hundreds
+  of times faster than the scan at 100,000 zones. (§1–2)
 - **The index accelerates the filter, not the geometry.** Against checking every
   polygon the tree wins by two to three orders of magnitude, more as polygons
   get more complex; against a plain bounding-box scan followed by the same exact
@@ -105,8 +112,8 @@ What the numbers say, and why:
   predicts. That is why the engine checks validity in O(1) per candidate per
   tick and uses the tree only for history queries. (§8)
 - **Persistence is cheap**: one root-to-leaf path per change (≈15 nodes on a
-  5,000-zone index), zero for a rule change, and a query against the past costs
-  the same as one against the present. (§9)
+  5,000-zone index), zero for a rule change, and a query against the past needs
+  no replay: it is an ordinary query from an older root. (§9)
 - **Reconciliation does not undo the index**: <!-- results:evalfix -->the whole `evaluate()` — index, geometry, hysteresis and the observation of every zone with open state — costs **4.93 µs per fix at 5,038 zones and 5.52 µs at 50,038** when the zone density is held constant; packed into one district it costs 2.19 µs at 1,038 zones and 17.0 µs at 20,038, tracking the candidate count (k grows with n, as in §1). Reconciliation itself is 0.08–1.42 zones observed per fix outside the candidate set, a box distance each, no geometry<!-- /results:evalfix -->. (§18)
 
 ## How correctness is established (evidence)
@@ -114,7 +121,7 @@ What the numbers say, and why:
 | Method | What it covers |
 |---|---|
 | **Oracles** | every fast structure has an independent one: brute force for the indexes, a linear scan for the interval tree, a full-table replay for the persistent index, winding number for ray casting, an O(V²) scan for the sweep line |
-| **Differential tests** | ~55,000 queries per index over seven hostile workload profiles (identical boxes, zero-area boxes, touching edges, both hemispheres, poles, past lon 180, far inserts), mixed with inserts, removals and rebuilds |
+| **Differential tests** | 55,440 queries per index configuration, 277,200 across five configurations, over seven hostile workload profiles (identical boxes, zero-area boxes, touching edges, both hemispheres, poles, past lon 180, far inserts), mixed with inserts, removals and rebuilds |
 | **Invariant audits** | each core structure's `check_invariants()` runs after **every** operation in those tests |
 | **End to end** | the whole engine under all four indexes must emit bit-identical event streams |
 | **Mutation testing** | 23 realistic bugs injected into the core; the suite must fail on each (`make mutation`: 23/23) |
@@ -144,7 +151,8 @@ make validate     # everything that gates a merge: -Werror, docs, tests,
 make mutation     # the mutation check (needs python3)
 ```
 
-Plain `make` and a C++17 compiler. Developed with Apple clang 17; CI builds with
+Plain `make` and a C++17 compiler; `python3` for `make bench` (it regenerates
+the tables) and `make mutation`; CMake optional. Developed with Apple clang 17; CI builds with
 g++ 13 and clang on Linux and Apple clang on macOS. CMake builds the same source
 set from the same flag files (`make cmake-build`). The
 dashboard opens `#index=rtree&frame=400` style deep links.
@@ -182,10 +190,11 @@ change at production scale.
   for about a minute, the radius clamps toward 10 km, and pruning collapses for
   that person meanwhile — still correct, just slow.
 - **Single-threaded**, one process, in-memory.
-- Benchmarks come from one laptop. Ratios transfer far better than absolute times,
-  and even ratios move — under ~10% within a session at 100,000 zones, more
-  than 2× between sessions for the R-tree — which is why they're quoted as
-  ranges.
+- Benchmarks come from one laptop, with no external baseline (no PostGIS or
+  Boost.Geometry comparison). Ratios transfer far better than absolute times,
+  and even ratios move — within a session about 6% for the one-district row and
+  up to ~28% at constant density, and more than 2× between sessions for the
+  R-tree — which is why they're quoted as ranges.
 
 ## Documentation
 
@@ -197,8 +206,7 @@ change at production scale.
 | [TESTING.md](docs/TESTING.md) | oracles, differential tests, invariants, mutation results, sanitizers |
 | [GEOMETRY_EDGE_CASES.md](docs/GEOMETRY_EDGE_CASES.md) | what breaks point-in-polygon and polygon validation, and the tolerances |
 | [DEFECT_LOG.md](docs/DEFECT_LOG.md) | every real defect found, its fix, and the test that pins it |
-| [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) · [REVIEW_QA.md](docs/REVIEW_QA.md) · [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html) | the 5-minute live demo on `make review`, the questions it raises, and ten slides |
-| [INTERVIEW.md](docs/INTERVIEW.md) · [RESUME.md](docs/RESUME.md) | the project explained at 30 s / 60 s / 3 min, and résumé bullets with sources |
+| [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) · [REVIEW_QA.md](docs/REVIEW_QA.md) · [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html) | the course review: a 5-minute demo on `make review`, the questions it raises answered from the code, and ten slides generated from the committed results |
 | [GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) · [DATA_PROVENANCE.md](docs/DATA_PROVENANCE.md) · [DEPLOYMENT.md](docs/DEPLOYMENT.md) | why the extensions exist; where the dashboard's data comes from; CI, Pages and Vercel |
 | [docs/course/](docs/course/README.md) | the original course submission (viva prep, slides), archived |
 
