@@ -30,7 +30,8 @@ This is set up and runs on every push to `main`.
 ```
 checkout → gates (test, clang, mutation, sanitize, cmake, macos)
              ├─→ bench   make bench on the runner → benchmark-results artifact (informational)
-             └─→ build   make dashboard from the committed results → _site → deploy (main only)
+             └─→ build   make dashboard from the committed results → _site
+                   └─→ cross-platform   cmp that dashboard with the one macos built → deploy (main only)
 ```
 
 The site never contains timings measured on the runner. Its benchmark table,
@@ -40,6 +41,15 @@ and checks that the dashboard embeds the committed scaling CSV. `make bench`,
 which rewrites the CSVs, the chart and the generated tables, runs only in the
 separate `bench` job. (The dashboard's simulation and its live equivalence check
 do run on the runner; they are deterministic.)
+
+Before anything deploys, `cross-platform` compares two files byte for byte: the
+dashboard `build` assembled on `ubuntu-24.04` with g++ and libstdc++, which is
+the one published, and the dashboard `macos` built from the same commit on
+`macos-15` with Apple clang and libc++. They are compared with each other, not
+against a recorded hash, because the page embeds the committed benchmark CSV
+and so changes whenever `make bench` results are committed. If they differ,
+the step prints both hashes, the number of differing bytes and the first
+differences, and nothing deploys.
 
 Concurrency is one group per pull request, where a newer push cancels the older
 run, and one per branch for pushes and manual runs, without cancelling a running
@@ -62,7 +72,8 @@ Every job below gates the deploy except the benchmark, which deliberately does n
 | mutation | `tools/mutation_check.py`: 22 injected bugs, each must fail a test |
 | sanitize | `make asan` — the WHOLE suite under ASan + UBSan with `-fno-sanitize-recover`, so UB aborts instead of printing and continuing |
 | cmake | configure with `-DSAFETRAIL_WERROR=ON`, build, `ctest`, and check Make and CMake see the same source files |
-| macos | the suite with Apple clang and `-Werror`, then the whole suite under UBSan |
+| macos | the suite with Apple clang and `-Werror`, then the whole suite under UBSan, then `make dashboard` with Apple clang, uploaded as the `dashboard-macos` artifact |
+| cross-platform | `cmp` of the dashboard `build` publishes (ubuntu-24.04, g++, libstdc++) against the one `macos` built (macos-15, Apple clang, libc++); runs after both, and `deploy` waits for it |
 
 Runner images are pinned (`ubuntu-24.04`, `macos-15`), so the compilers — and
 the warnings `-Werror` turns into failures — only change when the workflow file

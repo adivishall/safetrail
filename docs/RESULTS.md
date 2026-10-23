@@ -41,13 +41,17 @@ make bench-variation   # sections 1-3 three more times, for the ranges
   their GPS error are simulated everywhere.
 - **Identical across platforms, or not.** Counts — candidates, nodes,
   allocations, events, the hysteresis tallies — are deterministic: identical run
-  to run, and between the Make and CMake builds. Across operating systems they
-  are not gated; the 2026-09-05 macOS/Linux comparison matched in the evaluation
-  core and differed in the dispatch travel totals (§12), whose `libm` calls
-  differ in the last ulp, and the 2026-10-22 comparison of the whole dashboard
-  found one more cause, since fixed: an incident ranking with no tie-break,
-  ordered differently by libc++ and libstdc++ ([TESTING.md](TESTING.md) §7).
-  Times are never portable.
+  to run, and between the Make and CMake builds. Across operating systems one
+  run is gated: since 2026-10-22 CI fails unless the default dashboard page
+  built on macOS (Apple clang, libc++) and on Linux (g++, libstdc++) are
+  byte-identical ([TESTING.md](TESTING.md) §7). The counts on this page come
+  from `make bench`, which that gate does not run, and are not compared across
+  operating systems; the 2026-09-05 macOS/Linux comparison matched in the
+  evaluation core and differed in the dispatch travel totals (§12), whose
+  `libm` calls differ in the last ulp, and the 2026-10-22 comparison of the
+  whole dashboard found one more cause, since fixed: an incident ranking with
+  no tie-break, ordered differently by libc++ and libstdc++. Times are never
+  portable.
 - **Speedups are against this project's own brute force**, the correctness
   oracle — not against PostGIS, Boost.Geometry or any library.
 - **Simulated people, real geography.** Benchmarks use synthetic zones in a

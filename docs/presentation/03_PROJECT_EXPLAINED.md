@@ -494,10 +494,12 @@ and CI require the Make build (−O2) and the CMake Release build (−O3) to agr
 byte for byte, which `-ffp-contract=off` guarantees (fused multiply-adds would
 otherwise differ by a last bit between optimisation levels, and a last bit flips
 threshold comparisons). Also: fixed-seed PRNG, explicit tie-breaks in every
-ordered structure, candidates in zone-id order. Not gated across operating
-systems: libm's `asin`/`sin`/`cos` differ in the last ulp between macOS and Linux
-(the one comparison matched in the evaluation core, differed in dispatch travel
-totals).
+ordered structure, candidates in zone-id order. Across operating systems CI
+compares one run: the default dashboard page built on macOS (Apple clang,
+libc++) and on Linux (g++, libstdc++) must be byte-identical. Not gated beyond
+that run: libm's `asin`/`sin`/`cos` differ in the last ulp between macOS and
+Linux (one comparison matched in the evaluation core and differed in dispatch
+travel totals; the dashboard run did not show it).
 
 ### Sanitizers and static analysis
 
