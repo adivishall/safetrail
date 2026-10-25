@@ -62,7 +62,8 @@ over building the same R-tree by insertion (§7).
 | Operation | Bound | Guaranteed? |
 |---|---|---|
 | brute-force query | O(n) | yes |
-| quadtree / R-tree query | O(log n + k) expected | no — O(n) worst case |
+| quadtree query | O(depth + s + k), s = straddling boxes on the path | no — O(n) worst case |
+| R-tree query | O(log n + k) typical on STR-packed data | no — O(n) worst case |
 | index removal (all three) | O(n) | yes (no id → node map) |
 | interval tree: find one overlap / insert / remove | O(log n) | yes (AVL) |
 | interval tree: report all k overlaps | O(min(n, (k + 1) log n)) | yes — not O(log n + k) |
@@ -71,9 +72,10 @@ over building the same R-tree by insertion (§7).
 | polygon validation (Shamos–Hoey) | O(V log V) | yes |
 
 **Is O(log n + k) guaranteed?** ★
-No. For the spatial trees it is the expected cost on spread-out data. The
-quadtree cannot separate identical boxes, and straddling boxes pile up at
-internal nodes, so a query can test O(n) boxes while k is small. The R-tree is
+No. For the R-tree it is the typical cost on spread-out data. The quadtree
+cannot separate identical boxes, and straddling boxes pile up at internal nodes,
+so its cost is O(depth + s + k): with fixed-size zones s grows with n, and a
+query can test O(n) boxes while k is small. The R-tree is
 height-balanced, but overlapping sibling envelopes can send a query down every
 branch. The structure with a worst-case guarantee is the AVL interval tree — and
 there the honest bound for reporting k results is O(min(n, (k + 1) log n)),

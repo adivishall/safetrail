@@ -58,7 +58,7 @@ none; item count = `size()`.
 
 | Operation | Bound | Notes |
 |---|---|---|
-| query | O(log n + k) expected, **O(n) worst** | worst case: every zone the same box — no split separates them |
+| query | O(depth + s + k), **O(n) worst** | s = boxes that straddle a cell boundary and so stay at an internal node on the query's path; every query reaching that node tests them. For fixed-size zones s grows with n (roughly linearly in a fixed area, roughly √n at constant density). Worst case: every zone the same box — no split separates them |
 | insert | O(depth) + O(log R) root doublings | R = how far outside the root the box lies |
 | remove | **O(n)** | no id → node map: the item is found by search, then O(cap) collapse per level |
 | build | O(n log n) expected | n inserts after fitting the root |
@@ -86,7 +86,7 @@ node of a slice underfull.
 
 | Operation | Bound |
 |---|---|
-| query | O(log n + k) expected, **O(n) worst** (overlapping boxes) |
+| query | O(log n + k) typical on STR-packed data, **O(n) worst** (overlapping boxes) |
 | insert | O(log n) amortised over splits |
 | build (STR) | O(n log n), dominated by the sorts |
 | remove | **O(n)** to find + reinsertion of orphaned entries |
@@ -203,8 +203,8 @@ force (closed immediately). See [ARCHITECTURE.md](ARCHITECTURE.md).
 | Structure / operation | Bound | Guaranteed? | Measured |
 |---|---|---|---|
 | Brute-force query | O(n) | ✓ | linear (RESULTS.md §1, §2) |
-| Quadtree query | O(log n + k) expected, O(n) worst | ✗ — partitions space, not data | RESULTS.md §1–3 |
-| R-tree query | O(log n + k) expected, O(n) worst | ✗ — boxes may overlap | RESULTS.md §1–3, §7 |
+| Quadtree query | O(depth + s + k), s = straddlers on the path; O(n) worst | ✗ — partitions space, not data | RESULTS.md §1–3 |
+| R-tree query | O(log n + k) typical, O(n) worst | ✗ — boxes may overlap | RESULTS.md §1–3, §7 |
 | Index remove (all three) | O(n) | ✓ (it is the bound) | RESULTS.md §4 |
 | Interval tree stab, k results | O(min(n, (k + 1) log n)) | ✓ AVL height | RESULTS.md §8 |
 | Interval tree insert/remove | O(log n) | ✓ AVL | RESULTS.md §8 |
