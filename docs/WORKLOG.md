@@ -6,6 +6,43 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-25 — Dashboard redesign: summary strip, honest legend, phone layout
+
+**What:** The page template in `src/viz/html_export.cpp` (CSS, markup and a few
+lines of its script) was reworked. A strip under the header shows the run's
+headline numbers, read from the same `D.stats` and `D.equivalence` as the
+counters panel: zones indexed, candidates per query, pruning, alerts →
+incidents, metres saved by the Hungarian dispatch, and the live quadtree/R-tree
+vs brute-force mismatch count. The legend now explains the tourist dots (clear,
+uncertain, inside a zone) and the responder squares, and lists only the zone
+kinds this run actually has. The side panel's eleven sections are cards; prose
+is set in the system sans-serif and numbers stay monospaced. The bottom bar
+keeps its controls in the same order with the same labels, adds a "frame n /
+720" readout, larger hit targets, focus outlines and `aria-pressed` on the
+three toggles. The page gained a viewport tag and a phone layout: the map
+fills the width, the panel scrolls with the page instead of inside a 50vh box,
+the benchmark table scrolls sideways inside its card, and the controls stay
+pinned at the bottom. README's three dashboard images were regenerated with
+`tools/screenshots.sh`.
+
+**Why:** On a phone the old page had no viewport tag, so it rendered at desktop
+width; at phone width the benchmark table and the control bar ran off the
+screen, leaving `dispatch` unreachable. The legend showed "safe", which no zone
+in the run uses, omitted "advisory", which 18 do, and never said what the dot
+colours meant. On desktop the run's results were only reachable by scrolling a
+long panel.
+
+**Impact:** Presentation only. The embedded data block is byte-identical to
+the verified production page (sha256 `37293065…`), so every number, the
+benchmark rows and the incident ranking are unchanged; the engine, tests, CSVs,
+Vercel and Pages configuration are untouched. The page's own hash changes, to
+sha256 `270f8575…`, identical on macOS (Apple clang 17) and in the Amazon Linux
+2023 container (GCC 11.5) through `tools/vercel_build.sh`, whose benchmark and
+self-contained checks pass on both. Play/pause, the four index modes, accuracy
+discs, dispatch, the slider, tapping a tourist, the in-page Merkle check and the
+`#index=rtree&frame=400` deep link were exercised in the browser at desktop and
+375 px phone width, with no console output and no request beyond the page.
+
 ### 2026-10-23 — Vercel production rebuilt from `main` and verified
 
 **What:** Pull request #6 merged as `28f0e47`, so `main` now carries

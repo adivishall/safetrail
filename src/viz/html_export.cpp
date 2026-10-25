@@ -36,104 +36,161 @@ void TraceRecorder::capture(const sim::Simulator& s) {
 }
 
 static const char* kShell = R"HTML(<!doctype html>
-<meta charset="utf-8"><title>__TITLE__</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
 <style>
-  :root{--bg:#0e1116;--panel:#161b22;--line:#2a323d;--fg:#e6edf3;--dim:#8b949e;
-        --r:#f85149;--o:#d29922;--g:#3fb950;--b:#58a6ff;--u:#bc8cff}
+  :root{--bg:#0e1116;--panel:#161b22;--panel2:#1d242e;--line:#2a323d;--fg:#e6edf3;--dim:#8b949e;
+        --r:#f85149;--o:#d29922;--g:#3fb950;--b:#58a6ff;--u:#bc8cff;
+        --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+        --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);
-       font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-  header{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;
-         gap:20px;align-items:baseline;flex-wrap:wrap}
-  h1{font-size:15px;margin:0;letter-spacing:.5px}
-  .sub{color:var(--dim);font-size:12px}
-  #wrap{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 92px)}
-  @media(max-width:900px){#wrap{grid-template-columns:1fr;height:auto}}
-  #stage{position:relative;overflow:hidden}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans);
+       -webkit-text-size-adjust:100%}
+  table,code,.mono,.chg,.ev,.rule,.concept,.mk,#fpos,.clock{font-family:var(--mono)}
+  .app{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;height:100vh;height:100dvh}
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:10px 16px;
+         border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  h1{font:650 17px/1.2 var(--sans);margin:0;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:12.5px}
+  .clock{font-size:13px;font-weight:600;background:var(--panel);border:1px solid var(--line);
+         border-radius:999px;padding:2px 10px}
+  .lg{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--dim);margin-left:auto}
+  .lg .grp{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+  .lg .grp>em{font-style:normal;color:var(--fg);opacity:.65;text-transform:uppercase;
+              font-size:10.5px;letter-spacing:.8px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+  #kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+        background:var(--line);border-bottom:1px solid var(--line)}
+  .kpi{background:var(--bg);padding:8px 16px}
+  .kpi .v{font:600 18px/1.25 var(--mono);white-space:nowrap}
+  .kpi .l{font-size:11.5px;color:var(--dim)}
+  .kpi .v.good{color:var(--g)} .kpi .v.bad{color:var(--r)}
+  #wrap{display:grid;grid-template-columns:minmax(0,1fr) 430px;min-height:0}
+  #stage{position:relative;overflow:hidden;min-height:0}
   canvas{display:block;width:100%;height:100%}
-  aside{border-left:1px solid var(--line);overflow-y:auto;padding:12px}
-  @media(max-width:900px){aside{border-left:0;border-top:1px solid var(--line);height:50vh}}
-  footer{padding:8px 16px;border-top:1px solid var(--line);display:flex;
-         gap:12px;align-items:center}
-  button{background:var(--panel);color:var(--fg);border:1px solid var(--line);
-         border-radius:5px;padding:5px 12px;cursor:pointer;font:inherit}
+  aside{border-left:1px solid var(--line);overflow-y:auto;padding:12px;display:flex;
+        flex-direction:column;gap:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  h2{font:650 11.5px/1.35 var(--sans);text-transform:uppercase;letter-spacing:.9px;color:var(--dim);
+     margin:0 0 8px}
+  footer{display:flex;gap:10px;align-items:center;padding:8px 16px;border-top:1px solid var(--line);
+         background:var(--panel)}
+  .scrubwrap{flex:1;display:flex;align-items:center;gap:10px;min-width:160px}
+  #fpos{font-size:12px;color:var(--dim);white-space:nowrap}
+  .toggles{display:flex;gap:8px}
+  .hint{color:var(--dim);font-size:11px}
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;
+         min-height:34px;padding:5px 12px;cursor:pointer;font:13px var(--mono);white-space:nowrap}
   button:hover{border-color:var(--b)}
-  button.on{border-color:var(--b);color:var(--b)}
-  input[type=range]{flex:1;accent-color:var(--b)}
+  button.on{border-color:var(--b);color:var(--b);background:rgba(88,166,255,.10)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--b);outline-offset:2px}
+  input[type=range]{flex:1;min-width:0;accent-color:var(--b)}
   .ev{border-left:2px solid var(--line);padding:5px 8px;margin-bottom:5px;
-      background:var(--panel);border-radius:0 4px 4px 0}
+      background:var(--panel2);border-radius:0 4px 4px 0;font-size:12px}
   .ev.enter{border-left-color:var(--r)} .ev.appr{border-left-color:var(--o)}
   .ev.unc{border-left-color:var(--u)}  .ev.dwell{border-left-color:var(--b)}
-  .ev .k{font-weight:700;font-size:12px;letter-spacing:.4px}
-  .ev .m{color:var(--dim);font-size:12px}
-  .lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim)}
-  .rule{display:flex;justify-content:space-between;gap:8px;padding:3px 6px;
-        border-radius:3px;font-size:12px;margin-bottom:2px;background:var(--panel)}
-  .rule.off{opacity:.38}
+  .ev .k{font-weight:700;letter-spacing:.4px}
+  .ev .m{color:var(--dim)}
+  .m{color:var(--dim);font-size:12.5px}
+  .rule{display:flex;justify-content:space-between;gap:8px;padding:4px 7px;
+        border-radius:4px;font-size:12px;margin-bottom:3px;background:var(--panel2)}
+  .rule.off{opacity:.42}
   .rule b{font-weight:600}
-  .chg{font-size:12px;padding:3px 6px;margin-bottom:2px;border-left:2px solid var(--b);
-       background:var(--panel);color:var(--dim)}
+  .chg{font-size:12px;padding:3px 7px;margin-bottom:3px;border-left:2px solid var(--b);
+       background:var(--panel2);color:var(--dim)}
   .chg.future{opacity:.35}
-  .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
   table{width:100%;border-collapse:collapse;font-size:12px}
-  td{padding:2px 0} td:last-child{text-align:right;color:var(--b)}
-  h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
-     margin:16px 0 6px;font-weight:600}
-  .inc{border-left:3px solid var(--r);background:var(--panel);border-radius:0 4px 4px 0;
-       padding:6px 9px;margin-bottom:5px}
+  td{padding:3px 0;border-bottom:1px solid rgba(42,50,61,.6)} td:last-child{text-align:right;color:var(--b)}
+  tr:last-child td{border-bottom:0}
+  .inc{border-left:3px solid var(--r);background:var(--panel2);border-radius:0 6px 6px 0;
+       padding:7px 10px;margin-bottom:6px}
   .inc.s4{border-left-color:var(--o)} .inc.s3{border-left-color:var(--b)}
   .inc.s2{border-left-color:var(--dim)}
-  .inc .big{font-size:17px;font-weight:700;line-height:1.2}
-  .inc .m{color:var(--dim);font-size:12px}
+  .inc .big{font-size:17px;font-weight:700;line-height:1.25}
+  .inc .m{font-size:12px}
   .saved{color:var(--g);font-weight:700}
-  .mk{background:var(--panel);border-radius:5px;padding:9px;font-size:12px;line-height:1.5}
+  .mk{background:var(--panel2);border-radius:6px;padding:9px;font-size:12px;line-height:1.5}
   .mk code{word-break:break-all;color:var(--b)}
   .mk .ok{color:var(--g);font-weight:700} .mk .bad{color:var(--r);font-weight:700}
-  table.exp{font-size:11.5px} table.exp th{color:var(--dim);font-weight:600;text-align:right;padding:2px 4px;border-bottom:1px solid var(--line)}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.exp{font-size:12px;min-width:360px} table.exp th{color:var(--dim);font-weight:600;text-align:right;padding:3px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
   table.exp th:first-child{text-align:left}
-  table.exp td{padding:2px 4px;text-align:right;color:var(--fg)} table.exp td:first-child{text-align:left;color:var(--dim)}
-  table.exp tr.hl td{color:var(--fg);font-weight:700;background:rgba(88,166,255,.08)}
+  table.exp td{padding:3px 4px;text-align:right;color:var(--fg)} table.exp td:first-child{text-align:left;color:var(--dim)}
+  table.exp tr.hl td{color:var(--fg);font-weight:700;background:rgba(88,166,255,.10)}
   table.exp .qt{color:var(--b)} table.exp .rt{color:var(--g)} table.exp .bf{color:var(--r)}
-  .note{font-size:11px;color:var(--dim);margin-top:5px;line-height:1.5}
+  .note{font-size:12px;color:var(--dim);margin-top:6px;line-height:1.55}
   .why b.bf{color:var(--r)} .why b.qt{color:var(--b)} .why b.rt{color:var(--g)}
-  .concept{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:2px 6px;margin-bottom:2px;background:var(--panel);border-radius:3px}
+  .why>div+div{margin-top:4px}
+  .concept{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 7px;margin-bottom:3px;background:var(--panel2);border-radius:4px}
   .concept b{color:var(--b);font-weight:600}
+  @media(max-width:900px){
+    .app{display:block;height:auto}
+    .lg{margin-left:0}
+    #wrap{grid-template-columns:minmax(0,1fr)}
+    #stage{height:min(62vh,110vw);min-height:320px}
+    aside{border-left:0;border-top:1px solid var(--line);overflow:visible;padding:10px}
+    footer{position:sticky;bottom:0;z-index:2;flex-wrap:wrap;padding:8px 10px;
+           padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+    .scrubwrap{flex:1 1 calc(100% - 90px)}
+    .toggles{width:100%} .toggles button{flex:1;padding:5px 6px}
+    .hint{width:100%;text-align:center}
+  }
+  @media(max-width:520px){
+    header{padding:10px}
+    #kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .kpi{padding:7px 10px} .kpi .v{font-size:16px}
+    .rule,.concept{flex-direction:column;gap:0}
+  }
 </style>
+<div class="app">
 <header>
-  <h1>safetrail</h1>
-  <span class="sub" id="clock">00:00:00</span>
-  <span class="lg">
-    <span><i class="sw" style="background:var(--r)"></i>restricted</span>
-    <span><i class="sw" style="background:var(--o)"></i>caution</span>
-    <span><i class="sw" style="background:var(--g)"></i>safe</span>
-    <span><i class="sw" style="background:var(--u)"></i>uncertain</span>
-  </span>
+  <div class="brand"><h1>safetrail</h1>
+    <span class="sub">geofencing engine · simulated tourists on real OpenStreetMap zones</span></div>
+  <span class="clock" id="clock" title="simulated time">00:00:00</span>
+  <div class="lg">
+    <span class="grp" id="lgzones"><em>zones</em></span>
+    <span class="grp"><em>tourists</em>
+      <span><i class="dot" style="background:var(--b)"></i>clear</span>
+      <span><i class="dot" style="background:var(--u)"></i>uncertain</span>
+      <span><i class="dot" style="background:var(--r)"></i>inside a zone</span></span>
+    <span class="grp"><em>dispatch</em>
+      <span><i class="sw" style="background:var(--g)"></i>responder</span></span>
+  </div>
 </header>
+<div id="kpis" aria-label="run summary"></div>
 <div id="wrap">
-  <div id="stage"><canvas id="c"></canvas></div>
+  <div id="stage"><canvas id="c" aria-label="map of zones and tourists"></canvas></div>
   <aside>
-    <h2>main experiment · brute force vs quadtree vs R-tree</h2><div id="experiment"></div>
-    <h2>why the index works</h2><div id="why"></div>
-    <h2>tracked tourist</h2><div id="track"><div class="m" style="color:var(--dim)">click a dot on the map to track a tourist</div></div>
-    <h2>open incidents</h2><div id="incidents"></div>
-    <h2>counters</h2><table id="stats"></table>
-    <h2>rules in force <span id="asof" style="color:var(--b)"></span></h2>
-    <div id="rules"></div>
-    <h2>zone change log</h2><div id="changes"></div>
-    <h2>persistent index</h2><div id="versions"></div>
-    <h2>course concepts demonstrated</h2><div id="concepts"></div>
-    <h2>evidence log</h2><div id="evidence"></div>
-    <h2>event stream</h2><div id="events"></div>
+    <section class="card"><h2>main experiment · brute force vs quadtree vs R-tree</h2><div id="experiment"></div></section>
+    <section class="card"><h2>why the index works</h2><div id="why"></div></section>
+    <section class="card"><h2>tracked tourist</h2><div id="track"><div class="m">click a dot on the map to track a tourist</div></div></section>
+    <section class="card"><h2>open incidents</h2><div id="incidents"></div></section>
+    <section class="card"><h2>counters</h2><table id="stats"></table></section>
+    <section class="card"><h2>rules in force <span id="asof" style="color:var(--b)"></span></h2>
+    <div id="rules"></div></section>
+    <section class="card"><h2>zone change log</h2><div id="changes"></div></section>
+    <section class="card"><h2>persistent index</h2><div id="versions"></div></section>
+    <section class="card"><h2>course concepts demonstrated</h2><div id="concepts"></div></section>
+    <section class="card"><h2>evidence log</h2><div id="evidence"></div></section>
+    <section class="card"><h2>event stream</h2><div id="events"></div></section>
   </aside>
 </div>
 <footer>
   <button id="play">pause</button>
-  <input type="range" id="scrub" min="0" value="0">
-  <button id="qt">index: off</button>
-  <button id="acc">accuracy discs</button>
-  <button id="disp">dispatch</button>
-  <span style="color:var(--dim);font-size:10px">discs indicative, not to scale</span>
+  <div class="scrubwrap">
+    <input type="range" id="scrub" min="0" value="0" aria-label="timeline">
+    <span id="fpos" aria-live="off"></span>
+  </div>
+  <div class="toggles">
+    <button id="qt" aria-pressed="false">index: off</button>
+    <button id="acc" aria-pressed="false">accuracy discs</button>
+    <button id="disp" aria-pressed="false">dispatch</button>
+  </div>
+  <span class="hint">discs indicative, not to scale</span>
 </footer>
+</div>
 <script>
 const D = __DATA__;
 const cv = document.getElementById('c'), cx = cv.getContext('2d');
@@ -397,7 +454,7 @@ function panel() {
     return `<div class="ev ${cls}"><div class="k">${lbl}</div>
       <div class="m">TID-${String(e.p).padStart(5,'0')} · ${z}</div>
       <div class="m">${d}</div></div>`;
-  }).join('') || '<div class="m" style="color:var(--dim)">no events yet</div>';
+  }).join('') || '<div class="m">no events yet</div>';
 }
 
 function jdist(a, b, c, d) {
@@ -409,7 +466,7 @@ function trackPanel() {
   const el = document.getElementById('track');
   const f = D.frames[frame];
   if (selected < 0 || selected >= f.lat.length) {
-    el.innerHTML = '<div class="m" style="color:var(--dim)">click a dot on the map to track a tourist</div>';
+    el.innerHTML = '<div class="m">click a dot on the map to track a tourist</div>';
     return;
   }
   const t = (D.tourists && D.tourists[selected]) || {did: '?', grp: '?'};
@@ -446,7 +503,7 @@ function incidentFeed() {
   const el = document.getElementById('incidents');
   const inc = D.incidents_top || [];
   if (!inc.length) {
-    el.innerHTML = '<div class="m" style="color:var(--dim)">no multi-person incidents</div>';
+    el.innerHTML = '<div class="m">no multi-person incidents</div>';
     return;
   }
   el.innerHTML = inc.map(i => {
@@ -518,7 +575,7 @@ function verifyMerkle(m){
 }
 function evidencePanel(){
   const el=document.getElementById('evidence'), m=D.merkle;
-  if(!m||!m.size){el.innerHTML='<div class="m" style="color:var(--dim)">no evidence log</div>';return;}
+  if(!m||!m.size){el.innerHTML='<div class="m">no evidence log</div>';return;}
   el.innerHTML=`<div class="mk">
     <div>${m.size.toLocaleString()} events committed to a Merkle root:</div>
     <code>${m.root.slice(0,40)}…</code>
@@ -542,7 +599,7 @@ function experimentPanel() {
   const el = document.getElementById('experiment');
   const rows = D.experiment || [];
   const eq = D.equivalence || {};
-  if (!rows.length) { el.innerHTML = '<div class="m" style="color:var(--dim)">run <code>make bench</code> to populate this panel</div>'; return; }
+  if (!rows.length) { el.innerHTML = '<div class="m">run <code>make bench</code> to populate this panel</div>'; return; }
   let body = '';
   for (const r of rows) {
     const hl = r.zones >= 100000 ? ' class="hl"' : '';
@@ -555,9 +612,9 @@ function experimentPanel() {
       `<td>${(+r.cand).toFixed(2)}</td></tr>`;
   }
   const ok = (eq.mismatches | 0) === 0;
-  el.innerHTML = `<table class="exp">
+  el.innerHTML = `<div class="tw"><table class="exp">
     <tr><th>zones</th><th>brute µs</th><th>quad µs</th><th>R-tree µs</th><th>QT×</th><th>RT×</th><th>cand</th></tr>
-    ${body}</table>
+    ${body}</table></div>
     <div class="note">Latency = median of 11 interleaved rounds, µs/query, 450 m box,
       2000 probes/row — from <code>bench/results/index_scaling.csv</code> (the source
       <code>RESULTS.md</code> uses; one laptop, see its environment note). Speedups are
@@ -609,7 +666,7 @@ function conceptsPanel() {
 function versionsPanel() {
   const el = document.getElementById('versions');
   const vs = D.versions_viz || [];
-  if (!vs.length) { el.innerHTML = '<div class="m" style="color:var(--dim)">no version history</div>'; return; }
+  if (!vs.length) { el.innerHTML = '<div class="m">no version history</div>'; return; }
   const w = 150, h = 116, span = 18;   // span: drop the world-root box
   const mx = v => 4 + (v - B.w) / (B.e - B.w) * (w - 8);
   const my = v => h - 4 - (v - B.s) / (B.n - B.s) * (h - 8);
@@ -656,7 +713,30 @@ function versionsPanel() {
   el.innerHTML = html;
 }
 
-function render() { draw(); panel(); trackPanel(); scrub.value = frame; }
+function render() {
+  draw(); panel(); trackPanel(); scrub.value = frame;
+  document.getElementById('fpos').textContent = 'frame ' + (frame + 1) + ' / ' + D.frames.length;
+}
+// ── Header summary and legend: the run's headline numbers, from the same D.stats
+// and D.equivalence the counters panel shows, and the zone kinds this run has.
+function kpiPanel() {
+  const s = D.stats, eq = D.equivalence || {}, ok = (eq.mismatches | 0) === 0;
+  const saved = Math.max(0, (s.greedy_m - s.optimal_m) | 0);
+  const k = [
+    [s.zones.toLocaleString(), 'zones indexed', ''],
+    [s.avg_candidates.toFixed(2), 'candidates per query', ''],
+    [s.pruning.toFixed(0) + '×', 'pruning vs brute force', ''],
+    [s.alerts.toLocaleString() + ' → ' + s.incidents.toLocaleString(), 'alerts → incidents', ''],
+    [saved.toLocaleString() + ' m', 'saved by Hungarian dispatch', ''],
+    [(ok ? '✓ ' : '✗ ') + (eq.mismatches | 0) + ' mismatches', 'quadtree/R-tree vs brute force', ok ? 'good' : 'bad'],
+  ];
+  document.getElementById('kpis').innerHTML = k.map(r =>
+    `<div class="kpi"><div class="v ${r[2]}">${r[0]}</div><div class="l">${r[1]}</div></div>`).join('');
+  const order = ['restricted', 'caution', 'advisory', 'safe'];
+  const have = new Set(D.zones.filter(z => !z.syn).map(z => z.kind));
+  document.getElementById('lgzones').insertAdjacentHTML('beforeend', order.filter(x => have.has(x)).map(x =>
+    `<span><i class="sw" style="background:${ZC[x]}"></i>${x}</span>`).join(''));
+}
 document.getElementById('play').onclick = e => {
   playing = !playing; e.target.textContent = playing ? 'pause' : 'play';
 };
@@ -664,10 +744,13 @@ document.getElementById('qt').onclick = e => {
   idxMode = (idxMode + 1) % 4;                     // off -> brute -> quadtree -> r-tree
   e.target.textContent = 'index: ' + IDX_NAMES[idxMode];
   e.target.classList.toggle('on', idxMode !== 0);
+  e.target.setAttribute('aria-pressed', idxMode !== 0);
   render();
 };
-document.getElementById('acc').onclick = e => { showAcc = !showAcc; e.target.classList.toggle('on'); render(); };
-document.getElementById('disp').onclick = e => { showDisp = !showDisp; e.target.classList.toggle('on'); render(); };
+document.getElementById('acc').onclick = e => { showAcc = !showAcc; e.target.classList.toggle('on', showAcc);
+  e.target.setAttribute('aria-pressed', showAcc); render(); };
+document.getElementById('disp').onclick = e => { showDisp = !showDisp; e.target.classList.toggle('on', showDisp);
+  e.target.setAttribute('aria-pressed', showDisp); render(); };
 scrub.oninput = () => { frame = +scrub.value; playing = false;
   document.getElementById('play').textContent = 'play'; render(); };
 addEventListener('resize', () => { resize(); render(); });
@@ -683,6 +766,7 @@ addEventListener('resize', () => { resize(); render(); });
     const b = document.getElementById('qt');
     b.textContent = 'index: ' + IDX_NAMES[idxMode];
     b.classList.add('on');
+    b.setAttribute('aria-pressed', 'true');
   }
   if (h.has('frame')) frame = Math.max(0, Math.min(D.frames.length - 1, +h.get('frame') || 0));
   if (h.has('pause')) { playing = false; document.getElementById('play').textContent = 'play'; }
@@ -690,6 +774,7 @@ addEventListener('resize', () => { resize(); render(); });
 resize(); render();
 incidentFeed(); evidencePanel(); versionsPanel();   // end-of-run summaries; render once
 experimentPanel(); whyPanel(); conceptsPanel();     // the main experiment + concept map
+kpiPanel();                                         // header summary + zone legend
 setInterval(() => { if (playing) { frame = (frame + 1) % D.frames.length; render(); } }, 90);
 </script>
 )HTML";
