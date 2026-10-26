@@ -39,164 +39,288 @@ static const char* kShell = R"HTML(<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>__TITLE__</title>
 <style>
-  :root{--bg:#0e1116;--panel:#161b22;--panel2:#1d242e;--line:#2a323d;--fg:#e6edf3;--dim:#8b949e;
-        --r:#f85149;--o:#d29922;--g:#3fb950;--b:#58a6ff;--u:#bc8cff;
-        --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-        --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans);
-       -webkit-text-size-adjust:100%}
-  table,code,.mono,.chg,.ev,.rule,.concept,.mk,#fpos,.clock{font-family:var(--mono)}
-  .app{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;height:100vh;height:100dvh}
-  header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:10px 16px;
-         border-bottom:1px solid var(--line)}
-  .brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-  h1{font:650 17px/1.2 var(--sans);margin:0;letter-spacing:.2px}
-  .sub{color:var(--dim);font-size:12.5px}
-  .clock{font-size:13px;font-weight:600;background:var(--panel);border:1px solid var(--line);
-         border-radius:999px;padding:2px 10px}
-  .lg{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--dim);margin-left:auto}
-  .lg .grp{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
-  .lg .grp>em{font-style:normal;color:var(--fg);opacity:.65;text-transform:uppercase;
-              font-size:10.5px;letter-spacing:.8px}
-  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
-  #kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
-        background:var(--line);border-bottom:1px solid var(--line)}
-  .kpi{background:var(--bg);padding:8px 16px}
-  .kpi .v{font:600 18px/1.25 var(--mono);white-space:nowrap}
-  .kpi .l{font-size:11.5px;color:var(--dim)}
-  .kpi .v.good{color:var(--g)} .kpi .v.bad{color:var(--r)}
-  #wrap{display:grid;grid-template-columns:minmax(0,1fr) 430px;min-height:0}
-  #stage{position:relative;overflow:hidden;min-height:0}
-  canvas{display:block;width:100%;height:100%}
-  aside{border-left:1px solid var(--line);overflow-y:auto;padding:12px;display:flex;
-        flex-direction:column;gap:10px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
-  h2{font:650 11.5px/1.35 var(--sans);text-transform:uppercase;letter-spacing:.9px;color:var(--dim);
-     margin:0 0 8px}
-  footer{display:flex;gap:10px;align-items:center;padding:8px 16px;border-top:1px solid var(--line);
-         background:var(--panel)}
-  .scrubwrap{flex:1;display:flex;align-items:center;gap:10px;min-width:160px}
-  #fpos{font-size:12px;color:var(--dim);white-space:nowrap}
-  .toggles{display:flex;gap:8px}
-  .hint{color:var(--dim);font-size:11px}
-  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;
-         min-height:34px;padding:5px 12px;cursor:pointer;font:13px var(--mono);white-space:nowrap}
-  button:hover{border-color:var(--b)}
-  button.on{border-color:var(--b);color:var(--b);background:rgba(88,166,255,.10)}
-  button:focus-visible,input:focus-visible{outline:2px solid var(--b);outline-offset:2px}
-  input[type=range]{flex:1;min-width:0;accent-color:var(--b)}
-  .ev{border-left:2px solid var(--line);padding:5px 8px;margin-bottom:5px;
-      background:var(--panel2);border-radius:0 4px 4px 0;font-size:12px}
-  .ev.enter{border-left-color:var(--r)} .ev.appr{border-left-color:var(--o)}
-  .ev.unc{border-left-color:var(--u)}  .ev.dwell{border-left-color:var(--b)}
-  .ev .k{font-weight:700;letter-spacing:.4px}
-  .ev .m{color:var(--dim)}
-  .m{color:var(--dim);font-size:12.5px}
-  .rule{display:flex;justify-content:space-between;gap:8px;padding:4px 7px;
-        border-radius:4px;font-size:12px;margin-bottom:3px;background:var(--panel2)}
-  .rule.off{opacity:.42}
-  .rule b{font-weight:600}
-  .chg{font-size:12px;padding:3px 7px;margin-bottom:3px;border-left:2px solid var(--b);
-       background:var(--panel2);color:var(--dim)}
-  .chg.future{opacity:.35}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  td{padding:3px 0;border-bottom:1px solid rgba(42,50,61,.6)} td:last-child{text-align:right;color:var(--b)}
-  tr:last-child td{border-bottom:0}
-  .inc{border-left:3px solid var(--r);background:var(--panel2);border-radius:0 6px 6px 0;
-       padding:7px 10px;margin-bottom:6px}
-  .inc.s4{border-left-color:var(--o)} .inc.s3{border-left-color:var(--b)}
-  .inc.s2{border-left-color:var(--dim)}
-  .inc .big{font-size:17px;font-weight:700;line-height:1.25}
-  .inc .m{font-size:12px}
-  .saved{color:var(--g);font-weight:700}
-  .mk{background:var(--panel2);border-radius:6px;padding:9px;font-size:12px;line-height:1.5}
-  .mk code{word-break:break-all;color:var(--b)}
-  .mk .ok{color:var(--g);font-weight:700} .mk .bad{color:var(--r);font-weight:700}
-  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  table.exp{font-size:12px;min-width:360px} table.exp th{color:var(--dim);font-weight:600;text-align:right;padding:3px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
-  table.exp th:first-child{text-align:left}
-  table.exp td{padding:3px 4px;text-align:right;color:var(--fg)} table.exp td:first-child{text-align:left;color:var(--dim)}
-  table.exp tr.hl td{color:var(--fg);font-weight:700;background:rgba(88,166,255,.10)}
-  table.exp .qt{color:var(--b)} table.exp .rt{color:var(--g)} table.exp .bf{color:var(--r)}
-  .note{font-size:12px;color:var(--dim);margin-top:6px;line-height:1.55}
-  .why b.bf{color:var(--r)} .why b.qt{color:var(--b)} .why b.rt{color:var(--g)}
-  .why>div+div{margin-top:4px}
-  .concept{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 7px;margin-bottom:3px;background:var(--panel2);border-radius:4px}
-  .concept b{color:var(--b);font-weight:600}
-  @media(max-width:900px){
-    .app{display:block;height:auto}
-    .lg{margin-left:0}
-    #wrap{grid-template-columns:minmax(0,1fr)}
-    #stage{height:min(62vh,110vw);min-height:320px}
-    aside{border-left:0;border-top:1px solid var(--line);overflow:visible;padding:10px}
-    footer{position:sticky;bottom:0;z-index:2;flex-wrap:wrap;padding:8px 10px;
-           padding-bottom:calc(8px + env(safe-area-inset-bottom))}
-    .scrubwrap{flex:1 1 calc(100% - 90px)}
-    .toggles{width:100%} .toggles button{flex:1;padding:5px 6px}
-    .hint{width:100%;text-align:center}
+  /* Interface: light, quiet, GIS-like. Map: a dark canvas so zones, trails and
+     index cells keep their contrast. Two token sets, used deliberately. */
+  :root{
+    --bg:#F3F4F0; --surface:#FFFFFF; --surface2:#F8F9F6; --fg:#202925; --dim:#68736D;
+    --line:#DDE3DD; --accent:#286653; --accent-soft:#E7F0EB; --accent-ink:#1E4F40;
+    --r:#B42318; --o:#8A5A00; --g:#1A7F4B; --b:#2457A6; --u:#6B3FC4;
+    --panel:var(--surface2); --panel2:var(--surface2);
+    --map:#141C18; --map2:#1D2722; --map-line:#2E3B35; --map-fg:#E8EDE9; --map-dim:#A3AEA8;
+    --m-r:#FF6B5E; --m-o:#E3B341; --m-g:#4CC38A; --m-b:#6CB6FF; --m-u:#C297FF; --m-a:#A3AEA8;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --radius:10px;
   }
-  @media(max-width:520px){
-    header{padding:10px}
-    #kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .kpi{padding:7px 10px} .kpi .v{font-size:16px}
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans)}
+  table,code,.mono,.chg,.ev,#fpos,.clock,.kpi .v,.rule .st{font-family:var(--mono)}
+  button,input{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .app{display:grid;grid-template-rows:auto auto minmax(0,1fr);height:100vh;height:100dvh}
+
+  /* ── header ─────────────────────────────────────────────────────────────── */
+  header{display:flex;align-items:center;gap:14px;padding:0 16px;height:52px;background:var(--surface);
+         border-bottom:1px solid var(--line)}
+  .mark{width:22px;height:22px;flex:none;display:block}
+  .brand{display:flex;align-items:baseline;gap:12px;min-width:0}
+  h1{font:650 16px/1 var(--sans);margin:0;letter-spacing:.1px;white-space:nowrap}
+  .sub{color:var(--dim);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hstat{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none}
+  .status{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim)}
+  .status i{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+  .status[data-state="playing"] i{background:var(--accent)}
+  .status[data-state="playing"]{color:var(--accent-ink)}
+  .clock{font-size:13px;font-weight:600;padding:3px 9px;border:1px solid var(--line);border-radius:6px;
+         background:var(--surface2)}
+
+  /* ── run summary ────────────────────────────────────────────────────────── */
+  #kpis{display:flex;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto}
+  .kpi{padding:8px 18px;border-right:1px solid var(--line);flex:1 0 auto;min-width:0}
+  .kpi:last-child{border-right:0}
+  .kpi .v{font-size:16px;font-weight:600;line-height:1.3;white-space:nowrap}
+  .kpi .l{font-size:12px;color:var(--dim);white-space:nowrap}
+  .kpi .v.good{color:var(--g)} .kpi .v.bad{color:var(--r)}
+
+  /* ── workspace: map first, sidebar second ───────────────────────────────── */
+  #wrap{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:12px;padding:12px;min-height:0}
+  .workspace{display:flex;flex-direction:column;min-height:0;background:var(--map);
+             border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  #stage{position:relative;flex:1;min-height:0;overflow:hidden}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  canvas.hot{cursor:pointer}
+
+  .legend{position:absolute;left:12px;bottom:12px;background:var(--map2);border:1px solid var(--map-line);
+          border-radius:8px;padding:9px 11px;color:var(--map-fg);font-size:12px;max-width:calc(100% - 24px)}
+  .legend .row{display:flex;flex-wrap:wrap;align-items:center;gap:3px 12px}
+  .legend .row+.row{margin-top:4px}
+  .legend em{font-style:normal;color:var(--map-dim);font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+             width:66px}
+  .legend .note{color:var(--map-dim);font-size:11px;margin-top:6px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+  .sq{display:inline-block;width:8px;height:8px;margin-right:6px;vertical-align:0;background:#F5F7F2;
+      outline:1px solid var(--map)}
+
+  /* Locator globe: where on Earth this map is. Orthographic, drawn from the zone
+     bounds; the pin is the study area's centre, not a decoration. */
+  .locator{position:absolute;top:12px;right:12px;display:flex;align-items:center;gap:8px;
+           background:var(--map2);border:1px solid var(--map-line);border-radius:8px;padding:6px 10px 6px 6px;
+           color:var(--map-fg);font-size:12px;cursor:default}
+  .locator svg{display:block;width:64px;height:64px}
+  .locator .t{line-height:1.35} .locator .t b{font-weight:600}
+  .locator .t span{color:var(--map-dim);font-family:var(--mono);font-size:11px}
+  .gpulse{transform-box:fill-box;transform-origin:center;animation:gp 1.8s ease-out infinite}
+  @keyframes gp{from{transform:scale(1);opacity:.9}to{transform:scale(3.2);opacity:0}}
+  .gtip{position:absolute;top:92px;right:12px;width:260px;background:var(--surface);color:var(--fg);
+        border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px;
+        box-shadow:0 6px 18px rgba(20,28,24,.18);z-index:3}
+  .gtip[hidden]{display:none}
+  .gtip h4{margin:0 0 6px;font:600 12.5px var(--sans)}
+  .gtip table td{padding:2px 0;border:0} .gtip table td:last-child{color:var(--fg)}
+
+  /* ── toolbar ────────────────────────────────────────────────────────────── */
+  .toolbar{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);
+           border-top:1px solid var(--line)}
+  .scrubwrap{flex:1;display:flex;align-items:center;gap:10px;min-width:160px}
+  #fpos{font-size:12px;color:var(--dim);white-space:nowrap;min-width:9.5em;text-align:right}
+  .toggles{display:flex;gap:6px}
+  button{min-height:36px;padding:0 13px;border-radius:7px;border:1px solid var(--line);background:var(--surface);
+         color:var(--fg);font:500 13px var(--sans);cursor:pointer;white-space:nowrap}
+  button:hover{background:var(--surface2);border-color:#C9D2CB}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.on,button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+  #play{min-width:92px;background:var(--accent);border-color:var(--accent);color:#fff}
+  #play:hover{background:var(--accent-ink)}
+  #play::before{content:"";display:inline-block;width:0;height:0;margin-right:8px;vertical-align:0;
+                border-style:solid;border-width:5px 0 5px 8px;border-color:transparent transparent transparent #fff}
+  #play[data-state="playing"]::before{width:3px;height:10px;border:0;border-left:3px solid #fff;
+                border-right:3px solid #fff;width:9px;box-sizing:border-box;vertical-align:-1px}
+  input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:24px}
+  .keys{color:var(--dim);font-size:11.5px;white-space:nowrap}
+
+  /* ── sidebar ────────────────────────────────────────────────────────────── */
+  aside{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow-y:auto;
+        min-height:0}
+  .toc{position:sticky;top:0;z-index:2;display:flex;gap:0;flex-wrap:wrap;padding:7px 8px;
+       background:var(--surface);border-bottom:1px solid var(--line)}
+  .toc button{min-height:28px;padding:0 7px;border:0;background:transparent;color:var(--dim);font-size:12px}
+  .toc button:hover{background:var(--surface2);color:var(--fg)}
+  .grp{padding:14px 16px 6px;border-bottom:1px solid var(--line);scroll-margin-top:48px}
+  .grp:last-child{border-bottom:0}
+  h2{margin:0 0 10px;font:650 11.5px/1.3 var(--sans);letter-spacing:.9px;text-transform:uppercase;color:var(--accent)}
+  .blk{margin-bottom:14px}
+  h3{margin:0 0 7px;font:600 13.5px/1.35 var(--sans);color:var(--fg)}
+  h3 #asof{font:500 12px var(--mono);color:var(--b);margin-left:6px}
+
+  .m{color:var(--dim);font-size:12.5px}
+  .note{font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.55}
+  .note code{font-size:11.5px;background:var(--surface2);padding:0 3px;border-radius:3px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td{padding:4px 0;border-bottom:1px solid var(--line)} td:last-child{text-align:right;color:var(--b)}
+  tr:last-child td{border-bottom:0}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:8px}
+  table.exp{font-size:11.5px;min-width:340px}
+  table.exp th{color:var(--dim);font:600 11px var(--sans);text-align:right;padding:6px 5px;
+               border-bottom:1px solid var(--line);background:var(--surface2);white-space:nowrap}
+  table.exp th:first-child,table.exp td:first-child{text-align:left;padding-left:8px}
+  table.exp th:last-child,table.exp td:last-child{padding-right:8px}
+  table.exp td{padding:4px 5px;text-align:right;color:var(--fg)} table.exp td:first-child{color:var(--dim)}
+  table.exp tr.hl td{font-weight:700;background:var(--accent-soft)}
+  table.exp .qt{color:var(--b)} table.exp .rt{color:var(--g)} table.exp .bf{color:var(--r)}
+  .why b.bf{color:var(--r)} .why b.qt{color:var(--b)} .why b.rt{color:var(--g)}
+  .why>div+div{margin-top:5px}
+
+  .inc{border-left:3px solid var(--r);background:var(--surface2);border-radius:0 7px 7px 0;
+       padding:8px 11px;margin-bottom:6px}
+  .inc.s4{border-left-color:var(--o)} .inc.s3{border-left-color:var(--b)} .inc.s2{border-left-color:var(--dim)}
+  .inc .big{font-size:16px;font-weight:650;line-height:1.3}
+  .inc .m{font-size:12.5px}
+  .rule{display:flex;justify-content:space-between;gap:10px;padding:5px 8px;border-radius:6px;font-size:12.5px;
+        margin-bottom:2px}
+  .rule:nth-child(odd){background:var(--surface2)}
+  .rule.off{color:var(--dim)} .rule.off .sw{opacity:.4}
+  .rule b{font-weight:600}
+  .chg{font-size:12px;padding:4px 8px;margin-bottom:2px;border-left:2px solid var(--accent);color:var(--fg)}
+  .chg.future{color:var(--dim);border-left-color:var(--line)}
+  .ev{border-left:3px solid var(--line);padding:5px 9px;margin-bottom:4px;background:var(--surface2);
+      border-radius:0 6px 6px 0;font-size:12px}
+  .ev.enter{border-left-color:var(--r)} .ev.appr{border-left-color:var(--o)}
+  .ev.unc{border-left-color:var(--u)} .ev.dwell{border-left-color:var(--b)}
+  .ev .k{font-weight:700;letter-spacing:.3px} .ev .m{font-size:12px}
+  .mk{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12.5px}
+  .mk code{word-break:break-all;color:var(--b);font-size:11.5px}
+  .mk .ok{color:var(--g);font-weight:700} .mk .bad{color:var(--r);font-weight:700}
+  .mk button{margin-top:4px}
+  .concept{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:5px 8px;border-radius:6px}
+  .concept:nth-child(odd){background:var(--surface2)}
+  .concept b{color:var(--accent-ink);font-weight:600}
+  .saved{color:var(--g);font-weight:700}
+
+  /* ── tablet: map on top, sidebar groups in two columns ──────────────────── */
+  @media(max-width:1300px){ #wrap{grid-template-columns:minmax(0,1fr) 400px} .keys{display:none} }
+  @media(max-width:1100px){ #wrap{grid-template-columns:minmax(0,1fr) 360px} }
+  @media(max-width:900px){
+    .app{display:block;height:auto;padding-bottom:116px}
+    .sub{display:none}
+    #wrap{grid-template-columns:minmax(0,1fr);padding:10px;gap:10px}
+    #stage{flex:none}
+    canvas{height:min(64vh,112vw);min-height:300px}
+    .legend{position:static;border:0;border-top:1px solid var(--map-line);border-radius:0;max-width:none}
+    .toolbar{position:fixed;left:0;right:0;bottom:0;z-index:5;flex-wrap:wrap;border-top:1px solid var(--line);
+             box-shadow:0 -4px 14px rgba(20,28,24,.08);padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+    .scrubwrap{flex:1 1 calc(100% - 110px)}
+    .toggles{width:100%} .toggles button{flex:1;padding:0 6px}
+    aside{overflow:visible}
+    .toc{display:none}
+  }
+  @media(min-width:601px) and (max-width:900px){
+    #kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+    .kpi{border-bottom:1px solid var(--line)} .kpi:nth-child(3n){border-right:0}
+    .toolbar{flex-wrap:nowrap} .toggles{width:auto} .toggles button{flex:none;padding:0 11px}
+    .scrubwrap{flex:1 1 auto} .app{padding-bottom:72px}
+    aside{display:grid;grid-template-columns:1fr 1fr}
+    .grp{border-right:1px solid var(--line)} .grp:nth-child(odd){border-right:0}
+  }
+  @media(max-width:600px){
+    header{padding:0 12px;gap:10px}
+    #kpis{display:grid;grid-template-columns:1fr 1fr}
+    .kpi{padding:7px 12px;border-bottom:1px solid var(--line)}
+    .kpi:nth-child(even){border-right:0}
+    .kpi .v{font-size:15px}
+    .locator .t{display:none}
+    .locator svg{width:52px;height:52px}
+    .gtip{top:76px;width:auto;left:12px}
+    #fpos{min-width:0}
     .rule,.concept{flex-direction:column;gap:0}
   }
+  @media(prefers-reduced-motion:reduce){ .gpulse{animation:none;opacity:0} button:active{transform:none} }
 </style>
 <div class="app">
 <header>
-  <div class="brand"><h1>safetrail</h1>
-    <span class="sub">geofencing engine · simulated tourists on real OpenStreetMap zones</span></div>
-  <span class="clock" id="clock" title="simulated time">00:00:00</span>
-  <div class="lg">
-    <span class="grp" id="lgzones"><em>zones</em></span>
-    <span class="grp"><em>tourists</em>
-      <span><i class="dot" style="background:var(--b)"></i>clear</span>
-      <span><i class="dot" style="background:var(--u)"></i>uncertain</span>
-      <span><i class="dot" style="background:var(--r)"></i>inside a zone</span></span>
-    <span class="grp"><em>dispatch</em>
-      <span><i class="sw" style="background:var(--g)"></i>responder</span></span>
+  <svg class="mark" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="9.5" fill="#E7F0EB" stroke="#286653" stroke-width="1.4"/><path d="M11 1.5c-3 2.8-3 16.2 0 19M11 1.5c3 2.8 3 16.2 0 19M2 11h18M3.6 6.2h14.8M3.6 15.8h14.8" fill="none" stroke="#286653" stroke-width=".9"/></svg>
+  <div class="brand"><h1>SafeTrail</h1>
+    <span class="sub">Hazard geofencing · Shillong, Meghalaya · simulated tourists on OpenStreetMap zones</span></div>
+  <div class="hstat">
+    <span class="status" id="status" data-state="playing" role="status"><i></i><span>Playing</span></span>
+    <span class="clock" id="clock" title="simulated time">00:00:00</span>
   </div>
 </header>
-<div id="kpis" aria-label="run summary"></div>
+<div id="kpis" aria-label="Run summary"></div>
 <div id="wrap">
-  <div id="stage"><canvas id="c" aria-label="map of zones and tourists"></canvas></div>
-  <aside>
-    <section class="card"><h2>main experiment · brute force vs quadtree vs R-tree</h2><div id="experiment"></div></section>
-    <section class="card"><h2>why the index works</h2><div id="why"></div></section>
-    <section class="card"><h2>tracked tourist</h2><div id="track"><div class="m">click a dot on the map to track a tourist</div></div></section>
-    <section class="card"><h2>open incidents</h2><div id="incidents"></div></section>
-    <section class="card"><h2>counters</h2><table id="stats"></table></section>
-    <section class="card"><h2>rules in force <span id="asof" style="color:var(--b)"></span></h2>
-    <div id="rules"></div></section>
-    <section class="card"><h2>zone change log</h2><div id="changes"></div></section>
-    <section class="card"><h2>persistent index</h2><div id="versions"></div></section>
-    <section class="card"><h2>course concepts demonstrated</h2><div id="concepts"></div></section>
-    <section class="card"><h2>evidence log</h2><div id="evidence"></div></section>
-    <section class="card"><h2>event stream</h2><div id="events"></div></section>
+  <section class="workspace" aria-label="Map workspace">
+    <div id="stage">
+      <canvas id="c" aria-label="Map of hazard zones and tourists; click a dot to track a tourist"></canvas>
+      <div class="locator" id="locator" tabindex="0" aria-describedby="gtip">
+        <svg id="globe" viewBox="0 0 100 100" role="img" aria-label="Locator globe"></svg>
+        <div class="t"><b>Study area</b><br><span id="loclabel"></span></div>
+      </div>
+      <div class="gtip" id="gtip" role="tooltip" hidden></div>
+      <div class="legend" aria-label="Map legend">
+        <div class="row" id="lgzones"><em>zones</em></div>
+        <div class="row"><em>tourists</em>
+          <span><i class="dot" style="background:var(--m-b)"></i>clear</span>
+          <span><i class="dot" style="background:var(--m-u)"></i>uncertain</span>
+          <span><i class="dot" style="background:var(--m-r)"></i>inside a zone</span></div>
+        <div class="row"><em>overlays</em>
+          <span><i class="sw" style="background:var(--m-b)"></i>quadtree</span>
+          <span><i class="sw" style="background:var(--m-g)"></i>R-tree</span>
+          <span><i class="sw" style="background:var(--m-o)"></i>query cells</span>
+          <span><i class="sq"></i>responder</span></div>
+        <div class="note">Accuracy discs indicative, not to scale.</div>
+      </div>
+    </div>
+    <div class="toolbar" role="toolbar" aria-label="Playback and overlays">
+      <button id="play" data-state="playing">pause</button>
+      <div class="scrubwrap">
+        <input type="range" id="scrub" min="0" value="0" aria-label="Timeline">
+        <span id="fpos"></span>
+      </div>
+      <div class="toggles">
+        <button id="qt" aria-pressed="false">index: off</button>
+        <button id="acc" aria-pressed="false">accuracy discs</button>
+        <button id="disp" aria-pressed="false">dispatch</button>
+      </div>
+      <span class="keys">Space play · ← → step</span>
+    </div>
+  </section>
+  <aside aria-label="Details">
+    <nav class="toc" aria-label="Sections">
+      <button data-go="g-exp">Experiment</button><button data-go="g-act">Activity</button>
+      <button data-go="g-rules">Rules</button><button data-go="g-hist">History</button>
+      <button data-go="g-evd">Evidence</button><button data-go="g-ref">Reference</button>
+    </nav>
+    <section class="grp" id="g-exp"><h2>Experiment</h2>
+      <div class="blk"><h3>Brute force vs quadtree vs R-tree</h3><div id="experiment"></div></div>
+      <div class="blk"><h3>Why the index works</h3><div id="why"></div></div></section>
+    <section class="grp" id="g-act"><h2>Activity</h2>
+      <div class="blk"><h3>Tracked tourist</h3><div id="track"><div class="m">click a dot on the map to track a tourist</div></div></div>
+      <div class="blk"><h3>Open incidents</h3><div id="incidents"></div></div></section>
+    <section class="grp" id="g-rules"><h2>Rules and zone history</h2>
+      <div class="blk"><h3>Rules in force<span id="asof"></span></h3><div id="rules"></div></div>
+      <div class="blk"><h3>Zone change log</h3><div id="changes"></div></div></section>
+    <section class="grp" id="g-hist"><h2>Persistent index</h2>
+      <div class="blk"><h3>Version history</h3><div id="versions"></div></div></section>
+    <section class="grp" id="g-evd"><h2>Evidence and events</h2>
+      <div class="blk"><h3>Evidence log</h3><div id="evidence"></div></div>
+      <div class="blk"><h3>Event stream</h3><div id="events"></div></div></section>
+    <section class="grp" id="g-ref"><h2>Reference</h2>
+      <div class="blk"><h3>Counters</h3><table id="stats"></table></div>
+      <div class="blk"><h3>Course concepts demonstrated</h3><div id="concepts"></div></div></section>
   </aside>
 </div>
-<footer>
-  <button id="play">pause</button>
-  <div class="scrubwrap">
-    <input type="range" id="scrub" min="0" value="0" aria-label="timeline">
-    <span id="fpos" aria-live="off"></span>
-  </div>
-  <div class="toggles">
-    <button id="qt" aria-pressed="false">index: off</button>
-    <button id="acc" aria-pressed="false">accuracy discs</button>
-    <button id="disp" aria-pressed="false">dispatch</button>
-  </div>
-  <span class="hint">discs indicative, not to scale</span>
-</footer>
 </div>
 <script>
 const D = __DATA__;
 const cv = document.getElementById('c'), cx = cv.getContext('2d');
 // idxMode: 0 off · 1 brute force · 2 quadtree · 3 R-tree. The switch the demo asks
 // for -- same data, same queries, three ways of organising the search.
-let frame = 0, playing = true, idxMode = 0, showAcc = false, showDisp = false, selected = -1;
+let frame = 0, playing = true, idxMode = 0, showAcc = false, showDisp = false, selected = -1, hovered = -1;
+// Map palette: one place, matching the CSS --map / --m-* tokens.
+const MAP = {bg:'#141C18', clear:'#6CB6FF', unc:'#C297FF', ins:'#FF6B5E', label:'rgba(20,28,24,.88)'};
 const IDX_NAMES = ['off', 'brute force', 'quadtree', 'r-tree'];
 // The cells the active index would draw. Brute force has none -- it scans every
 // zone -- which is the whole point of the comparison, so its overlay says so.
@@ -218,8 +342,8 @@ B.n += pad; B.s -= pad; B.e += pad; B.w -= pad;
 
 let W = 0, H = 0, sc = 1, ox = 0, oy = 0;
 function resize() {
-  const r = cv.parentElement.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-  W = r.width; H = Math.max(r.height, 320);
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;   // the canvas's own box
+  W = r.width; H = Math.max(r.height, 300);
   cv.width = W * dpr; cv.height = H * dpr;
   cx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const sx = W / (B.e - B.w), sy = H / (B.n - B.s);
@@ -229,38 +353,45 @@ function resize() {
 const X = lon => ox + (lon - B.w) * sc;
 const Y = lat => H - oy - (lat - B.s) * sc;
 
-const ZC = {restricted:'#f85149', caution:'#d29922', safe:'#3fb950', advisory:'#8b949e'};
+const ZC = {restricted:'#FF6B5E', caution:'#E3B341', safe:'#4CC38A', advisory:'#A3AEA8'};
+// A label on the map: text on a solid pill so it stays legible over any geometry.
+function tag(text, x, y, col) {
+  cx.font = '12px ' + getComputedStyle(document.body).getPropertyValue('--sans');
+  const w = cx.measureText(text).width;
+  cx.fillStyle = MAP.label; cx.beginPath();
+  if (cx.roundRect) cx.roundRect(x - 7, y - 14, w + 14, 21, 5); else cx.rect(x - 7, y - 14, w + 14, 21);
+  cx.fill(); cx.fillStyle = col; cx.fillText(text, x, y);
+}
 
 function draw() {
-  cx.fillStyle = '#0e1116'; cx.fillRect(0, 0, W, H);
+  cx.fillStyle = MAP.bg; cx.fillRect(0, 0, W, H);
 
   if (idxMode === 1) {                 // brute force: no structure -- every zone tested
-    cx.strokeStyle = 'rgba(248,81,73,.20)'; cx.lineWidth = 0.5;
+    cx.strokeStyle = 'rgba(255,107,94,.24)'; cx.lineWidth = 0.5;
     for (const z of D.zones) {          // one faint box per zone = the whole scan
       let n=1e9,s=-1e9,e=-1e9,w=1e9;
       for (const p of z.ring){n=Math.min(n,p[0]);s=Math.max(s,p[0]);w=Math.min(w,p[1]);e=Math.max(e,p[1]);}
       cx.strokeRect(X(w), Y(s), (e-w)*sc, (s-n)*sc);
     }
-    cx.fillStyle = 'rgba(248,81,73,.95)'; cx.font = '12px ui-monospace';
-    cx.fillText('brute force: no spatial index — all ' + D.zones.length +
-                ' zones tested per query (O(n))', 14, 22);
+    tag('brute force: no spatial index — all ' + D.zones.length +
+        ' zones tested per query (O(n))', 20, 28, '#FF8F85');
   } else if (idxMode === 2 || idxMode === 3) {   // real node boxes, not an approximation
     const boxes = activeBoxes();
-    cx.strokeStyle = idxMode === 3 ? 'rgba(63,185,80,.28)' : 'rgba(88,166,255,.20)';
-    cx.lineWidth = 0.6;
+    cx.strokeStyle = idxMode === 3 ? 'rgba(76,195,138,.40)' : 'rgba(108,182,255,.30)';
+    cx.lineWidth = 0.7;
     let drawn = 0;
     for (const b of boxes) {
       if (b[2] - b[0] > 20) continue;      // skip the root world box
       cx.strokeRect(X(b[1]), Y(b[2]), (b[3]-b[1])*sc, (b[2]-b[0])*sc);
       ++drawn;
     }
-    cx.fillStyle = 'rgba(139,148,158,.95)'; cx.font = '12px ui-monospace';
+    const lc = idxMode === 3 ? '#7FD8AE' : '#9CCBFF';
     if (!drawn)
-      cx.fillText('index has a single node at this zone count - run with --synthetic to see subdivision', 14, 22);
+      tag('index has a single node at this zone count - run with --synthetic to see subdivision', 20, 28, lc);
     else
-      cx.fillText(IDX_NAMES[idxMode] + ': ' + drawn + ' node cells' +
-                  (idxMode === 3 ? ' (envelopes overlap — it partitions items)'
-                                 : ' (disjoint grid — it partitions space)'), 14, 22);
+      tag(IDX_NAMES[idxMode] + ': ' + drawn + ' node cells' +
+          (idxMode === 3 ? ' (envelopes overlap — it partitions items)'
+                         : ' (disjoint grid — it partitions space)'), 20, 28, lc);
   }
 
   // Synthetic zones first, as faint outlines -- they exist to give the index a
@@ -307,15 +438,21 @@ function draw() {
     if (showAcc && f.acc[i] <= 150) {
       const rpx = Math.max((f.acc[i] / 111320) * sc, 5);
       cx.beginPath(); cx.arc(x, y, rpx, 0, 6.284);
-      cx.fillStyle = st === 1 ? 'rgba(188,140,255,.20)' : 'rgba(88,166,255,.10)';
+      cx.fillStyle = st === 1 ? 'rgba(194,151,255,.20)' : 'rgba(108,182,255,.10)';
       cx.fill();
-      cx.strokeStyle = st === 1 ? 'rgba(188,140,255,.55)' : 'rgba(88,166,255,.28)';
+      cx.strokeStyle = st === 1 ? 'rgba(194,151,255,.60)' : 'rgba(108,182,255,.32)';
       cx.lineWidth = 1; cx.stroke();
     }
     cx.beginPath(); cx.arc(x, y, st === 2 ? 4.2 : 3, 0, 6.284);
-    cx.fillStyle = st === 2 ? '#f85149' : st === 1 ? '#bc8cff' : '#58a6ff';
+    cx.fillStyle = st === 2 ? MAP.ins : st === 1 ? MAP.unc : MAP.clear;
     cx.fill();
-    if (st === 2) { cx.strokeStyle = '#f8514966'; cx.lineWidth = 4; cx.stroke(); }
+    if (st === 2) { cx.strokeStyle = 'rgba(255,107,94,.38)'; cx.lineWidth = 4; cx.stroke(); }
+  }
+
+  // Hover: a light ring on the dot a click would select, so selection is predictable.
+  if (hovered >= 0 && hovered !== selected && hovered < f.lat.length) {
+    cx.beginPath(); cx.arc(X(f.lon[hovered]), Y(f.lat[hovered]), 7, 0, 6.284);
+    cx.strokeStyle = 'rgba(232,237,233,.85)'; cx.lineWidth = 1.5; cx.stroke();
   }
 
   if (selected >= 0 && selected < f.lat.length) {
@@ -330,6 +467,8 @@ function draw() {
     }
     cx.stroke();
     const x = X(f.lon[selected]), y = Y(f.lat[selected]);
+    cx.beginPath(); cx.arc(x, y, 11, 0, 6.284);
+    cx.fillStyle = 'rgba(255,255,255,.10)'; cx.fill();
     cx.beginPath(); cx.arc(x, y, 8, 0, 6.284);
     cx.strokeStyle = '#fff'; cx.lineWidth = 2; cx.stroke();
 
@@ -342,7 +481,7 @@ function draw() {
     const boxes = activeBoxes();
     let touched = 0;
     if (boxes) {
-      cx.lineWidth = 0.9; cx.strokeStyle = 'rgba(210,153,34,.6)';
+      cx.lineWidth = 1; cx.strokeStyle = 'rgba(227,179,65,.75)';
       for (const b of boxes) {
         if (b[2] - b[0] > 20) continue;                                // skip world root
         if (b[2] < qb[0] || b[0] > qb[2] || b[3] < qb[1] || b[1] > qb[3]) continue;
@@ -353,22 +492,21 @@ function draw() {
     cx.setLineDash([5, 4]); cx.strokeStyle = 'rgba(255,255,255,.75)'; cx.lineWidth = 1.2;
     cx.strokeRect(X(qb[1]), Y(qb[2]), (qb[3]-qb[1])*sc, (qb[2]-qb[0])*sc);
     cx.setLineDash([]);
-    cx.fillStyle = 'rgba(210,153,34,.9)'; cx.font = '11px ui-monospace';
     if (idxMode === 1)
-      cx.fillText('brute force: all ' + D.zones.length + ' zones tested', X(qb[1]), Y(qb[2]) - 6);
+      tag('brute force: all ' + D.zones.length + ' zones tested', X(qb[1]) + 7, Y(qb[2]) - 9, '#E3B341');
     else if (boxes && touched)
-      cx.fillText(touched + ' ' + IDX_NAMES[idxMode] + ' cells touched', X(qb[1]), Y(qb[2]) - 6);
+      tag(touched + ' ' + IDX_NAMES[idxMode] + ' cells touched', X(qb[1]) + 7, Y(qb[2]) - 9, '#E3B341');
   }
 
   if (showDisp) {
-    cx.strokeStyle = 'rgba(63,185,80,.6)'; cx.lineWidth = 1.4;
+    cx.strokeStyle = 'rgba(232,237,233,.62)'; cx.lineWidth = 1.3;
     for (const l of (D.dispatch || [])) {
       cx.beginPath(); cx.moveTo(X(l[1]), Y(l[0])); cx.lineTo(X(l[3]), Y(l[2])); cx.stroke();
     }
     for (const r of (D.responders || [])) {
       const x = X(r[1]), y = Y(r[0]);
-      cx.fillStyle = '#3fb950'; cx.fillRect(x - 3, y - 3, 6, 6);
-      cx.strokeStyle = '#0e1116'; cx.lineWidth = 1; cx.strokeRect(x - 3, y - 3, 6, 6);
+      cx.fillStyle = '#F5F7F2'; cx.fillRect(x - 3.5, y - 3.5, 7, 7);
+      cx.strokeStyle = MAP.bg; cx.lineWidth = 1.2; cx.strokeRect(x - 3.5, y - 3.5, 7, 7);
     }
   }
 
@@ -498,6 +636,18 @@ cv.addEventListener('click', ev => {
   }
   selected = best; render();
 });
+cv.addEventListener('mousemove', ev => {
+  const r = cv.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
+  const f = D.frames[frame];
+  let best = -1, bd = 196;                       // 14 px: a dot under the cursor, not merely near it
+  for (let i = 0; i < f.lat.length; i++) {
+    const dx = X(f.lon[i]) - px, dy = Y(f.lat[i]) - py, d = dx*dx + dy*dy;
+    if (d < bd) { bd = d; best = i; }
+  }
+  cv.classList.toggle('hot', best >= 0);
+  if (best !== hovered) { hovered = best; if (!playing) draw(); }
+});
+cv.addEventListener('mouseleave', () => { if (hovered >= 0) { hovered = -1; cv.classList.remove('hot'); if (!playing) draw(); } });
 // ── GAP 5 headline: the biggest correlated incidents, one card each ──────────
 function incidentFeed() {
   const el = document.getElementById('incidents');
@@ -697,16 +847,16 @@ function versionsPanel() {
     for (const nd of v.nodes) {
       const r = nd.r; if (!r || (r[2] - r[0]) > span) continue;   // skip world root
       const x = mx(r[1]), y = my(r[2]), ww = (r[3]-r[1])/(B.e-B.w)*(w-8), hh = (r[2]-r[0])/(B.n-B.s)*(h-8);
-      const col = nd.sh ? 'rgba(139,148,158,.30)' : 'var(--b)';
+      const col = nd.sh ? 'rgba(163,174,168,.32)' : '#6CB6FF';
       const sw = nd.sh ? 0.5 : 1.1;
       cells += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(ww,0.5).toFixed(1)}" height="${Math.max(hh,0.5).toFixed(1)}" fill="none" stroke="${col}" stroke-width="${sw}"/>`;
     }
     const note = v.new === 0 ? '<span style="color:var(--g)">+0 — whole tree shared</span>'
                              : `<span style="color:var(--b)">+${v.new} new</span> / ${v.shared} shared`;
-    html += `<div style="background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px">
+    html += `<div style="background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:4px">
       <svg width="${w}" height="${h}" style="display:block">
-        <rect x="0" y="0" width="${w}" height="${h}" fill="#0e1116"/>${cells}</svg>
-      <div class="m" style="font-size:11px;margin-top:3px">v${v.version} @ ${fmt(v.at)}<br>${note}</div>
+        <rect x="0" y="0" width="${w}" height="${h}" fill="#141C18"/>${cells}</svg>
+      <div class="m" style="font-size:11.5px;margin-top:4px;font-family:var(--mono)">v${v.version} @ ${fmt(v.at)}<br>${note}</div>
     </div>`;
   }
   html += '</div>';
@@ -716,6 +866,81 @@ function versionsPanel() {
 function render() {
   draw(); panel(); trackPanel(); scrub.value = frame;
   document.getElementById('fpos').textContent = 'frame ' + (frame + 1) + ' / ' + D.frames.length;
+  syncStatus(); globeState();
+}
+// Playback state in one place: the play button's label (kept as 'pause'/'play',
+// which the demo runbook quotes), its icon, and the header status.
+function syncStatus() {
+  const b = document.getElementById('play'), st = document.getElementById('status');
+  b.textContent = playing ? 'pause' : 'play';
+  b.dataset.state = st.dataset.state = playing ? 'playing' : 'paused';
+  st.lastElementChild.textContent = playing ? 'Playing' : 'Paused';
+}
+
+// ── Locator globe ────────────────────────────────────────────────────────────
+// An orthographic view of the Earth with the study area pinned at its real
+// centre (the middle of the authored zones' bounds). Graticule only: no land
+// outlines are shipped with the page, and inventing some would be fabricated
+// geography. The pin pulses only while a tourist is inside a zone in the
+// current frame, and never under prefers-reduced-motion.
+const AREA = (() => {
+  let n = -90, s = 90, e = -180, w = 180, au = 0, sy = 0;
+  for (const z of D.zones) { if (z.syn) { sy++; continue; } au++;
+    for (const p of z.ring) { n = Math.max(n, p[0]); s = Math.min(s, p[0]); e = Math.max(e, p[1]); w = Math.min(w, p[1]); } }
+  const lat = (n + s) / 2, lon = (e + w) / 2;
+  return {lat, lon, au, sy, ns: jdist(s, lon, n, lon) / 1000, ew: jdist(lat, w, lat, e) / 1000};
+})();
+function globePanel() {
+  const g = document.getElementById('globe'), R = 44, C = 50, rad = Math.PI / 180;
+  const lat0 = Math.max(-60, Math.min(60, AREA.lat - 12)) * rad, lon0 = (AREA.lon - 8) * rad;
+  const P = (la, lo) => { la *= rad; lo *= rad;
+    const cc = Math.sin(lat0)*Math.sin(la) + Math.cos(lat0)*Math.cos(la)*Math.cos(lo - lon0);
+    return [C + R*Math.cos(la)*Math.sin(lo - lon0),
+            C - R*(Math.cos(lat0)*Math.sin(la) - Math.sin(lat0)*Math.cos(la)*Math.cos(lo - lon0)), cc > 0]; };
+  const line = pts => { let d = '', on = false;
+    for (const q of pts) { if (!q[2]) { on = false; continue; }
+      d += (on ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); on = true; } return d; };
+  let grid = '', eq = '';
+  for (let lo = -180; lo < 180; lo += 30) { const pts = []; for (let la = -90; la <= 90; la += 5) pts.push(P(la, lo)); grid += line(pts); }
+  for (let la = -60; la <= 60; la += 30) { const pts = []; for (let lo = -180; lo <= 180; lo += 5) pts.push(P(la, lo));
+    if (la === 0) eq = line(pts); else grid += line(pts); }
+  const pin = P(AREA.lat, AREA.lon);
+  g.innerHTML =
+    `<circle cx="50" cy="50" r="${R}" fill="#22322B" stroke="#4A5C54" stroke-width="1"/>` +
+    `<path d="${grid}" fill="none" stroke="rgba(232,237,233,.20)" stroke-width=".7"/>` +
+    `<path d="${eq}" fill="none" stroke="rgba(232,237,233,.30)" stroke-width=".8"/>` +
+    `<circle id="gpulse" class="gpulse" cx="${pin[0].toFixed(1)}" cy="${pin[1].toFixed(1)}" r="3.4" fill="none" stroke="#FF6B5E" stroke-width="1.2" style="display:none"/>` +
+    `<circle id="gpin" cx="${pin[0].toFixed(1)}" cy="${pin[1].toFixed(1)}" r="4" fill="#4CC38A" stroke="#141C18" stroke-width="1.4"/>`;
+  const ns = AREA.lat >= 0 ? 'N' : 'S', ew = AREA.lon >= 0 ? 'E' : 'W';
+  document.getElementById('loclabel').textContent =
+    Math.abs(AREA.lat).toFixed(3) + '°' + ns + ' ' + Math.abs(AREA.lon).toFixed(3) + '°' + ew;
+  g.setAttribute('aria-label', 'Locator globe: study area centred at ' +
+    document.getElementById('loclabel').textContent);
+  const loc = document.getElementById('locator'), tip = document.getElementById('gtip');
+  const show = () => { tipBody(); tip.hidden = false; }, hide = () => { tip.hidden = true; };
+  loc.addEventListener('mouseenter', show); loc.addEventListener('mouseleave', hide);
+  loc.addEventListener('focus', show); loc.addEventListener('blur', hide);
+  loc.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
+}
+function insideNow() { let n = 0; for (const s of D.frames[frame].state) if (s === 2) n++; return n; }
+function tipBody() {
+  const f = D.frames[frame], ins = insideNow();
+  document.getElementById('gtip').innerHTML = `<h4>Study area</h4><table>
+    <tr><td>centre</td><td>${document.getElementById('loclabel').textContent}</td></tr>
+    <tr><td>extent</td><td>${AREA.ew.toFixed(1)} × ${AREA.ns.toFixed(1)} km</td></tr>
+    <tr><td>authored zones</td><td>${AREA.au}</td></tr>
+    <tr><td>synthetic zones</td><td>${AREA.sy}</td></tr>
+    <tr><td>tourists in frame</td><td>${f.lat.length}</td></tr>
+    <tr><td>inside a zone now</td><td style="color:${ins ? 'var(--r)' : 'var(--g)'}">${ins}</td></tr>
+    </table><div class="m" style="margin-top:6px">Pin: centre of the authored zones. It pulses while a tourist is inside a zone.</div>`;
+}
+function globeState() {
+  const p = document.getElementById('gpulse'), pin = document.getElementById('gpin');
+  if (!p) return;
+  const ins = insideNow() > 0;
+  p.style.display = ins ? '' : 'none';
+  pin.setAttribute('fill', ins ? '#FF6B5E' : '#4CC38A');
+  if (!document.getElementById('gtip').hidden) tipBody();
 }
 // ── Header summary and legend: the run's headline numbers, from the same D.stats
 // and D.equivalence the counters panel shows, and the zone kinds this run has.
@@ -737,9 +962,7 @@ function kpiPanel() {
   document.getElementById('lgzones').insertAdjacentHTML('beforeend', order.filter(x => have.has(x)).map(x =>
     `<span><i class="sw" style="background:${ZC[x]}"></i>${x}</span>`).join(''));
 }
-document.getElementById('play').onclick = e => {
-  playing = !playing; e.target.textContent = playing ? 'pause' : 'play';
-};
+document.getElementById('play').onclick = () => { playing = !playing; syncStatus(); };
 document.getElementById('qt').onclick = e => {
   idxMode = (idxMode + 1) % 4;                     // off -> brute -> quadtree -> r-tree
   e.target.textContent = 'index: ' + IDX_NAMES[idxMode];
@@ -751,8 +974,21 @@ document.getElementById('acc').onclick = e => { showAcc = !showAcc; e.target.cla
   e.target.setAttribute('aria-pressed', showAcc); render(); };
 document.getElementById('disp').onclick = e => { showDisp = !showDisp; e.target.classList.toggle('on', showDisp);
   e.target.setAttribute('aria-pressed', showDisp); render(); };
-scrub.oninput = () => { frame = +scrub.value; playing = false;
-  document.getElementById('play').textContent = 'play'; render(); };
+scrub.oninput = () => { frame = +scrub.value; playing = false; render(); };
+// Keyboard: Space plays/pauses and the arrow keys step one frame, unless focus
+// is on a control that already uses those keys.
+addEventListener('keydown', e => {
+  const t = e.target, tn = t && t.tagName;
+  if (tn === 'INPUT' || tn === 'BUTTON' || tn === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === ' ') { e.preventDefault(); playing = !playing; syncStatus(); }
+  else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    e.preventDefault(); playing = false;
+    frame = (frame + (e.key === 'ArrowRight' ? 1 : D.frames.length - 1)) % D.frames.length; render();
+  }
+});
+document.querySelectorAll('.toc button').forEach(b => b.onclick = () =>
+  document.getElementById(b.dataset.go).scrollIntoView({block: 'start',
+    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}));
 addEventListener('resize', () => { resize(); render(); });
 // Deep links: dashboard.html#index=rtree&frame=1200&pause opens on that view, so
 // a particular state can be linked to, and tools/screenshots.sh can capture the
@@ -769,12 +1005,14 @@ addEventListener('resize', () => { resize(); render(); });
     b.setAttribute('aria-pressed', 'true');
   }
   if (h.has('frame')) frame = Math.max(0, Math.min(D.frames.length - 1, +h.get('frame') || 0));
-  if (h.has('pause')) { playing = false; document.getElementById('play').textContent = 'play'; }
+  if (h.has('pause')) playing = false;
+  // Reduced motion: open paused rather than animating, unless the link asks to play.
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches && !h.has('play')) playing = false;
 }
 resize(); render();
 incidentFeed(); evidencePanel(); versionsPanel();   // end-of-run summaries; render once
 experimentPanel(); whyPanel(); conceptsPanel();     // the main experiment + concept map
-kpiPanel();                                         // header summary + zone legend
+kpiPanel(); globePanel(); globeState();             // summary, legend, locator globe
 setInterval(() => { if (playing) { frame = (frame + 1) % D.frames.length; render(); } }, 90);
 </script>
 )HTML";
