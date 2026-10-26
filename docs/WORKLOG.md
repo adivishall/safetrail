@@ -6,6 +6,58 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-26 — Dashboard redesign: light GIS interface, dark map, locator globe
+
+**What:** The page template in `src/viz/html_export.cpp` was redesigned; the
+engine and the exported data are untouched. The interface is now light
+(`#F3F4F0` page, white surfaces, `#286653` accent, readable sans-serif with
+monospace kept for numbers, coordinates and hashes) around a dark map canvas,
+so zones, trails and index cells keep their contrast. The header is compact:
+identity, a Playing/Paused status and the simulated clock. The run summary is a
+slim strip, not cards. The map is the dominant workspace, with a legend overlay
+that now also keys the quadtree, R-tree, query-cell and responder overlays,
+labels drawn on solid pills so they stay legible over geometry, a hover ring on
+the dot a click would select, a stronger selected-tourist halo, and responders
+drawn as white squares so they no longer share a colour with R-tree envelopes.
+The toolbar under the map keeps every control with the same labels and order,
+adds a play/pause icon, and has distinct hover, pressed, focused and disabled
+states. The sidebar is grouped (Experiment, Activity, Rules and zone history,
+Persistent index, Evidence and events, Reference) with a sticky section nav;
+every panel that was there still is. New: a small locator globe in the map's
+corner, an orthographic SVG drawn from the zone bounds with the study area
+pinned at its real centre (25.632°N 91.897°E); its tooltip shows that centre,
+the area's extent, the authored and synthetic zone counts and the tourists in
+frame and inside a zone, and the pin turns red and pulses only while a tourist
+is inside a zone. Space plays and pauses and the arrow keys step a frame. Under
+`prefers-reduced-motion` the page opens paused and nothing pulses. Tablet
+widths put the summary in a 3×2 grid and the sidebar groups in two columns;
+phone widths pin the toolbar to the bottom of the screen.
+
+**Why:** The previous page read as a generic dark dashboard. The brief asked
+for a supplied React Globe component (`globe.tsx`, `SVG_GLOBE_PATH`, `Pulse`,
+tooltip and button code) to be used as the design reference; none of those
+files were attached or present on the machine, and the repository has no
+React, TypeScript, Tailwind or shadcn setup. Adding a second frontend and a
+bundler to place one small visual would have put the self-contained, offline,
+byte-reproducible page at risk for little gain, so the globe's idea was
+recreated natively in SVG and tied to real data instead. It draws a graticule
+only: without the supplied path asset there is no land outline to ship, and
+drawing one by hand would be fabricated geography.
+
+**Impact:** Presentation only. The embedded data block is byte-identical to the
+production page (sha256 `270f8575…`), so every number, benchmark row and the
+incident ranking are unchanged; no CSV, engine, test, Vercel or Pages file
+changed. The new page is sha256 `897610de…`, identical on macOS (Apple clang
+17) and in the Amazon Linux 2023 container (GCC 11.5) through
+`tools/vercel_build.sh`, whose benchmark and self-contained checks pass on
+both. Checked in the browser at 1440, 614 and 375 px: all four index modes,
+accuracy discs, dispatch, play/pause, the slider, keyboard shortcuts, hover,
+tracking, the globe tooltip, the section nav, Merkle verification and the
+`#index=…&frame=…&pause` deep links work, with no console output and one
+network request (the page). Opened from disk with networking blocked it renders
+fully, and with reduced motion forced it opens paused. README's dashboard
+images were regenerated with `tools/screenshots.sh`.
+
 ### 2026-10-25 — Dashboard redesign: summary strip, honest legend, phone layout
 
 **What:** The page template in `src/viz/html_export.cpp` (CSS, markup and a few
