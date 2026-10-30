@@ -43,6 +43,30 @@ real defects** in code that was passing its tests.
 > questions it raises from the code; [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html)
 > is ten slides whose numbers are generated from the committed benchmark results.
 
+## The operations platform
+
+`make app` builds and starts **SafeTrail as a working product** on
+http://127.0.0.1:8080 (accounts and generated passwords are printed in the
+terminal; nothing to install beyond a C++17 compiler):
+
+- **Multi-user tracking with consent** — tourists opt in and start a session
+  themselves; each user's engine state is separate; duplicate, late, noisy and
+  missing fixes are handled at the ingestion boundary.
+- **Alerts → incidents → dispatch** — escalation on a timing wheel, triage on a
+  binary heap, correlation by union-find, nearest responder by road distance
+  (Dijkstra) and an A* route over the OpenStreetMap road graph.
+- **Groups, zones, offline phones, history** — separation detection, zone
+  editing with persistent-quadtree history, phones that evaluate offline and
+  reconcile by Lamport order, "what did the system know at time t", Merkle proofs
+  checked in the browser.
+- **A Data Structures Lab** that runs the real C++ structures and draws what they
+  did, and scripted, labelled-simulation scenarios with pause, step and speed.
+
+![SafeTrail operations console: live monitoring](docs/final/images/shot-live.png)
+
+The final academic material — report, slides, viva guide, syllabus mapping,
+demo script — is in [docs/final/](docs/final/README.md).
+
 | Structure | Answers | Bound (theoretical) | Implementation |
 |---|---|---|---|
 | **Brute force** | which zone boxes meet this box? (the oracle) | O(n) | a scanned vector, kept forever as the baseline |
@@ -135,7 +159,9 @@ fix; the measurement defect is pinned by the benchmark's own gates
 make review       # the project walkthrough: every index, identical answers,
                   # transitions, noise, history, the benchmark results, tests,
                   # dashboard (PAUSE=1 to step through it while presenting)
-make test         # 46 test files, ~11,850 checks (~20 s once built)
+make app          # the operations platform on http://127.0.0.1:8080
+make test         # 51 test files, 12,066 checks (~20 s once built)
+make e2e          # the server driven over real HTTP
 make demo         # the engine on real OSM zones: event stream + counters
 make dashboard    # writes dashboard.html; just open it
 make bench        # every benchmark (~2–3 min), regenerates the tables above
