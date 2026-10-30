@@ -21,6 +21,8 @@ import * as assignments from './pages/assignments.js';
 
 const STAFF = ['admin', 'operator'];
 const ROUTES = [
+  { id: 'mine', label: 'My Safety', page: mine, roles: ['tourist'], section: 'Me' },
+  { id: 'assignments', label: 'My Assignments', page: assignments, roles: ['responder'], section: 'Me' },
   { id: 'overview', label: 'Overview', page: overview, roles: STAFF, section: 'Operations' },
   { id: 'live', label: 'Live Monitoring', page: live, roles: STAFF },
   { id: 'users', label: 'Users', page: users, roles: STAFF },
@@ -31,9 +33,7 @@ const ROUTES = [
   { id: 'responders', label: 'Responders', page: responders, roles: STAFF },
   { id: 'history', label: 'Investigation', page: history, roles: STAFF, section: 'Analysis' },
   { id: 'analytics', label: 'Analytics', page: analytics, roles: STAFF },
-  { id: 'lab', label: 'Data Structures Lab', page: lab, roles: ['admin', 'operator', 'responder', 'tourist'] },
-  { id: 'mine', label: 'My Safety', page: mine, roles: ['tourist'], section: 'Me' },
-  { id: 'assignments', label: 'My Assignments', page: assignments, roles: ['responder'], section: 'Me' },
+  { id: 'lab', label: 'Data Structures Lab', page: lab, roles: ['admin', 'operator', 'responder', 'tourist'], section: 'Learn' },
   { id: 'settings', label: 'Settings', page: settings, roles: ['admin', 'operator', 'responder', 'tourist'], section: 'System' },
 ];
 

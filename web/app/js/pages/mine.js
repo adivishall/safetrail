@@ -17,6 +17,7 @@ export function render(root, ctx) {
   const map = new MapView(mapHost);
   get('/api/zones').then(z => { map.zones = z.zones; map.fitData(); });
   let me = null;
+  let fitted = false;
   let accuracy = 8;
   map.onClickMap = (lat, lon) => {
     if (!me || !me.sharing) { toast('Start sharing first', 'error'); return true; }
@@ -48,6 +49,7 @@ export function render(root, ctx) {
           : h('button', { class: 'primary', disabled: !me.consent, onclick: () => act(() => post('/api/users/' + me.id + '/sharing', { active: true }), 'Sharing started') }, 'Start sharing'),
         h('button', { class: 'sos', disabled: !me.sharing || !me.location, title: 'Raise a severity-5 SOS alert at your last position', onclick: () => { if (confirm('Send an SOS to the operations centre?')) act(() => post('/api/users/' + me.id + '/sos'), 'SOS sent'); } }, 'SOS')))));
     map.users = me.location ? [me] : [];
+    if (me.location && !fitted) { map.fitPoints([[me.location.lat, me.location.lon]], 40, 0.03); fitted = true; }
     map.render();
     const mine = alerts.filter(a => a.user === me.id);
     mount(info,
