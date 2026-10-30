@@ -6,6 +6,45 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-30 — Platform layer: users, consent, multi-user tracking, alerts, incidents, groups, offline sync
+
+**What:** A new layer, `src/app/`, turns the engine into a multi-user
+application without re-implementing any of it. `app::Platform` holds user
+accounts (admin, operator, responder, tourist), consent and tracking sessions,
+one isolated engine state per tracked user, an ingestion boundary for GPS fixes
+(duplicates dropped, out-of-order fixes recorded but not evaluated, jumps and
+noisy fixes flagged, fixes without consent refused and not stored), alerts with
+acknowledgement and escalation (the existing timer wheel + hash table, which
+nothing ran before), triage order through the existing binary heap, incidents
+with an operator workflow (acknowledge, assign, resolve), nearest responder by
+road distance (Dijkstra) and the route by A*, greedy-vs-Hungarian batch
+dispatch, groups with per-group cohesion monitors and a separation-duration
+rule, zone create/edit/delete/validity/GeoJSON import with history in the
+persistent index, an event log mirrored into a Merkle log, an access audit log,
+retention and erasure, and offline phones that evaluate zones locally from an
+index shipped as bytes, queue Lamport-stamped events and reconcile on
+reconnect. `app::ScenarioRunner` drives scripted, clearly labelled simulated
+people through the same entry point a phone would use (four stories plus a
+combined walkthrough). Passwords are PBKDF2-HMAC-SHA256 on the project's own
+SHA-256, checked against the RFC test vectors. Small changes to existing code:
+`CohesionMonitor` gained read accessors for its current straggler and
+fragmentation state; `ZoneStore::load_geojson` is now all-or-nothing (it used to
+leave a half-loaded store when a later feature was invalid) and the same parser
+is exposed for text uploads; `Reconciler` de-duplicates with the project's hash
+map instead of scanning the whole timeline per event.
+
+**Why:** The audit (`docs/final/AUDIT.md`) found no user model, no live
+ingestion, and seven tested modules on no running path; group separation was
+counted but never alerted, and its confirmation threshold was never read.
+
+**Impact:** Three new test files (crypto vectors, multi-user isolation and the
+ingestion boundary, every scenario end to end plus byte-identical determinism);
+the suite is 49 files and passes. Two findings worth knowing: the real OSM
+hazard polygons are mostly thin (rivers 25–40 m deep, the cliff about 23 m), so
+with a 15 m entry margin a confirmed "inside" is rare and "uncertain" is the
+honest answer near them; and a phone whose clock is slow judges a zone's
+validity window on its own wrong clock.
+
 ### 2026-10-25 — Dashboard redesign: summary strip, honest legend, phone layout
 
 **What:** The page template in `src/viz/html_export.cpp` (CSS, markup and a few

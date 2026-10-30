@@ -110,17 +110,23 @@ bool OfflineQueue::load_from_disk(const std::string& path) {
 
 // ── Reconciler ────────────────────────────────────────────────────────────────
 size_t Reconciler::merge(const std::vector<StampedEvent>& batch) {
+  return merge(batch, nullptr);
+}
+
+size_t Reconciler::merge(const std::vector<StampedEvent>& batch,
+                         std::vector<StampedEvent>* admitted_out) {
   size_t admitted = 0;
   for (const auto& e : batch) {
     // Idempotency: (device, counter) uniquely identifies an event. A replayed
     // batch -- which flaky links guarantee -- is rejected event for event.
-    bool dup = false;
-    for (const auto& t : timeline_)
-      if (t.stamp.counter == e.stamp.counter && t.stamp.device == e.stamp.device) { dup = true; break; }
-    if (dup) { ++stats_.duplicates_rejected; continue; }
+    if (!seen_.put(StampKey{e.stamp.counter, e.stamp.device}, 1)) {
+      ++stats_.duplicates_rejected;     // already held: put() overwrote, nothing new
+      continue;
+    }
 
     clock_.observe(e.stamp.counter);   // server logical clock absorbs the remote counter
     timeline_.push_back(e);
+    if (admitted_out) admitted_out->push_back(e);
     ++admitted;
     ++stats_.merged;
   }
