@@ -253,8 +253,8 @@ void write_user(JsonOut& w, const Platform& pf, const User& u, bool with_locatio
   size_t open_alerts = 0;
   uint8_t worst = 0;
   std::vector<IncidentId> incs;
-  for (const auto& r : pf.alerts()) {
-    if (r.a.tourist != u.id) continue;
+  for (AlertId aid : pf.alerts_of(u.id)) {
+    const AlertRecord& r = pf.alerts()[aid];
     const auto s = r.a.state;
     if (s != alert::AlertState::Open && s != alert::AlertState::Acknowledged && s != alert::AlertState::Dispatched)
       continue;

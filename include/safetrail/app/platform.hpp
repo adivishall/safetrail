@@ -438,6 +438,10 @@ class Platform {
   Outcome resolve_alert(const Principal& by, AlertId a, bool dismiss);
   Outcome raise_sos(const Principal& by, UserId u);
   const std::vector<AlertRecord>& alerts() const { return alerts_; }
+  const std::vector<AlertId>& alerts_of(UserId u) const {
+    static const std::vector<AlertId> none;
+    return u < alerts_by_user_.size() ? alerts_by_user_[u] : none;
+  }
   // Open alerts in triage order -- built through alert::TriageQueue (a binary
   // max-heap) on triage_score: severity, age, isolation from the nearest responder.
   struct Triaged { AlertId id; double priority; };
@@ -527,6 +531,10 @@ class Platform {
   std::unique_ptr<alert::Correlator> corr_;
   std::unique_ptr<alert::EscalationTracker> escalation_;
   std::vector<AlertRecord> alerts_;
+  // Alert ids per user, so per-user bookkeeping (the sampler's alert flag,
+  // settling warnings, erasure) is proportional to THAT user's alerts. It used
+  // to scan every alert ever raised, which made a 5,000-user run quadratic.
+  std::vector<std::vector<AlertId>> alerts_by_user_;
   std::vector<IncidentCase> cases_;
 
   std::vector<GroupRecord> groups_;

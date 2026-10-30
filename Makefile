@@ -8,6 +8,7 @@
 #   make app         the operations platform: build and serve http://127.0.0.1:8080
 #                    (demo mode; APP_ARGS="--mode production" for production)
 #   make app-reset   delete var/ (generated local credentials) for a clean start
+#   make e2e         start the server on a free port and drive it over HTTP
 #   make review      the project review: brute force -> quadtree/R-tree -> same
 #                    answer -> transitions -> noise -> history -> benchmark ->
 #                    tests -> dashboard, from real runs (PAUSE=1 to step through)
@@ -67,7 +68,7 @@ TEST_BIN := $(patsubst tests/%.cpp,$(BUILD)/test/%,$(TEST_SRC))
 APPS     := $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench $(BUILD)/safetrail_server
 
 
-.PHONY: app app-reset
+.PHONY: app app-reset e2e
 .PHONY: all demo dashboard review bench bench-variation test stress check validate sanitize asan ubsan \
         mutation analyze cmake-build rebuild clean help manifest determinism
 
@@ -103,6 +104,9 @@ review: $(APPS)
 # A single self-contained HTML file -- no server, no network, no Leaflet.
 app: $(BUILD)/safetrail_server
 	@./$(BUILD)/safetrail_server $(APP_ARGS)
+
+e2e: $(BUILD)/safetrail_server
+	@python3 tools/api_e2e.py
 
 app-reset:
 	@rm -rf var && echo "var/ removed: credentials will be regenerated on the next start"
@@ -247,6 +251,7 @@ validate:
 	@python3 tools/check_docs.py
 	@python3 tools/render_results.py --check
 	@$(MAKE) --no-print-directory WERROR=1 check all test determinism
+	@python3 tools/api_e2e.py
 	@$(MAKE) --no-print-directory sanitize
 	@$(MAKE) --no-print-directory cmake-build
 	@ctest --test-dir $(BUILD)-cmake --output-on-failure -j4 >/dev/null \
@@ -273,4 +278,4 @@ clean:
 	@rm -rf $(BUILD) $(BUILD)-cmake
 
 help:
-	@sed -n '3,21p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '3,22p' Makefile | sed 's/^# \{0,1\}//'

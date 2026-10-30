@@ -502,8 +502,10 @@ Outcome Platform::erase_history(const Principal& by, UserId u) {
   // responder may be on the way to that point, and erasing it would endanger
   // the person the data exists to protect.
   size_t redacted = 0;
-  for (auto& r : alerts_)
-    if (r.a.tourist == u && !alert_is_open(r.a.state) && !r.redacted) {
+  if (u < alerts_by_user_.size())
+    for (AlertId id : alerts_by_user_[u]) {
+      AlertRecord& r = alerts_[id];
+      if (alert_is_open(r.a.state) || r.redacted) continue;
       r.a.position = {};
       r.redacted = true;
       ++redacted;
@@ -711,6 +713,10 @@ AlertId Platform::raise_alert(alert::Alert a, GroupId g, bool late, Source src) 
   r.source = src;
   r.history.emplace_back(now_ms_, alert::AlertState::Open);
   alerts_.push_back(std::move(r));
+  if (a.tourist != kNoId) {
+    if (alerts_by_user_.size() <= a.tourist) alerts_by_user_.resize(size_t(a.tourist) + 1);
+    alerts_by_user_[a.tourist].push_back(a.id);
+  }
   // Only alerts an operator must act on are put on the escalation clock;
   // approaching/uncertain warnings settle themselves (settle_warnings).
   if (incident_worthy(alerts_.back(), cfg_.incident_min_breach_severity))
@@ -747,8 +753,11 @@ void Platform::set_alert_state(AlertRecord& r, alert::AlertState s, UserId by) {
   // The sampler leaves full rate once no serious alert is open for the user.
   if (r.a.tourist != kNoId && r.a.tourist < tracked_.size() && tracked_[r.a.tourist]) {
     bool any = false;
-    for (const auto& o : alerts_)
-      if (o.a.tourist == r.a.tourist && alert_is_open(o.a.state) && o.a.severity >= 3) { any = true; break; }
+    if (r.a.tourist < alerts_by_user_.size())
+      for (AlertId id : alerts_by_user_[r.a.tourist]) {
+        const auto& o = alerts_[id].a;
+        if (alert_is_open(o.state) && o.severity >= 3) { any = true; break; }
+      }
     tracked_[r.a.tourist]->tourist.alert_active = any;
   }
 }
@@ -819,12 +828,15 @@ std::vector<Platform::Triaged> Platform::triage_order() const {
 // of it for warning_ttl_ms -- it is resolved by the system, so the open-alert
 // board holds only what still needs a decision.
 void Platform::settle_warnings(UserId u, ZoneId z, const char* why) {
-  for (auto& r : alerts_)
-    if (r.a.tourist == u && r.a.zone == z && alert_is_open(r.a.state) &&
+  if (u >= alerts_by_user_.size()) return;
+  for (AlertId id : alerts_by_user_[u]) {
+    AlertRecord& r = alerts_[id];
+    if (r.a.zone == z && alert_is_open(r.a.state) &&
         (r.a.kind == alert::AlertKind::ZoneApproaching || r.a.kind == alert::AlertKind::ZoneUncertain)) {
       r.a.note = why;
       set_alert_state(r, alert::AlertState::Resolved, kNoId);
     }
+  }
 }
 
 void Platform::expire_warnings(Timestamp now) {
