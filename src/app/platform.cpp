@@ -295,6 +295,13 @@ void Platform::audit_access(const Principal& by, UserId subject, const std::stri
                             bool allowed) {
   if (by.system) return;
   if (by.id == subject && allowed) return;      // a user reading their own data
+  // The same person re-reading the same thing within a minute (a page that
+  // refreshes while open) is one access, not thirty.
+  for (size_t i = access_.size(), seen = 0; i-- > 0 && seen < 64; ++seen) {
+    const AccessRecord& p = access_[i];
+    if (now_ms_ - p.t_ms > 60'000) break;
+    if (p.actor == by.id && p.subject == subject && p.what == what && p.allowed == allowed) return;
+  }
   AccessRecord r{now_ms_, by.id, subject, what, allowed};
   access_merkle_.append("access-v1|" + std::to_string(r.t_ms) + "|" + std::to_string(r.actor) +
                         "|" + std::to_string(r.subject) + "|" + r.what + "|" +

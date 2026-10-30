@@ -6,6 +6,28 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-10-30 — Operations web app, HTTP server and Data Structures Lab
+
+**What:** `safetrail_server` (`make app`) serves a no-build-step web console from
+`web/app/`: Overview, Live Monitoring (Canvas map over the real OSM road network,
+no tile service), Users, Groups, Hazard Zones (draw, edit, validity, GeoJSON
+import, version history), Alerts (heap triage order), Incidents (acknowledge,
+assign with A* route, resolve, greedy-vs-Hungarian batch plan), Responders,
+Investigation (state at any past time; Merkle proofs re-verified in the browser
+with WebCrypto), Analytics (live counters plus committed benchmark CSVs),
+Data Structures Lab (15 experiments drawn from the real C++ structures),
+Settings, and tourist / responder self-service pages. The server has PBKDF2
+logins, hashed session tokens, CSRF header, login throttling, role checks,
+audited location reads, and strict security headers.
+
+**Why:** The brief asks for an operable product, not a replay page.
+
+**Impact:** Verified in the browser: login, scenario run at 20x, incident
+acknowledge and assignment with a 1.54 km road route (A* 772 junctions vs
+Dijkstra 5,557), lab views, all 220 evidence entries verified client-side and a
+forged one rejected. Not yet done: multi-user benchmark, API end-to-end test
+script, docs/final deliverables, slides and PDF.
+
 ### 2026-10-30 — Platform layer: users, consent, multi-user tracking, alerts, incidents, groups, offline sync
 
 **What:** A new layer, `src/app/`, turns the engine into a multi-user
