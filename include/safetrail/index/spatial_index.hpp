@@ -44,6 +44,17 @@ struct IndexStats {
   }
 };
 
+// One node of a tree index, for the Data Structures Lab: its box, depth, how
+// many items it holds directly, and -- in a traced query -- whether the query
+// box met it (hit) or pruned the whole subtree there.
+struct NodeTrace {
+  geo::Bbox box;
+  uint16_t  depth = 0;
+  bool      leaf = true;
+  bool      hit = false;
+  uint32_t  items = 0;
+};
+
 // ─── Interface ──────────────────────────────────────────────────────────────
 class SpatialIndex {
  public:

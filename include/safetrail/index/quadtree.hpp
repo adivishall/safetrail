@@ -45,6 +45,12 @@ class Quadtree final : public SpatialIndex {
   // map is the clearest possible explanation of why this is fast.
   void collect_node_boxes(std::vector<geo::Bbox>& out) const;
 
+  // Lab diagnostics. describe(): every node, pre-order. trace_query(): the same
+  // pruning rule as query(), also recording every node it looked at; the lab
+  // asserts the result equals query()'s on every call.
+  void describe(std::vector<NodeTrace>& out) const;
+  void trace_query(const geo::Bbox& q, std::vector<ZoneId>& out, std::vector<NodeTrace>& visited) const;
+
   // The root's current extent. Exposed so the expansion tests can assert the
   // doubling behaviour directly rather than inferring it from query results.
   geo::Bbox root_region() const;

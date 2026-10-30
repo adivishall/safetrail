@@ -38,4 +38,18 @@ ShortestPaths dijkstra(const RoadGraph& g, NodeId source);
 // Same distances as the full run up to that point; cheaper when you need one pair.
 ShortestPaths dijkstra(const RoadGraph& g, NodeId source, NodeId target);
 
+// ── Lab diagnostics ──────────────────────────────────────────────────────────
+// The order nodes were settled in, the frontier (binary heap) size at each
+// settle, and -- for the first `snapshot_limit` settles -- the heap's contents as
+// stored, as (priority key, node). Filled by the SAME loop as the plain calls;
+// passing nullptr is exactly the untraced search.
+struct SearchTrace {
+  std::vector<NodeId> settled;
+  std::vector<size_t> frontier_size;
+  std::vector<std::vector<std::pair<double, NodeId>>> frontier;
+  size_t snapshot_limit = 0;
+  size_t pushes = 0, stale_pops = 0;
+};
+ShortestPaths dijkstra(const RoadGraph& g, NodeId source, NodeId target, SearchTrace* trace);
+
 }  // namespace safetrail::graph

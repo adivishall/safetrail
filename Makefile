@@ -5,6 +5,9 @@
 #                    then regenerates every results table in the docs
 #   make demo        run the engine on real OSM zones, print the event stream
 #   make dashboard   write dashboard.html (self-contained; open it in a browser)
+#   make app         the operations platform: build and serve http://127.0.0.1:8080
+#                    (demo mode; APP_ARGS="--mode production" for production)
+#   make app-reset   delete var/ (generated local credentials) for a clean start
 #   make review      the project review: brute force -> quadtree/R-tree -> same
 #                    answer -> transitions -> noise -> history -> benchmark ->
 #                    tests -> dashboard, from real runs (PAUSE=1 to step through)
@@ -61,8 +64,10 @@ LIB      := $(BUILD)/libsafetrail.a
 TEST_SRC := $(sort $(shell find tests -name '*_test.cpp'))
 TEST_BIN := $(patsubst tests/%.cpp,$(BUILD)/test/%,$(TEST_SRC))
 
-APPS     := $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench
+APPS     := $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench $(BUILD)/safetrail_server
 
+
+.PHONY: app app-reset
 .PHONY: all demo dashboard review bench bench-variation test stress check validate sanitize asan ubsan \
         mutation analyze cmake-build rebuild clean help manifest determinism
 
@@ -96,6 +101,12 @@ review: $(APPS)
 	@PAUSE=$(PAUSE) tools/review.sh
 
 # A single self-contained HTML file -- no server, no network, no Leaflet.
+app: $(BUILD)/safetrail_server
+	@./$(BUILD)/safetrail_server $(APP_ARGS)
+
+app-reset:
+	@rm -rf var && echo "var/ removed: credentials will be regenerated on the next start"
+
 dashboard: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 60 --hours 2 --synthetic 400 --show 6 --export-html dashboard.html
 
@@ -262,4 +273,4 @@ clean:
 	@rm -rf $(BUILD) $(BUILD)-cmake
 
 help:
-	@sed -n '3,18p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '3,21p' Makefile | sed 's/^# \{0,1\}//'

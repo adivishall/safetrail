@@ -26,6 +26,10 @@ class CircularBuffer {
   }
 
   bool empty() const { return count_ == 0; }
+  // Lab diagnostics: the physical slot the next push writes, and slot i as
+  // stored (not in logical newest-first order).
+  size_t head() const { return head_; }
+  const T& physical(size_t i) const { return buf_[i]; }
   size_t size() const { return count_; }
   static constexpr size_t capacity() { return N; }
   void clear() { head_ = 0; count_ = 0; }

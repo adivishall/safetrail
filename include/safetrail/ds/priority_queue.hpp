@@ -33,6 +33,9 @@ class BinaryHeap {
   void   reserve(size_t n) { heap_.reserve(n); }
 
   const T& top() const { return heap_.front(); }
+  // The implicit tree as stored: children of i are 2i+1 and 2i+2. Read-only, for
+  // the Data Structures Lab and for search traces.
+  const std::vector<T>& data() const { return heap_; }
 
   void push(T value) {
     heap_.push_back(std::move(value));

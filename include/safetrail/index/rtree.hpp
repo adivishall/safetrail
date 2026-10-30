@@ -57,6 +57,11 @@ class RTree final : public SpatialIndex {
   // exactly the structural difference the overlay is there to show.
   void collect_node_boxes(std::vector<geo::Bbox>& out) const;
 
+  // Lab diagnostics, as Quadtree::describe / trace_query.
+  void describe(std::vector<NodeTrace>& out) const;
+  void trace_query(const geo::Bbox& q, std::vector<ZoneId>& out, std::vector<NodeTrace>& visited) const;
+  size_t max_entries() const { return max_entries_; }
+
   // Structural audit: every leaf at the same depth (height balance), every
   // node's box EXACTLY the union of what it holds (tight -- a loose box costs
   // pruning, a short one loses results), no empty non-root node, no node over
