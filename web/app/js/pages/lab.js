@@ -125,6 +125,10 @@ export function render(root, ctx) {
 
 function fact(t, text) { return h('div', { class: 'fact' }, h('h4', null, t), h('div', { class: 'small' }, text)); }
 
+// A refused request (400, shown as a toast) returns null. Every view keeps its
+// last good result when that happens -- assigning the null to `data` left the
+// old stepper on screen reading steps that were gone -- and the views that
+// accumulate operations drop the refused one, so the panel is not stuck on it.
 async function run(name, body) {
   try { return await post('/api/lab/' + name, body); }
   catch (e) { toast(e.message, 'error'); return null; }
@@ -154,7 +158,13 @@ function stepper(n, onStep, label) {
     if (timer) { clearInterval(timer); timer = 0; play.textContent = 'Play'; return; }
     let k = Number(s.value) >= n - 1 ? 0 : Number(s.value);
     play.textContent = 'Stop';
-    timer = setInterval(() => { set(k++); if (k >= n) { clearInterval(timer); timer = 0; play.textContent = 'Play'; } }, Math.max(30, 2400 / Math.max(1, n)));
+    // Stop once this stepper is off the page: a new run (Clear, Unite, Push...)
+    // replaces it with fresh steps, and leaving the experiment removes it. A
+    // timer that outlived it called onStep(k) on steps that no longer existed.
+    timer = setInterval(() => {
+      if (!el.isConnected) { clearInterval(timer); timer = 0; return; }
+      set(k++); if (k >= n) { clearInterval(timer); timer = 0; play.textContent = 'Play'; }
+    }, Math.max(30, 2400 / Math.max(1, n)));
   } }, 'Play');
   const el = h('div', { class: 'steps' }, h('button', { class: 'small', onclick: () => set(Number(s.value) - 1) }, '◀'), s,
     h('button', { class: 'small', onclick: () => set(Number(s.value) + 1) }, '▶'), play, lab);
@@ -195,8 +205,9 @@ VIEWS.spatial = (body) => {
   };
   async function go() {
     Object.assign(p, { n: Number(n.value), distribution: dist.value, capacity: Number(cap.value), seed: Number(seed.value) });
-    data = await run('spatial', p);
-    if (!data) return;
+    const d = await run('spatial', p);
+    if (!d) return;
+    data = d;
     draw(-1); steps(); results();
   }
   const X = (lon) => lon * cv.W, Y = (lat) => (1 - lat) * cv.H;
@@ -250,8 +261,9 @@ VIEWS.kdtree = (body) => {
     h('span', { class: 'small muted' }, 'Click the canvas to move the query point.'))), h('div', { class: 'grid cols-2' }, h('div', { class: 'stack' }, cv, stepHost), out));
   cv.onclick = (e) => { const [x, y] = cv.local(e); q = [1 - y / cv.H, x / cv.W]; go(); };
   async function go() {
-    data = await run('kdtree', { n: Number(n.value), q_lat: q[0], q_lon: q[1] });
-    if (!data) return;
+    const d = await run('kdtree', { n: Number(n.value), q_lat: q[0], q_lon: q[1] });
+    if (!d) return;
+    data = d;
     mount(stepHost, stepper(data.visited.length, draw, 'visit'));
     mount(out, panel('Result', h('dl', { class: 'kv' }, h('dt', null, 'Nearest (tree)'), h('dd', null, '#' + data.nearest),
       h('dt', null, 'Nearest (linear scan)'), h('dd', null, '#' + data.linear_scan_nearest), h('dt', null, 'Agree'), h('dd', { style: { color: data.agree ? C.accent : C.bad } }, data.agree ? 'yes' : 'NO'),
@@ -349,8 +361,9 @@ VIEWS.avl = (body) => {
         } else if (m) ops.push({ op: 'insert', low: Number(m[1]), high: Number(m[2]) });
       }
     }
-    data = await run('avl', { ops, stab: Number(stab.value) });
-    if (!data) return;
+    const d = await run('avl', { ops, stab: Number(stab.value) });
+    if (!d) return;
+    data = d;
     mount(stepHost, stepper(data.steps.length, show, 'operation'));
   }
   function show(k) {
@@ -436,8 +449,9 @@ VIEWS.graph = (body) => {
     const nn = Number(rows.value) * Number(cols.value);
     if (dst < 0 || dst >= nn) dst = nn - 1;
     if (src >= nn) src = 0;
-    data = await run('graph', { rows: Number(rows.value), cols: Number(cols.value), seed: Number(seed.value), source: src, target: dst, snapshots: 900 });
-    if (!data) return;
+    const d = await run('graph', { rows: Number(rows.value), cols: Number(cols.value), seed: Number(seed.value), source: src, target: dst, snapshots: 900 });
+    if (!d) return;
+    data = d;
     bb = [90, 180, -90, -180];
     for (const [la, lo] of data.positions) { bb[0] = Math.min(bb[0], la); bb[1] = Math.min(bb[1], lo); bb[2] = Math.max(bb[2], la); bb[3] = Math.max(bb[3], lo); }
     mount(out, panel('Same source and target', table(['', 'Dijkstra', 'A*'], [
@@ -481,8 +495,8 @@ VIEWS.heap = (body) => {
   const val = h('input', { type: 'number', value: 12, style: { width: '80px' } });
   mount(body, panel('Controls', h('div', { class: 'row' }, val, h('button', { onclick: () => { ops.push({ op: 'push', value: Number(val.value) }); go(); } }, 'Push'),
     h('button', { onclick: () => { ops.push({ op: 'pop' }); go(); } }, 'Pop min'), h('button', { class: 'ghost', onclick: () => { ops = []; go(); } }, 'Clear'))), cv, arr, stepHost);
-  let data = null;
-  async function go() { data = await run('heap', { ops }); if (!data) return; mount(stepHost, data.steps.length ? stepper(data.steps.length, show, 'op') : null); if (!data.steps.length) { cv.clear(); mount(arr); } }
+  let data = null, good = ops.slice();
+  async function go() { const d = await run('heap', { ops }); if (!d) { ops = good.slice(); return; } data = d; good = ops.slice(); mount(stepHost, data.steps.length ? stepper(data.steps.length, show, 'op') : null); if (!data.steps.length) { cv.clear(); mount(arr); } }
   function show(k) {
     const s = data.steps[k];
     const nodes = s.array.map((v, i) => ({ idx: i, v, left: 2 * i + 1 < s.array.length ? 2 * i + 1 : -1, right: 2 * i + 2 < s.array.length ? 2 * i + 2 : -1 }));
@@ -524,8 +538,8 @@ VIEWS.dsu = (body) => {
   mount(body, panel('Controls', h('div', { class: 'row' }, a, b, h('button', { onclick: () => { ops.push({ op: 'unite', a: Number(a.value), b: Number(b.value) }); go(); } }, 'Unite'),
     h('button', { onclick: () => { ops.push({ op: 'snapshot' }); go(); } }, 'Snapshot'), mark, h('button', { onclick: () => { ops.push({ op: 'rollback', mark: Number(mark.value) }); go(); } }, 'Roll back to mark'),
     h('button', { class: 'ghost', onclick: () => { ops = []; go(); } }, 'Clear'))), cv, stepHost, out);
-  let data = null;
-  async function go() { data = await run('dsu', { n: 10, ops }); if (!data) return; if (!data.steps.length) { cv.clear(); mount(stepHost); mount(out); return; } mount(stepHost, stepper(data.steps.length, show, 'op')); }
+  let data = null, good = ops.slice();
+  async function go() { const d = await run('dsu', { n: 10, ops }); if (!d) { ops = good.slice(); return; } data = d; good = ops.slice(); if (!data.steps.length) { cv.clear(); mount(stepHost); mount(out); return; } mount(stepHost, stepper(data.steps.length, show, 'op')); }
   function show(k) {
     const s = data.steps[k]; const g = cv.g; cv.clear();
     const n = data.n; const kids = Array.from({ length: n }, () => []);
@@ -556,8 +570,8 @@ VIEWS.hash = (body) => {
     h('button', { onclick: () => { for (let i = 0; i < 10; ++i) ops.push({ op: 'put', key: 100 + i * 16 }); go(); } }, 'Insert 10 colliding keys'),
     h('button', { class: 'ghost', onclick: () => { ops = []; go(); } }, 'Clear')),
     h('p', { class: 'small muted' }, 'The table starts with 16 slots. Keys are hashed by Fibonacci multiplication (k × 2654435769) masked to the table size. Teal ring: home slot; amber: slots the probe walked; dashed: tombstones.'))), stepHost, info, cells);
-  let data = null;
-  async function go() { data = await run('hash', { ops }); if (!data) return; if (!data.steps.length) { mount(cells); mount(info); mount(stepHost); return; } mount(stepHost, stepper(data.steps.length, show, 'op')); }
+  let data = null, good = ops.slice();
+  async function go() { const d = await run('hash', { ops }); if (!d) { ops = good.slice(); return; } data = d; good = ops.slice(); if (!data.steps.length) { mount(cells); mount(info); mount(stepHost); return; } mount(stepHost, stepper(data.steps.length, show, 'op')); }
   function show(k) {
     const s = data.steps[k]; const probe = new Set(s.probe);
     mount(info, h('div', { class: 'row small' }, h('span', { class: 'chip' }, s.op + ' ' + s.key + ' → ' + (s.inserted !== undefined ? (s.inserted ? 'inserted' : 'overwritten') : s.erased !== undefined ? (s.erased ? 'erased (tombstone)' : 'absent') : s.found ? 'found' : 'absent')),
@@ -579,8 +593,8 @@ VIEWS.wheel = (body) => {
     h('button', { onclick: () => { ops.push({ op: 'cancel', id: Number(id.value), deadline: Number(dl.value) }); go(); } }, 'Cancel (acknowledge)'), field('Advance to ms', to),
     h('button', { onclick: () => { ops.push({ op: 'advance', to: Number(to.value) }); go(); } }, 'Advance'), h('button', { class: 'ghost', onclick: () => { ops = []; go(); } }, 'Clear'))), stepHost, info, cells,
   h('p', { class: 'small muted' }, '8 slots of 1 s. A deadline lands in slot (expiry tick mod 8); one that is more than a revolution away waits in place (its expiry tick is shown) and fires on a later lap.'));
-  let data = null;
-  async function go() { data = await run('wheel', { slots: 8, ops }); if (!data) return; if (!data.steps.length) { mount(cells); mount(info); mount(stepHost); return; } mount(stepHost, stepper(data.steps.length, show, 'op')); }
+  let data = null, good = ops.slice();
+  async function go() { const d = await run('wheel', { slots: 8, ops }); if (!d) { ops = good.slice(); return; } data = d; good = ops.slice(); if (!data.steps.length) { mount(cells); mount(info); mount(stepHost); return; } mount(stepHost, stepper(data.steps.length, show, 'op')); }
   function show(k) {
     const s = data.steps[k]; const cur = s.tick % data.slots;
     mount(info, h('div', { class: 'row small' }, h('span', { class: 'chip' }, s.op + (s.id !== undefined ? ' #' + s.id : '') + (s.deadline !== undefined ? ' @' + s.deadline + ' ms' : '') + (s.to !== undefined ? ' to ' + s.to + ' ms' : '')),
