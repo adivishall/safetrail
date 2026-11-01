@@ -15,7 +15,8 @@ platform, API and multi-user evidence produced in the final phase.
 | Mutation testing | `make mutation` | **28/28 injected bugs caught** (23 engine + 5 platform) |
 | Full gate | `make validate` | passes: docs, results tables, `-Werror`, headers, tests, determinism, e2e, UBSan, CMake + ctest, Make-vs-CMake byte-identical output |
 | Benchmark correctness gates | `make bench` | all 8 gates pass (scaling, density, end to end, equivalence, containment, interval, evaluator, multi-user) |
-| Browser | manual, recorded in the work log | sign-in, scenario at 20×, incident acknowledge/assign with road route, Lab views, all 220 evidence entries re-verified in the browser, a forged entry rejected |
+| Browser | manual, recorded in the work log | sign-in, scenario at 20×, incident acknowledge/assign with road route, Lab views, all 220 evidence entries re-verified in the browser, a forged entry rejected; on 2026-11-01 from a fresh clone: every control of all 15 Lab panels and all 11 staff pages with no console errors or failed requests |
+| Product workflows | a script over the API of a freshly cloned server (not committed) | 54 checks: three new tourists tracked independently; zone create, edit, GeoJSON import, deactivate/reactivate, past state; entry, exit, uncertain, acknowledge, incident, assignment with Dijkstra recommendation and A* route, resolution; group split and rejoin; past positions, both event orders, Merkle proofs; offline reconcile with the +7 min clock corrected; consent withdrawal and erasure |
 
 ## 2. How correctness is established
 
@@ -89,6 +90,8 @@ UBSan abort); details in [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) §10
 | Test lambda shadowed a local: clang accepted it, g++ `-Wshadow -Werror` did not | the Ubuntu 24.04 g++ 13 build | renamed |
 | Sanitizer objects had no header dependencies, so a header change left stale objects that crashed (SIGBUS) | the local UBSan run | `-MMD -MP` in the sanitizer rules |
 | g++'s `-fsanitize=undefined` omits `float-cast-overflow`, so Linux CI could not catch the cast bugs | comparing compilers | added explicitly to the sanitizer flags |
+| Lab playback: Play followed by Clear, a new operation, or leaving the panel left a timer stepping through results that no longer existed; it threw on every tick, on every page, until the page was reloaded | an in-browser sweep that operated every control of all 15 Lab panels (10 and 23 errors per panel before, 0 after) | the stepper stops once it is off the page |
+| A refused Lab request (for example, roll back to a mark that does not exist) replaced the result with nothing and kept the refused operation, so the slider threw and every later action in the panel failed | the same sweep | keep the last good result; drop the refused operation; the server's reason is shown |
 
 ## 3. Benchmarks
 

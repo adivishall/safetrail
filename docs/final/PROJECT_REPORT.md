@@ -266,8 +266,8 @@ Full tables: [ALGORITHM_COMPLEXITY.md](ALGORITHM_COMPLEXITY.md).
 
 Eight defects were found and fixed while the platform was built (for example
 quadratic alert bookkeeping, found by the multi-user benchmark; stationary
-alerts re-raised every tick, found by the scenario test), and twelve more by a
-final verification pass before merging — among them a tourist able to read
+alerts re-raised every tick, found by the scenario test), and fourteen more by
+a final verification pass before merging — among them a tourist able to read
 another tourist's alert positions through an incident they shared, a login
 path whose timing revealed which usernames exist, and client numbers cast to
 integers without range checks. Each fix has a test that failed before it.

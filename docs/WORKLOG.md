@@ -17,7 +17,9 @@ detail are now audited like the live map; unknown-username logins cost the
 full 120,000-iteration key derivation (they ran 1 iteration, which let anyone
 find valid usernames by timing); client numbers go through checked
 conversions (a JSON `1e999` cast to `int` was undefined behaviour);
-`PATCH /api/users/{id}` applies every field; the HTTP server cuts off a
+`PATCH /api/users/{id}` applies every field; the Data Structures Lab no
+longer leaves a playback timer throwing forever after Play then Clear, and no
+longer gets stuck after a refused request; the HTTP server cuts off a
 request not complete 20 s after the connection opens, survives a handler
 exception, and has a `--secure-cookies` switch. Build: sanitizer builds track
 header dependencies and check `float-cast-overflow` on g++ as well. Documents:
