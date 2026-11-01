@@ -72,9 +72,12 @@ batch twice. All 28 are caught.
 
 ### Defects found by the final verification (2026-11-01)
 
-A second pass over PR #11 before merging. Every fix below has a test that
-failed on the code before it (22 failing checks, the slow-client check, and a
-UBSan abort); details in [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) §10.
+A second pass over PR #11 before merging. The server and platform fixes each
+have a committed test that failed on the code before them (22 failing checks,
+the slow-client check, and a UBSan abort); the build fixes were shown by the
+failing build; the two Lab fixes were reproduced in the browser before and
+after (there are no browser tests, §5). Security details in
+[SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) §10.
 
 | Defect | How it was found | Fix |
 |---|---|---|

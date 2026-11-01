@@ -270,8 +270,9 @@ alerts re-raised every tick, found by the scenario test), and fourteen more by
 a final verification pass before merging — among them a tourist able to read
 another tourist's alert positions through an incident they shared, a login
 path whose timing revealed which usernames exist, and client numbers cast to
-integers without range checks. Each fix has a test that failed before it.
-Details: [TESTING_AND_BENCHMARKS.md](TESTING_AND_BENCHMARKS.md).
+integers without range checks. The server and platform fixes each have a
+committed test that failed before them; the two web-console fixes were
+reproduced in the browser before and after. Details: [TESTING_AND_BENCHMARKS.md](TESTING_AND_BENCHMARKS.md).
 
 ## 16. Security and privacy
 
