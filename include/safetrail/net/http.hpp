@@ -10,8 +10,10 @@
 //     411/501 rather than half-implemented;
 //   * hard limits on header bytes, header count and body bytes, checked BEFORE
 //     the bytes are buffered (ParseLimits);
-//   * idle connections are closed after a timeout, and the number of open
-//     connections is capped, so a slow client cannot pin the server.
+//   * idle connections are closed after a timeout, a request must arrive
+//     complete within a deadline however steadily it trickles in, and the
+//     number of open connections is capped, so a slow client cannot pin the
+//     server.
 //
 // Single-threaded: the loop multiplexes every socket with poll(2) and calls
 // the handler on the same thread, between ticks of the simulation clock. That
@@ -82,6 +84,10 @@ class Server {
   ParseLimits limits{};
   size_t max_connections = 256;
   int idle_timeout_ms = 15'000;
+  // From accept to a complete request. The idle timeout alone let a client
+  // that sends a byte every 14 s hold a slot for hours, and 256 such clients
+  // locked everyone else out.
+  int request_timeout_ms = 20'000;
 
  private:
   int fd_ = -1;

@@ -45,13 +45,15 @@ struct Options {
   std::string roads = "data/osm/roads.txt";
   std::string var = "var";
   std::string scenario = "walkthrough";
+  bool secure_cookies = false;
 };
 
 void usage() {
   std::printf(
       "safetrail_server [--host 127.0.0.1] [--port 8080] [--mode demo|production]\n"
       "                 [--web web/app] [--zones FILE] [--roads FILE] [--var DIR]\n"
-      "                 [--scenario walkthrough|normal|entry|separation|offline|none]\n");
+      "                 [--scenario walkthrough|normal|entry|separation|offline|none]\n"
+      "                 [--secure-cookies]   (only behind a TLS-terminating proxy)\n");
 }
 
 // "username password" lines; '#' comments.
@@ -98,6 +100,7 @@ int main(int argc, char** argv) {
     else if (a == "--roads") o.roads = next("--roads");
     else if (a == "--var") o.var = next("--var");
     else if (a == "--scenario") o.scenario = next("--scenario");
+    else if (a == "--secure-cookies") o.secure_cookies = true;
     else if (a == "--help" || a == "-h") { usage(); return 0; }
     else { usage(); return 2; }
   }
@@ -150,6 +153,7 @@ int main(int argc, char** argv) {
   app::ApiOptions ao;
   ao.web_root = o.web;
   ao.demo = o.demo;
+  ao.secure_cookies = o.secure_cookies;
   app::Api api(ao, &world, runner.get());
 
   net::Server server;

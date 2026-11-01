@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -89,6 +90,29 @@ def rfc9162_verify(entry, index, size, path, root_hex):
     return sn == 0 and r.hex() == root_hex
 
 
+def slow_client(port, result):
+    """Trickle a request one byte a second, never finishing it. The idle
+    timeout never fires (the client is never idle), so only the server's
+    request deadline can close it; record how long that took."""
+    s = socket.create_connection(("127.0.0.1", port), timeout=5)
+    s.sendall(b"GET /api/health HTTP/1.1\r\nX-Pad: ")
+    t0 = time.monotonic()
+    try:
+        while time.monotonic() - t0 < 45:
+            time.sleep(1)
+            s.sendall(b"a")
+            s.settimeout(0.01)
+            try:
+                if s.recv(1) == b"":
+                    break
+            except socket.timeout:
+                pass
+    except OSError:
+        pass                                   # reset by the server: also closed
+    result["closed_after_s"] = time.monotonic() - t0
+    s.close()
+
+
 def main():
     if not os.path.exists(SERVER):
         print("build the server first: make build/safetrail_server")
@@ -109,6 +133,9 @@ def main():
                 break
             except OSError:
                 time.sleep(0.1)
+        slow = {}
+        slow_thread = threading.Thread(target=slow_client, args=(port, slow), daemon=True)
+        slow_thread.start()
         anon = Client(base)
         st, h = anon.json("GET", "/api/health")
         ok(st == 200 and h["mode"] == "demo", "health in demo mode")
@@ -182,6 +209,9 @@ def main():
         adm.json("POST", "/api/login", {"username": "admin", "password": "e2e-admin-password"})
         st, au = adm.json("GET", "/api/audit")
         ok(st == 200 and au["size"] > 0, "operator reads were audited")
+        slow_thread.join(timeout=60)
+        closed = slow.get("closed_after_s", 99)
+        ok(15 <= closed <= 30, "a request trickled in byte by byte is cut off at the 20 s deadline (%.1f s)" % closed)
     finally:
         proc.terminate()
         try:

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstring>
+#include <exception>
 
 namespace safetrail::net {
 
@@ -233,7 +234,7 @@ void Server::run(const Handler& handler, const Tick& tick, const volatile int* s
     std::string in, out;
     size_t written = 0;
     bool responding = false;
-    int64_t last = 0;
+    int64_t opened = 0, last = 0;
     std::string remote;
   };
   std::vector<Conn> conns;
@@ -262,7 +263,7 @@ void Server::run(const Handler& handler, const Tick& tick, const volatile int* s
         ::fcntl(cfd, F_SETFL, ::fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
         Conn c;
         c.fd = cfd;
-        c.last = t;
+        c.opened = c.last = t;
         char ip[INET_ADDRSTRLEN] = {};
         ::inet_ntop(AF_INET, &a.sin_addr, ip, sizeof ip);
         c.remote = ip;
@@ -288,7 +289,17 @@ void Server::run(const Handler& handler, const Tick& tick, const volatile int* s
           const Parse p = parse_request(c.in, limits, &req, &used, &st);
           if (p == Parse::Complete) {
             req.remote = c.remote;
-            c.out = serialize(handler(req));
+            // One process holds every user's state in memory, so a request
+            // that throws (out of memory, say) must cost that request, not
+            // the server.
+            try {
+              c.out = serialize(handler(req));
+            } catch (const std::exception&) {
+              Response r;
+              r.status = 500;
+              r.body = "{\"error\":\"Internal Server Error\"}";
+              c.out = serialize(r);
+            }
             c.responding = true;
           } else if (p == Parse::Error) {
             Response r;
@@ -306,6 +317,7 @@ void Server::run(const Handler& handler, const Tick& tick, const volatile int* s
         if (c.written >= c.out.size()) close_it = true;
       }
       if (t - c.last > idle_timeout_ms) close_it = true;
+      if (!c.responding && t - c.opened > request_timeout_ms) close_it = true;
       if (close_it) { ::close(c.fd); c.fd = -1; }
     }
     conns.erase(std::remove_if(conns.begin(), conns.end(), [](const Conn& c) { return c.fd < 0; }),
