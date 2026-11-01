@@ -56,6 +56,12 @@ Stated plainly, so that nothing on the slides claims more than the code does.
     no phone app — the "simulated phone" on the tourist page stands in for one.
 19. **Security** — see the open items in [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md)
     (no in-process TLS, PBKDF2 not Argon2, no external penetration test).
+20. **Not publicly hosted.** The integrated application (server, accounts,
+    live tracking, Lab) runs on the presenter's machine. The public links
+    (GitHub Pages, Vercel) serve only the static dashboard replay, and the
+    pull-request preview is visible only to members of the Vercel project.
+    What a free public deployment would need is in
+    [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 
 ## Future scope
 

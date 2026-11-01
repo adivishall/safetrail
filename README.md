@@ -160,7 +160,7 @@ make review       # the project walkthrough: every index, identical answers,
                   # transitions, noise, history, the benchmark results, tests,
                   # dashboard (PAUSE=1 to step through it while presenting)
 make app          # the operations platform on http://127.0.0.1:8080
-make test         # 51 test files, 12,066 checks (~20 s once built)
+make test         # 51 test files, 12,137 checks (~20 s once built)
 make e2e          # the server driven over real HTTP
 make demo         # the engine on real OSM zones: event stream + counters
 make dashboard    # writes dashboard.html; just open it

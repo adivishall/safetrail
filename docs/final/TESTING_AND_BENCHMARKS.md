@@ -6,12 +6,12 @@ methodology is described in depth in [../TESTING.md](../TESTING.md) and
 [../RESULTS.md](../RESULTS.md); this document summarises it and adds the
 platform, API and multi-user evidence produced in the final phase.
 
-## 1. Results at a glance (2026-10-30, Apple M4, Apple clang 17)
+## 1. Results at a glance (re-run 2026-11-01, Apple M4, Apple clang 17; Linux results from CI)
 
 | Check | Command | Result |
 |---|---|---|
-| Unit, property, differential, golden, platform, API and HTTP tests | `make test` | **51 files, 12,066 checks, 0 failed** |
-| End to end over real HTTP | `make e2e` | **29 checks, 0 failed** |
+| Unit, property, differential, golden, platform, API and HTTP tests | `make test` | **51 files, 12,137 checks, 0 failed** (Apple clang; g++ 13 on Ubuntu 24.04 in CI) |
+| End to end over real HTTP | `make e2e` | **30 checks, 0 failed** |
 | Mutation testing | `make mutation` | **28/28 injected bugs caught** (23 engine + 5 platform) |
 | Full gate | `make validate` | passes: docs, results tables, `-Werror`, headers, tests, determinism, e2e, UBSan, CMake + ctest, Make-vs-CMake byte-identical output |
 | Benchmark correctness gates | `make bench` | all 8 gates pass (scaling, density, end to end, equivalence, containment, interval, evaluator, multi-user) |
@@ -38,6 +38,12 @@ platform, API and multi-user evidence produced in the final phase.
 | Zones | self-intersecting polygon rejected; import all-or-nothing; validity changes | `api_test` |
 | HTTP | limits enforced before buffering; chunked, duplicate Content-Length, malformed request lines and headers refused | `tests/net/http_parse_test.cpp` |
 | API security | 401 without session, 403 without CSRF header, throttling after 5 failures, idle expiry, logout, role matrix, path traversal (plain and encoded), bounded lab inputs | `api_test`, `api_e2e` |
+| Isolation between tourists over the API | two tourists in one incident each see only their own part (no other name, alert, position, timeline entry, centroid or route); another tourist's trail, profile, history, fixes and consent are refused; lists show only yourself; responder positions and zone detail refused to tourists | `api_test` |
+| Role boundaries | responder cannot acknowledge, assign, resolve another unit's incident or create zones; operator cannot create an administrator, change settings or deactivate users; history, evidence and statistics are staff-only | `api_test` |
+| Audit coverage | the user list, alert feed and incident detail are audited per person shown, once per ten minutes | `api_test` |
+| Hostile numbers | `1e999`, `-1e300`, `-1`, `10^23`, `"5"` and `junk` in bodies and query strings get a 400, never an undefined conversion (UBSan with `float-cast-overflow` on both compilers) | `api_test` |
+| Retention and login timing | expired trail points deleted and unreachable; an unknown username costs the same key derivation as a wrong password | `multi_user_test` |
+| Slow clients | a request trickled in a byte a second is cut off at the 20 s deadline | `api_e2e` |
 
 ### Mutation testing (do the tests catch bugs?)
 
@@ -62,6 +68,27 @@ batch twice. All 28 are caught.
 | A phone with a slow clock saw no zones in force | scenario test | documented limitation; demo phone clock is fast instead |
 | Quadratic alert bookkeeping (every state change scanned every alert) | benchmark section 19 | per-user alert index |
 | Reconciler de-duplication was O(n) per event | audit | hash set of (counter, device) |
+
+### Defects found by the final verification (2026-11-01)
+
+A second pass over PR #11 before merging. Every fix below has a test that
+failed on the code before it (22 failing checks, the slow-client check, and a
+UBSan abort); details in [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) §10.
+
+| Defect | How it was found | Fix |
+|---|---|---|
+| A tourist could read another tourist's name, alert positions and timeline through an incident they shared, and infer their position from the centroid | review of every endpoint against the isolation claim | own-part-only incident view |
+| Responder positions and zone detail open to any signed-in user | same review | staff and responders only |
+| User list, alert feed and incident detail showed locations without an audit record | checking the "every read is audited" claim | audited, once per ten minutes per viewer and subject |
+| Unknown-username logins ran 1 PBKDF2 iteration instead of 120,000 | reading `Platform::authenticate` | dummy hash at the configured cost |
+| Client numbers cast straight to integer types; `atoll`/`atof` on query strings | review; confirmed by UBSan aborting on `severity: 1e999` | checked conversions, 400 on bad input |
+| No request deadline (slow-client exhaustion) | HTTP review | 20 s from accept to a complete request |
+| A handler exception would end the server | HTTP review | caught per request (500) |
+| `PATCH /api/users/{id}` applied only the first field | API review | every field applied |
+| No switch for Secure cookies | deployment review | `--secure-cookies` |
+| Test lambda shadowed a local: clang accepted it, g++ `-Wshadow -Werror` did not | the Ubuntu 24.04 g++ 13 build | renamed |
+| Sanitizer objects had no header dependencies, so a header change left stale objects that crashed (SIGBUS) | the local UBSan run | `-MMD -MP` in the sanitizer rules |
+| g++'s `-fsanitize=undefined` omits `float-cast-overflow`, so Linux CI could not catch the cast bugs | comparing compilers | added explicitly to the sanitizer flags |
 
 ## 3. Benchmarks
 

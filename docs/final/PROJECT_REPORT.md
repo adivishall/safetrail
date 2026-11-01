@@ -29,7 +29,7 @@ Merkle log. On 100,000 zones in one district the R-tree answers the index query
 224× faster than a linear scan and the quadtree 33×, with identical results;
 the complete platform ingests a fix in about 3 µs, independent of the number of
 users up to 5,000. Correctness is established by oracles, invariant audits,
-51 test files (12,066 checks), an end-to-end HTTP test, and mutation testing
+51 test files (12,137 checks), an end-to-end HTTP test, and mutation testing
 (28 of 28 injected bugs caught). The people in all demonstrations are
 simulated; the geography is real OpenStreetMap data.
 
@@ -259,25 +259,32 @@ Full tables: [ALGORITHM_COMPLEXITY.md](ALGORITHM_COMPLEXITY.md).
 | Differential testing against oracles, invariant audits after every operation | ~55,000 queries per index |
 | Engine end to end under all four indexes | byte-identical events |
 | Platform: isolation, ingestion boundary, consent, access, evidence, scenarios | 4 test files |
-| API in process; HTTP parser; real-HTTP end-to-end | 42 + 26 + 29 checks |
-| Total suite | 51 files, 12,066 checks, 0 failed |
+| API in process; HTTP parser; real-HTTP end-to-end | 102 + 26 + 30 checks |
+| Total suite | 51 files, 12,137 checks, 0 failed |
 | Mutation testing | 28/28 injected bugs caught |
 | Sanitizers, static analysis, cross-platform determinism | UBSan clean; ASan+UBSan in Linux CI; macOS vs Linux compared in CI |
 
-Eight defects were found and fixed during the final phase alone (for example
+Eight defects were found and fixed while the platform was built (for example
 quadratic alert bookkeeping, found by the multi-user benchmark; stationary
-alerts re-raised every tick, found by the scenario test). Details:
-[TESTING_AND_BENCHMARKS.md](TESTING_AND_BENCHMARKS.md).
+alerts re-raised every tick, found by the scenario test), and twelve more by a
+final verification pass before merging — among them a tourist able to read
+another tourist's alert positions through an incident they shared, a login
+path whose timing revealed which usernames exist, and client numbers cast to
+integers without range checks. Each fix has a test that failed before it.
+Details: [TESTING_AND_BENCHMARKS.md](TESTING_AND_BENCHMARKS.md).
 
 ## 16. Security and privacy
 
 Opt-in tracking that only the user can start; no storage without consent;
 role-based access checked twice; responders see a location only while
-assigned; every location read by someone else audited in a Merkle log;
+assigned; a tourist sees only their own data, including their own part of a
+shared incident; every location read by someone else audited in a Merkle log;
 retention and erasure; PBKDF2 passwords; hashed session tokens in HttpOnly,
 SameSite=Strict cookies; CSRF header; login throttling; strict request limits
 and CSP. Open items include in-process TLS and persistence
-([SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md)).
+([SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md)). The integrated
+application runs locally; only the static dashboard is hosted publicly
+([DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)).
 
 ## 17. Limitations
 

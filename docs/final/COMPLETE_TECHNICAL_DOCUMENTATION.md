@@ -42,6 +42,7 @@ is loaded and paused at T+00:00:00.
 | Choose the preloaded scenario | `make app APP_ARGS="--scenario entry"` | `walkthrough`, `normal`, `entry`, `separation`, `offline`, `none` |
 | Fixed passwords | `SAFETRAIL_ADMIN_PASSWORD=... make app` | likewise `_OPERATOR_`, `_RESPONDER_`, `_TOURIST_`; at least 10 characters |
 | Reset | `make app-reset` | deletes `var/`; passwords regenerate on the next start |
+| Behind a TLS proxy | `make app APP_ARGS="--secure-cookies"` | adds `Secure` to the session cookie; see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) before exposing the server |
 
 Demo data: there is nothing to initialise. The world is built at start-up from
 `data/zones/shillong_osm.geojson` (38 OSM hazard zones) and `data/osm/roads.txt`
@@ -54,8 +55,8 @@ Scenario → Load, or **Reset** in the top bar) rebuilds the world from scratch.
 |---|---|
 | `make` | build the three programs |
 | `make app` / `make app-reset` | run the platform / delete local credentials |
-| `make test` | 51 test files, 12,066 checks (about 20 s once built) |
-| `make e2e` | start the server on a free port and drive it over HTTP (29 checks) |
+| `make test` | 51 test files, 12,137 checks (about 20 s once built) |
+| `make e2e` | start the server on a free port and drive it over HTTP (30 checks, about 22 s: one check waits out the 20 s request deadline) |
 | `make bench` | every benchmark (≈ 5 min); rewrites `bench/results/*.csv` and the tables in README and RESULTS |
 | `make validate` | docs links, results tables, `-Werror`, tests, determinism, e2e, sanitizers, CMake + ctest |
 | `make mutation` | inject 28 known bugs; each must be caught |
@@ -106,18 +107,18 @@ the user named in the path.
 | `DELETE /api/users/{id}/history` | self, A | erase movement history |
 | `GET /api/groups` · `POST /api/groups` `{name}` | A O | |
 | `POST /api/groups/{id}/members` `{user, action}` · `PATCH /api/groups/{id}` `{proximity_m, straggler_m, confirm_s}` | A O | |
-| `GET /api/zones` · `GET /api/zones/{id}` | signed in | geometry; detail adds version history, change log, incidents |
+| `GET /api/zones` · `GET /api/zones/{id}` | list: signed in; detail: A O | geometry; detail adds version history, change log, incidents |
 | `POST /api/zones` · `PATCH /api/zones/{id}` `{name, kind, severity, ring, max_dwell_s, active_from_ms, active_to_ms}` | A | validated polygon |
 | `DELETE /api/zones/{id}` · `POST /api/zones/{id}/validity` `{active}` or `{from_ms, to_ms}` | A | |
 | `POST /api/zones/import` (GeoJSON body) | A | all-or-nothing import |
 | `GET /api/alerts?state=open` | A O (all), T (own) | open alerts in triage order |
 | `POST /api/alerts/{id}/ack\|resolve\|dismiss` | A O | |
-| `GET /api/incidents` · `GET /api/incidents/{id}` | A O, assigned R, affected T | detail adds alerts and evidence timeline |
+| `GET /api/incidents` · `GET /api/incidents/{id}` | A O, assigned R, affected T (own part only) | detail adds alerts and evidence timeline; a tourist sees only their own alerts and entries, no centroid or route |
 | `POST /api/incidents/{id}/ack` | A O, assigned R | |
 | `POST /api/incidents/{id}/assign` `{responder?}` | A O | default = recommended; A* route |
 | `POST /api/incidents/{id}/resolve` `{note}` | A O, assigned R | |
 | `POST /api/dispatch/plan` `{apply}` | A O | greedy vs Hungarian over unassigned incidents |
-| `GET /api/responders` · `POST /api/responders` `{name, type, lat, lon}` · `PATCH /api/responders/{id}` `{available?, lat?, lon?}` | read: signed in; create: A; update: A O / own unit | |
+| `GET /api/responders` · `POST /api/responders` `{name, type, lat, lon}` · `PATCH /api/responders/{id}` `{available?, lat?, lon?}` | read: A O R; create: A; update: A O / own unit | |
 | `GET /api/roads?min_lat=&min_lon=&max_lat=&max_lon=` | signed in | road segments in a box (map base layer) |
 | `GET /api/history?t=` | A O | what the system knew at t (audited) |
 | `GET /api/events?limit=&user=&kind=&order=lamport` | A O (all), T (own) | event log |
@@ -129,9 +130,12 @@ the user named in the path.
 | `GET /api/lab` · `POST /api/lab/{experiment}` | signed in | spatial, kdtree, zorder, avl, persistent, graph, heap, assignment, dsu, hash, wheel, ring, merkle, lamport, geometry |
 | `GET /api/bench` · `GET /api/bench/{file}` | signed in | committed benchmark CSVs (text) |
 
-Errors: `{"error": "..."}` with 400 (bad input), 401 (no session), 403 (role or
-CSRF), 404, 409 (state conflict, e.g. responder busy), 411/413/431/501 (HTTP
-limits), 429 (login throttled).
+Errors: `{"error": "..."}` with 400 (bad input, including a number that is not
+finite or is beyond 2^53, and a query parameter that is not entirely numeric),
+401 (no session), 403 (role or CSRF), 404, 409 (state conflict, e.g. responder
+busy), 411/413/431/501 (HTTP limits), 429 (login throttled), 500 (a request
+that failed inside the server; the server keeps running). A connection that
+has not delivered a complete request 20 s after opening is closed.
 
 ## 6. Data formats
 

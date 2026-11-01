@@ -7,7 +7,7 @@ tests and committed benchmark results.
 
 | If you want to… | Open |
 |---|---|
-| Run the system | `make app`, then http://127.0.0.1:8080 ([COMPLETE_TECHNICAL_DOCUMENTATION.md](COMPLETE_TECHNICAL_DOCUMENTATION.md) §2) |
+| Run the system | `make app`, then http://127.0.0.1:8080 ([COMPLETE_TECHNICAL_DOCUMENTATION.md](COMPLETE_TECHNICAL_DOCUMENTATION.md) §2, [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)) |
 | Present it | [SafeTrail_final_presentation.pptx](SafeTrail_final_presentation.pptx) with [PRESENTATION_SCRIPT.md](PRESENTATION_SCRIPT.md), then [LIVE_DEMO_SCRIPT.md](LIVE_DEMO_SCRIPT.md) |
 | Read the report | [SafeTrail_Project_Report.pdf](SafeTrail_Project_Report.pdf) (source: [PROJECT_REPORT.md](PROJECT_REPORT.md)) |
 | Prepare for the viva | [SafeTrail_Viva_Guide.pdf](SafeTrail_Viva_Guide.pdf): [VIVA_QUESTIONS_AND_ANSWERS.md](VIVA_QUESTIONS_AND_ANSWERS.md), [SYLLABUS_MAPPING.md](SYLLABUS_MAPPING.md), [ADVANCED_CONCEPTS.md](ADVANCED_CONCEPTS.md) |
@@ -28,6 +28,7 @@ tests and committed benchmark results.
 | [TESTING_AND_BENCHMARKS.md](TESTING_AND_BENCHMARKS.md) | exact test and benchmark results, defects found, how to reproduce |
 | [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) | threat model, controls, how each is tested, open items |
 | [LIMITATIONS_AND_FUTURE_SCOPE.md](LIMITATIONS_AND_FUTURE_SCOPE.md) | what the project does not claim, and next steps |
+| [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | what is hosted (the static dashboard) and what is not (the server); running the full application locally; what a free public backend would need |
 | [VIVA_QUESTIONS_AND_ANSWERS.md](VIVA_QUESTIONS_AND_ANSWERS.md) | 32 questions with answers and where to show the evidence |
 | [PRESENTATION_SCRIPT.md](PRESENTATION_SCRIPT.md) | what to say on each of the 14 slides |
 | [LIVE_DEMO_SCRIPT.md](LIVE_DEMO_SCRIPT.md) | exact demo steps, expected results, fallbacks, clean-start check |

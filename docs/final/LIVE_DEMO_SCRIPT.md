@@ -42,7 +42,7 @@ Scenario "walkthrough" is loaded and paused at 00:00 — press Start in Live Mon
 | 11 **[7:00]** | "The Data Structures Lab runs the real C++ structures." | **Data Structures Lab → Brute force · Quadtree · R-tree**; drag a new query box; press Play. | Teal (descended) and red (pruned) nodes; table: every index 0 mismatches vs brute force; timings. |
 | 12 **[7:45]** | "AVL rotations and graph search, from the same code." | Lab → **AVL** (Play), then **Graph** (switch Dijkstra / A*). | Balance factors, rotations; settled nodes and heap contents. |
 | 13 **[8:15]** | "Benchmarks are measured, not typed." | **Analytics**, scroll to the charts. | Index scaling chart; multi-user table (≈ 3 µs per fix up to 5,000 users). |
-| 14 **[8:45]** | "Tests: 51 files, 12,066 checks; 28 injected bugs all caught." | Second terminal: `make test` (and point at the last line). | `ALL TESTS PASS`. |
+| 14 **[8:45]** | "Tests: 51 files, 12,137 checks; 28 injected bugs all caught." | Second terminal: `make test` (and point at the last line). | `ALL TESTS PASS`. |
 | 15 **[9:15]** | "Syllabus: arrays and ring buffers, trees and recursion, BST and AVL, hashing, heaps, graphs, Dijkstra/A*, union-find, binary search; beyond it: persistence, Merkle proofs, Lamport clocks. Limits: simulated people, in-memory server, thin OSM polygons." | Slide: syllabus map + limitations. | — |
 
 ## Fallbacks
@@ -63,4 +63,4 @@ Scenario "walkthrough" is loaded and paused at 00:00 — press Start in Live Mon
 make app-reset && make -s && make test && make e2e
 ```
 
-Expected: `ALL TESTS PASS` and `[ ok ] api/e2e 29 checks, 0 failed`.
+Expected: `ALL TESTS PASS` and `[ ok ] api/e2e 30 checks, 0 failed` (about 22 s).

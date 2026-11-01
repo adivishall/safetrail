@@ -13,7 +13,7 @@
 | Guide / faculty | [fill in] |
 | Repository | https://github.com/adivishall/safetrail |
 | Origin of the problem | Smart India Hackathon 2025, problem statement SIH25002 (Ministry of DoNER) |
-| Period | 17 August 2026 – 30 October 2026 (111 commits, all under the author's name) |
+| Period | from 17 August 2026 (first commit `99f424c`); `git log` lists every commit, all under the author's name and GitHub account |
 
 ## Work carried out
 
@@ -38,8 +38,9 @@ The commit history (`git log`) records the order in which this work was done.
 ## Tools used
 
 C++17 (Apple clang 17, GCC 13 in CI), make and CMake, Python 3 (standard
-library; python-pptx and matplotlib for the deck and figures), Git and GitHub
-Actions, OpenStreetMap data via Overpass, Chrome for testing and PDF export.
+library; matplotlib for the figures), Node.js with pptxgenjs for the slide
+deck, Git and GitHub Actions, OpenStreetMap data via Overpass, Chrome for
+testing and PDF export, Docker for Linux builds.
 
 Other assistance used, to be declared as your institution requires: **[fill in]**.
 

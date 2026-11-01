@@ -6,6 +6,42 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-11-01 — Pre-merge verification of PR #11: isolation, audit, input and server fixes; document QA
+
+**What:** A full verification of PR #11 before merging. Code: a tourist now
+sees only their own part of an incident they share with someone else (before,
+they could read the other person's name, alert positions and timeline, and
+work out their position from the centroid); responder positions and zone
+detail are no longer shown to tourists; the user list, alert feed and incident
+detail are now audited like the live map; unknown-username logins cost the
+full 120,000-iteration key derivation (they ran 1 iteration, which let anyone
+find valid usernames by timing); client numbers go through checked
+conversions (a JSON `1e999` cast to `int` was undefined behaviour);
+`PATCH /api/users/{id}` applies every field; the HTTP server cuts off a
+request not complete 20 s after the connection opens, survives a handler
+exception, and has a `--secure-cookies` switch. Build: sanitizer builds track
+header dependencies and check `float-cast-overflow` on g++ as well. Documents:
+the PDFs print at the intended sizes (Chrome had been shrinking two of them to
+7.3 pt body text because of one over-wide table cell), carry page numbers and
+bookmarks, keep escaped `|` inside table cells, and link to the repository
+instead of dead relative paths; the deck says 30 end-to-end checks and that
+the full application runs locally; a new `docs/final/DEPLOYMENT_GUIDE.md`
+separates the public static dashboard, the local application, and what a
+free public backend would need (a container was built and run locally, not
+deployed).
+
+**Why:** The PR was about to be reviewed for merging. Every claim in the
+deliverables (isolation, "every read is audited", the login timing note,
+the test counts) had to be true of the code, and Linux g++ had to be checked
+on its own, not inferred from Apple clang.
+
+**Impact:** 22 new or changed checks failed on the old code and pass now;
+the slow-client check failed (connection held 45 s); UBSan aborted on the old
+code. Suite: 51 test files, 12,137 checks; e2e 30 checks. A g++-only
+`-Wshadow` error in a new test was caught in an Ubuntu 24.04 container before
+pushing. Still personal and not in the repository: roll number, programme,
+institution, guide, the declaration, and the declaration of assistance used.
+
 ### 2026-10-30 — Multi-user benchmark, API tests, final academic deliverables
 
 **What:** Benchmark section 19 drives 1–5,000 independent users through the
