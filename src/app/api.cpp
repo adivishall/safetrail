@@ -15,6 +15,49 @@
 
 namespace safetrail::app {
 
+bool parse_ipv4(const std::string& s, uint32_t* out) {
+  uint32_t v = 0;
+  size_t i = 0;
+  for (int part = 0; part < 4; ++part) {
+    if (part > 0) {
+      if (i >= s.size() || s[i] != '.') return false;
+      ++i;
+    }
+    uint32_t octet = 0;
+    size_t digits = 0;
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') {
+      octet = octet * 10 + uint32_t(s[i] - '0');
+      ++i;
+      if (++digits > 3) return false;
+    }
+    if (digits == 0 || octet > 255) return false;
+    v = (v << 8) | octet;
+  }
+  if (i != s.size()) return false;
+  *out = v;
+  return true;
+}
+
+bool parse_cidr(const std::string& s, uint32_t* network, uint32_t* mask) {
+  const size_t slash = s.find('/');
+  uint32_t ip = 0;
+  if (!parse_ipv4(s.substr(0, slash), &ip)) return false;
+  uint32_t bits = 32;
+  if (slash != std::string::npos) {
+    const std::string b = s.substr(slash + 1);
+    if (b.empty() || b.size() > 2) return false;
+    bits = 0;
+    for (char c : b) {
+      if (c < '0' || c > '9') return false;
+      bits = bits * 10 + uint32_t(c - '0');
+    }
+    if (bits > 32) return false;
+  }
+  *mask = bits == 0 ? 0u : ~uint32_t(0) << (32 - bits);
+  *network = ip & *mask;
+  return true;
+}
+
 namespace {
 
 const char* kCookie = "st_session";
@@ -374,6 +417,18 @@ void write_user(JsonOut& w, const Platform& pf, const User& u, bool with_locatio
   w.end_obj();
 }
 
+// A header-supplied client address must look like one: an IPv4 dotted quad,
+// or IPv6 text (hex digits, ':' and '.'). Anything else is ignored.
+bool plausible_address(const std::string& s) {
+  uint32_t v4 = 0;
+  if (parse_ipv4(s, &v4)) return true;
+  if (s.size() < 2 || s.size() > 45 || s.find(':') == std::string::npos) return false;
+  for (char c : s)
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == ':' || c == '.'))
+      return false;
+  return true;
+}
+
 std::string hex_sha(const std::string& s) {
   const auto h = evidence::sha256(reinterpret_cast<const uint8_t*>(s.data()), s.size());
   return hex(h.data(), h.size());
@@ -384,7 +439,75 @@ std::string hex_sha(const std::string& s) {
 // ─── Api ────────────────────────────────────────────────────────────────────
 
 Api::Api(ApiOptions opt, std::unique_ptr<Platform>* world, ScenarioRunner* runner)
-    : opt_(std::move(opt)), world_(world), runner_(runner) {}
+    : opt_(std::move(opt)), world_(world), runner_(runner) {
+  for (char& c : opt_.client_ip_header) if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
+  for (const std::string& cidr : opt_.trusted_proxies) {
+    uint32_t network = 0, mask = 0;
+    if (parse_cidr(cidr, &network, &mask)) proxies_.emplace_back(network, mask);
+  }
+}
+
+std::string Api::client_of(const net::Request& req) const {
+  if (opt_.client_ip_header.empty()) return req.remote;
+  uint32_t peer = 0;
+  bool from_proxy = false;
+  if (parse_ipv4(req.remote, &peer))
+    for (const auto& [network, mask] : proxies_)
+      if ((peer & mask) == network) from_proxy = true;
+  if (!from_proxy) return req.remote;
+  const std::string* v = nullptr;
+  int copies = 0;
+  for (const auto& h : req.headers)
+    if (h.first == opt_.client_ip_header) { v = &h.second; ++copies; }
+  if (copies != 1 || !plausible_address(*v)) return req.remote;
+  return *v;
+}
+
+bool Api::take(const std::string& key, double per_s, double burst, double cost, int64_t now) {
+  if (buckets_.size() > 50'000) {
+    // Forget buckets idle for ten minutes; if a flood of addresses still
+    // leaves too many, start over rather than grow without bound.
+    std::vector<std::string> idle;
+    buckets_.for_each([&](const std::string& k, const Bucket& b) { if (now - b.at > 600'000) idle.push_back(k); });
+    for (const auto& k : idle) buckets_.erase(k);
+    if (buckets_.size() > 50'000) buckets_ = ds::HashMap<std::string, Bucket>{};
+  }
+  Bucket* b = buckets_.get(key);
+  if (!b) {
+    buckets_.put(key, Bucket{burst, now});
+    b = buckets_.get(key);
+  }
+  const double dt = double(std::max<int64_t>(0, now - b->at)) / 1000.0;
+  b->tokens = std::min(burst, b->tokens + dt * per_s);
+  b->at = now;
+  if (b->tokens < cost) return false;
+  b->tokens -= cost;
+  return true;
+}
+
+net::Response Api::limit(const net::Request& req, const std::string& client) {
+  net::Response pass;
+  pass.status = 0;
+  if (!opt_.limits.enabled || req.path == "/api/health") return pass;   // the host's health check
+  const RateLimits& L = opt_.limits;
+  const int64_t now = wall();
+  const bool lab = req.method == "POST" && req.path.compare(0, 9, "/api/lab/") == 0;
+  const double cost = lab ? L.lab_cost : 1.0;
+  bool allowed = take("a:" + client, L.address_per_s, L.address_burst, cost, now);
+  if (allowed && req.path.compare(0, 5, "/api/") == 0) {
+    // A signed-in session has its own budget, so people behind one address
+    // (a classroom, a campus NAT) do not share one; anything else shares the
+    // address's anonymous budget.
+    const std::string tok = req.cookie(kCookie);
+    const std::string skey = tok.size() == 64 ? hex_sha(tok) : std::string();
+    if (!skey.empty() && sessions_.contains(skey)) allowed = take("s:" + skey, L.session_per_s, L.session_burst, cost, now);
+    else allowed = take("n:" + client, L.anon_per_s, L.anon_burst, cost, now);
+  }
+  if (allowed) return pass;
+  net::Response r = error(429, "too many requests; slow down");
+  r.headers.emplace_back("Retry-After", "1");
+  return r;
+}
 
 int64_t Api::wall() const {
   if (opt_.wall_ms) return opt_.wall_ms();
@@ -434,13 +557,12 @@ std::string Api::login_token(const std::string& username, const std::string& pas
 }
 
 net::Response Api::handle(const net::Request& req) {
-  net::Response r;
-  if (req.path.compare(0, 5, "/api/") == 0 || req.path == "/api") {
-    r = route(req);
-    r.headers.emplace_back("Cache-Control", "no-store");
-  } else {
-    r = serve_static(req);
-  }
+  const std::string client = client_of(req);
+  const bool api = req.path.compare(0, 5, "/api/") == 0 || req.path == "/api";
+  net::Response r = limit(req, client);
+  if (r.status == 0) r = api ? route(req, client) : serve_static(req);
+  if (api) r.headers.emplace_back("Cache-Control", "no-store");
+  if (opt_.secure_cookies) r.headers.emplace_back("Strict-Transport-Security", "max-age=31536000");
   r.headers.emplace_back("Content-Security-Policy",
                          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
                          "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
@@ -471,7 +593,7 @@ net::Response Api::serve_static(const net::Request& req) {
   return r;
 }
 
-net::Response Api::route(const net::Request& req) {
+net::Response Api::route(const net::Request& req, const std::string& client) {
   const auto seg = segments(req.path);   // seg[0] == "api"
   const std::string& m = req.method;
   auto at = [&](size_t i) -> std::string { return i < seg.size() ? seg[i] : std::string(); };
@@ -481,7 +603,8 @@ net::Response Api::route(const net::Request& req) {
   // ── public ────────────────────────────────────────────────────────────────
   if (res == "health" && m == "GET") {
     JsonOut w;
-    w.obj().kb("ok", true).kv("mode", opt_.demo ? "demo" : "production").ki("now_ms", P.now()).end_obj();
+    w.obj().kb("ok", true).kv("mode", opt_.demo ? "demo" : "production").kb("public", opt_.public_demo)
+        .ki("now_ms", P.now()).end_obj();
     return json(200, w.take());
   }
   const bool mutating = m == "POST" || m == "PATCH" || m == "DELETE" || m == "PUT";
@@ -496,19 +619,39 @@ net::Response Api::route(const net::Request& req) {
     const std::string user = jstr(b, "username"), pass = jstr(b, "password");
     if (user.empty() || user.size() > 64 || pass.size() > 256) return error(400, "username and password required");
     const int64_t now = wall();
-    for (const std::string& tk : {"u:" + user, "ip:" + req.remote}) {
-      const Throttle* t = throttle_.get(tk);
+    if (opt_.limits.enabled && !take("login", opt_.limits.login_per_s, opt_.limits.login_burst, 1.0, now)) {
+      net::Response busy = error(429, "the server is busy signing people in; try again in a few seconds");
+      busy.headers.emplace_back("Retry-After", "2");
+      return busy;
+    }
+    // Three locks. Per address, so one source cannot try many accounts. Per
+    // account and address, so a wrong password locks only the one trying it.
+    // Per account everywhere, at a much higher count, so guessing spread over
+    // many addresses is still bounded -- yet one attacker cannot lock an
+    // account for everyone, and a shared proxy address locks nobody else.
+    struct Rule { std::string key; int failures; int64_t lock_ms; };
+    const Rule rules[] = {{"ip:" + client, 10, 300'000}, {"u:" + user + "|" + client, 5, 60'000}, {"u:" + user, 25, 60'000}};
+    for (const Rule& rule : rules) {
+      const Throttle* t = throttle_.get(rule.key);
       if (t && t->locked_until > now) return error(429, "too many failed attempts; try again in a minute");
     }
     const std::string tok = login_token(user, pass);
     if (tok.empty()) {
-      for (const std::string& tk : {"u:" + user, "ip:" + req.remote}) {
-        Throttle t = throttle_.get(tk) ? *throttle_.get(tk) : Throttle{};
-        if (++t.failures >= 5) { t.locked_until = now + 60'000; t.failures = 0; }
-        throttle_.put(tk, t);
+      if (throttle_.size() > 50'000) {
+        std::vector<std::string> idle;
+        throttle_.for_each([&](const std::string& k, const Throttle& t) { if (now - t.last > 3600'000) idle.push_back(k); });
+        for (const auto& k : idle) throttle_.erase(k);
+      }
+      for (const Rule& rule : rules) {
+        Throttle t = throttle_.get(rule.key) ? *throttle_.get(rule.key) : Throttle{};
+        if (now - t.last > 900'000) t.failures = 0;            // old failures are forgiven
+        t.last = now;
+        if (++t.failures >= rule.failures) { t.locked_until = now + rule.lock_ms; t.failures = 0; }
+        throttle_.put(rule.key, t);
       }
       return error(401, "invalid username or password");
     }
+    throttle_.erase("u:" + user + "|" + client);
     throttle_.erase("u:" + user);
     const User* u = P.user_by_name(user);
     net::Response r;
@@ -530,7 +673,8 @@ net::Response Api::route(const net::Request& req) {
     JsonOut w;
     w.obj().key("user");
     if (authed) write_user(w, P, *P.user(me.id), true, true); else w.null();
-    w.kv("mode", opt_.demo ? "demo" : "production").end_obj();
+    w.kv("mode", opt_.demo ? "demo" : "production").kb("public", opt_.public_demo)
+        .kv("client_address", client).end_obj();
     return json(200, w.take());
   }
   if (!authed) return error(401, "sign in required");
@@ -620,6 +764,7 @@ net::Response Api::route(const net::Request& req) {
       return json(200, w.take());
     }
     if (seg.size() == 2 && m == "POST") {
+      if (me.role != Role::Admin) return error(403, "only an administrator can create users");   // before validating
       Role role;
       if (!role_from(jstr(b, "role"), &role)) return error(400, "role must be admin, operator, responder or tourist");
       return from(P.create_user(me, jstr(b, "username"), jstr(b, "display_name"), role, jstr(b, "password")));
@@ -741,6 +886,8 @@ net::Response Api::route(const net::Request& req) {
 
   // ── zones ─────────────────────────────────────────────────────────────────
   if (res == "zones") {
+    // Changing zones is the administrator's; refuse before reading the body.
+    if (m != "GET" && me.role != Role::Admin) return error(403, "only an administrator manages zones");
     if (seg.size() == 2 && m == "GET") {
       const bool with_synthetic = req.query_param("synthetic") == "1";
       JsonOut w;

@@ -6,6 +6,8 @@
 #include "safetrail/util/json.hpp"
 #include "test_harness.hpp"
 
+#include <functional>
+
 using namespace safetrail;
 
 namespace {
@@ -14,7 +16,7 @@ struct Rig {
   std::unique_ptr<app::Platform> world;
   int64_t wall = 1'000'000;
   std::unique_ptr<app::Api> api;
-  Rig() {
+  explicit Rig(const std::function<void(app::ApiOptions&)>& tweak = nullptr) {
     app::WorldOptions o;
     o.roads_path = "";                       // synthetic grid: fast
     o.config.pbkdf2_iterations = 1000;
@@ -27,10 +29,12 @@ struct Rig {
     app::ApiOptions ao;
     ao.web_root = "web/app";
     ao.wall_ms = [this] { return wall; };
+    if (tweak) tweak(ao);
     api = std::make_unique<app::Api>(ao, &world, nullptr);
   }
   net::Response call(const std::string& method, const std::string& target, const std::string& body = "",
-                     const std::string& token = "", bool csrf = true, const std::string& ip = "10.0.0.1") {
+                     const std::string& token = "", bool csrf = true, const std::string& ip = "10.0.0.1",
+                     const std::vector<std::pair<std::string, std::string>>& extra = {}) {
     net::Request r;
     r.method = method;
     r.target = target;
@@ -41,10 +45,12 @@ struct Rig {
     r.remote = ip;
     if (!token.empty()) r.headers.emplace_back("cookie", "st_session=" + token);
     if (csrf && method != "GET") r.headers.emplace_back("x-safetrail-request", "1");
+    for (const auto& h : extra) r.headers.push_back(h);
     return api->handle(r);
   }
-  std::string login(const std::string& u, const std::string& p) {
-    const auto r = call("POST", "/api/login", "{\"username\":\"" + u + "\",\"password\":\"" + p + "\"}");
+  std::string login(const std::string& u, const std::string& p, const std::string& ip = "10.0.0.1",
+                    const std::vector<std::pair<std::string, std::string>>& extra = {}) {
+    const auto r = call("POST", "/api/login", "{\"username\":\"" + u + "\",\"password\":\"" + p + "\"}", "", true, ip, extra);
     for (const auto& h : r.headers)
       if (h.first == "Set-Cookie") {
         const size_t a = h.second.find('=') + 1;
@@ -80,12 +86,15 @@ int main() {
     t::ok(has_header(r, "Content-Security-Policy", "script-src 'self'") && has_header(r, "X-Frame-Options", "DENY"),
           "security headers present");
   }
-  // Throttling: five failures lock the account name for a minute.
+  // Throttling: five failures lock that account for that address for a
+  // minute -- not for everyone (see the proxy block below for the rest).
   for (int i = 0; i < 5; ++i) g.call("POST", "/api/login", "{\"username\":\"tourist\",\"password\":\"nope\"}", "", true, "10.9.9.9");
-  t::ok(g.call("POST", "/api/login", "{\"username\":\"tourist\",\"password\":\"tourist-password\"}", "", true, "10.1.1.1").status == 429,
-        "after five failures even the right password waits");
+  t::ok(g.call("POST", "/api/login", "{\"username\":\"tourist\",\"password\":\"tourist-password\"}", "", true, "10.9.9.9").status == 429,
+        "after five failures even the right password waits, from that address");
+  t::ok(g.call("POST", "/api/login", "{\"username\":\"tourist\",\"password\":\"tourist-password\"}", "", true, "10.1.1.1").status == 200,
+        "...but someone else can still sign in to that account");
   g.wall += 61'000;
-  const std::string tou = g.login("tourist", "tourist-password");
+  const std::string tou = g.login("tourist", "tourist-password", "10.9.9.9");
   t::ok(!tou.empty(), "the lock expires after a minute");
   // Idle expiry.
   g.wall += 31 * 60'000;
@@ -334,6 +343,145 @@ int main() {
           "a tourist updates their name and password together");
     t::ok(h.world->user(ua)->display_name == "Tess B" && !h.login("tourist", "tess-new-password").empty(),
           "...and both changes took effect");
+  }
+
+  // ── every endpoint enforces its access rule ───────────────────────────────
+  {
+    Rig h;
+    const std::string tour = h.login("tourist", "tourist-password");
+    using EP = std::pair<const char*, const char*>;
+    const EP gets[] = {{"GET", "/api/live"}, {"GET", "/api/users"}, {"GET", "/api/users/0"}, {"GET", "/api/users/0/trail"},
+                       {"GET", "/api/groups"}, {"GET", "/api/zones"}, {"GET", "/api/zones/0"}, {"GET", "/api/alerts"},
+                       {"GET", "/api/incidents"}, {"GET", "/api/incidents/0"}, {"GET", "/api/responders"}, {"GET", "/api/roads"},
+                       {"GET", "/api/history?t=0"}, {"GET", "/api/events"}, {"GET", "/api/evidence"}, {"GET", "/api/evidence/0"},
+                       {"GET", "/api/audit"}, {"GET", "/api/stats"}, {"GET", "/api/settings"}, {"GET", "/api/scenario"},
+                       {"GET", "/api/lab"}, {"GET", "/api/bench"}, {"GET", "/api/bench/index_scaling.csv"}};
+    const EP muts[] = {{"POST", "/api/logout"}, {"POST", "/api/users"}, {"POST", "/api/users/0/consent"}, {"POST", "/api/users/0/sharing"},
+                       {"POST", "/api/users/0/battery"}, {"POST", "/api/users/0/sos"}, {"POST", "/api/users/0/fix"},
+                       {"PATCH", "/api/users/0"}, {"DELETE", "/api/users/0/history"}, {"POST", "/api/groups"},
+                       {"POST", "/api/groups/0/members"}, {"PATCH", "/api/groups/0"}, {"POST", "/api/zones"},
+                       {"POST", "/api/zones/import"}, {"PATCH", "/api/zones/0"}, {"DELETE", "/api/zones/0"},
+                       {"POST", "/api/zones/0/validity"}, {"POST", "/api/alerts/0/ack"}, {"POST", "/api/alerts/0/resolve"},
+                       {"POST", "/api/alerts/0/dismiss"}, {"POST", "/api/incidents/0/ack"}, {"POST", "/api/incidents/0/assign"},
+                       {"POST", "/api/incidents/0/resolve"}, {"POST", "/api/dispatch/plan"}, {"POST", "/api/responders"},
+                       {"PATCH", "/api/responders/0"}, {"PATCH", "/api/settings"}, {"POST", "/api/scenario/step"},
+                       {"POST", "/api/lab/spatial"}};
+    std::string leaks;
+    for (const auto& [m, p] : gets) if (h.call(m, p).status != 401) leaks += std::string(" ") + m + " " + p;
+    for (const auto& [m, p] : muts) if (h.call(m, p, "{}").status != 401) leaks += std::string(" ") + m + " " + p;
+    t::ok(leaks.empty(), "every endpoint but health, login and session answers 401 without a session" + leaks);
+    t::ok(h.call("GET", "/api/health").status == 200 && h.call("GET", "/api/session").status == 200,
+          "health and the session probe are public");
+    std::string no_csrf;
+    for (const auto& [m, p] : muts) if (h.call(m, p, "{}", tour, false).status != 403) no_csrf += std::string(" ") + m + " " + p;
+    t::ok(no_csrf.empty(), "every state-changing endpoint refuses a request without the CSRF header" + no_csrf);
+    const EP staff_only[] = {{"GET", "/api/groups"}, {"GET", "/api/zones/0"}, {"GET", "/api/responders"}, {"GET", "/api/history?t=0"},
+                             {"GET", "/api/evidence"}, {"GET", "/api/evidence/0"}, {"GET", "/api/audit"}, {"GET", "/api/stats"},
+                             {"GET", "/api/settings"}, {"GET", "/api/scenario"}, {"POST", "/api/dispatch/plan"}, {"POST", "/api/groups"},
+                             {"POST", "/api/users"}, {"POST", "/api/zones"}, {"DELETE", "/api/zones/0"}, {"PATCH", "/api/settings"},
+                             {"POST", "/api/scenario/step"}, {"POST", "/api/responders"}, {"POST", "/api/incidents/0/assign"},
+                             {"POST", "/api/alerts/0/ack"}, {"GET", "/api/users/0"}, {"GET", "/api/users/0/trail"}};
+    std::string open_to_tourist;
+    for (const auto& [m, p] : staff_only) {
+      const int st = h.call(m, p, m == std::string("GET") ? "" : "{}", tour).status;
+      if (st != 403 && st != 404) open_to_tourist += std::string(" ") + m + " " + p + "=" + std::to_string(st);
+    }
+    t::ok(open_to_tourist.empty(), "a tourist is refused every staff endpoint" + open_to_tourist);
+  }
+
+  // ── behind a proxy: whose address is it? ──────────────────────────────────
+  {
+    Rig h([](app::ApiOptions& o) { o.client_ip_header = "CF-Connecting-IP"; o.secure_cookies = true; o.public_demo = true; });
+    using H = std::vector<std::pair<std::string, std::string>>;
+    auto seen = [&](const std::string& peer, const H& hdrs) {
+      util::Json j; std::string e;
+      util::Json::parse(h.call("GET", "/api/session", "", "", true, peer, hdrs).body, j, &e);
+      const util::Json* c = j.find("client_address");
+      return c ? c->string_or("") : std::string("?");
+    };
+    t::ok(seen("10.0.0.7", {{"cf-connecting-ip", "203.0.113.9"}}) == "203.0.113.9", "through the proxy, the client is the header's address");
+    t::ok(seen("10.0.0.7", {{"cf-connecting-ip", "2001:db8::1"}}) == "2001:db8::1", "...IPv6 too");
+    t::ok(seen("198.51.100.7", {{"cf-connecting-ip", "203.0.113.9"}}) == "198.51.100.7",
+          "a connection that is not from a proxy cannot choose its address");
+    t::ok(seen("10.0.0.7", {{"x-forwarded-for", "203.0.113.50"}}) == "10.0.0.7", "X-Forwarded-For is never trusted");
+    t::ok(seen("10.0.0.7", {{"cf-connecting-ip", "evil<script>"}}) == "10.0.0.7", "a malformed header value is ignored");
+    t::ok(seen("10.0.0.7", {{"cf-connecting-ip", "203.0.113.1"}, {"cf-connecting-ip", "203.0.113.2"}}) == "10.0.0.7",
+          "two copies of the header are ignored");
+    const auto hr = h.call("GET", "/api/health");
+    t::ok(hr.body.find("\"public\":true") != std::string::npos && has_header(hr, "Strict-Transport-Security", "max-age="),
+          "a public deployment says so, and sends HSTS");
+    const auto lr = h.call("POST", "/api/login", "{\"username\":\"admin\",\"password\":\"admin-password-x\"}", "", true, "10.0.0.7",
+                           {{"cf-connecting-ip", "203.0.113.70"}});
+    t::ok(has_header(lr, "Set-Cookie", "; Secure"), "the session cookie is Secure");
+
+    // Login throttling seen through one shared proxy address.
+    const std::string bad_tourist = "{\"username\":\"tourist\",\"password\":\"nope\"}";
+    const std::string good_tourist = "{\"username\":\"tourist\",\"password\":\"tourist-password\"}";
+    auto from = [](const std::string& ip) { return H{{"cf-connecting-ip", ip}}; };
+    for (int i = 0; i < 5; ++i) h.call("POST", "/api/login", bad_tourist, "", true, "10.0.0.2", from("203.0.113.1"));
+    t::ok(h.call("POST", "/api/login", good_tourist, "", true, "10.0.0.2", from("203.0.113.1")).status == 429,
+          "five wrong passwords lock that account for that visitor");
+    t::ok(h.call("POST", "/api/login", good_tourist, "", true, "10.0.0.2", from("203.0.113.2")).status == 200,
+          "another visitor behind the same proxy signs in normally");
+    for (int i = 0; i < 10; ++i)
+      h.call("POST", "/api/login", "{\"username\":\"u" + std::to_string(i) + "x\",\"password\":\"nope\"}", "", true, "10.0.0.2", from("203.0.113.3"));
+    t::ok(h.call("POST", "/api/login", good_tourist, "", true, "10.0.0.2", from("203.0.113.3")).status == 429,
+          "ten failures from one address lock that address for every account");
+    t::ok(h.call("POST", "/api/login", good_tourist, "", true, "10.0.0.2", from("203.0.113.4")).status == 200,
+          "...and only that address");
+    const std::string bad_rsp = "{\"username\":\"responder\",\"password\":\"nope\"}";
+    for (int i = 0; i < 25; ++i) h.call("POST", "/api/login", bad_rsp, "", true, "10.0.0.2", from("198.18.0." + std::to_string(i + 1)));
+    t::ok(h.call("POST", "/api/login", "{\"username\":\"responder\",\"password\":\"responder-password\"}", "", true, "10.0.0.2",
+                 from("198.18.1.1")).status == 429,
+          "25 failures spread over 25 addresses lock the account for a minute");
+    h.wall += 61'000;
+    t::ok(h.call("POST", "/api/login", "{\"username\":\"responder\",\"password\":\"responder-password\"}", "", true, "10.0.0.2",
+                 from("198.18.1.1")).status == 200, "...then it opens again");
+  }
+
+  // ── request rate limits ───────────────────────────────────────────────────
+  {
+    Rig h([](app::ApiOptions& o) { o.limits.enabled = true; });
+    int ok_anon = 0, first429 = -1;
+    net::Response last;
+    for (int i = 0; i < 25; ++i) {
+      last = h.call("GET", "/api/session", "", "", true, "192.0.2.10");
+      if (last.status == 200) ++ok_anon; else if (first429 < 0) first429 = i;
+    }
+    t::ok(ok_anon == 20 && last.status == 429 && has_header(last, "Retry-After", "1"),
+          "without a session an address gets a burst of 20 API requests, then 429 with Retry-After");
+    t::ok(h.call("GET", "/api/health", "", "", true, "192.0.2.10").status == 200, "the health check is never limited");
+    t::ok(h.call("GET", "/", "", "", true, "192.0.2.10").status == 200, "pages still load (only the per-address cap applies)");
+    t::ok(h.call("GET", "/api/session", "", "", true, "192.0.2.11").status == 200, "another address is unaffected");
+    const std::string s1 = h.login("operator", "operator-password", "192.0.2.20");
+    const std::string s2 = h.login("operator", "operator-password", "192.0.2.20");
+    int ok1 = 0;
+    for (int i = 0; i < 70; ++i) if (h.call("GET", "/api/live", "", s1, true, "192.0.2.20").status == 200) ++ok1;
+    t::ok(ok1 == 60, "a session gets a burst of 60 requests (" + std::to_string(ok1) + ")");
+    t::ok(h.call("GET", "/api/live", "", s2, true, "192.0.2.20").status == 200,
+          "another session at the same address has its own budget");
+    h.wall += 1000;
+    t::ok(h.call("GET", "/api/live", "", s1, true, "192.0.2.20").status == 200, "a second later the session may continue");
+    const std::string s3 = h.login("tourist", "tourist-password", "192.0.2.30");
+    int labs = 0;
+    for (int i = 0; i < 15; ++i)
+      if (h.call("POST", "/api/lab/heap", "{\"ops\":[{\"op\":\"push\",\"value\":1}]}", s3, true, "192.0.2.30").status == 200) ++labs;
+    t::ok(labs == 12, "a Lab experiment costs five requests: 12 in a burst (" + std::to_string(labs) + ")");
+    // Sign-ins from everyone together are capped (10 at once, then 2 a second),
+    // each from its own address so no per-address limit is what stops them.
+    Rig q([](app::ApiOptions& o) { o.limits.enabled = true; });
+    int logins = 0;
+    net::Response refused;
+    for (int i = 0; i < 12; ++i) {
+      refused = q.call("POST", "/api/login", "{\"username\":\"tourist\",\"password\":\"tourist-password\"}", "", true,
+                       "192.0.3." + std::to_string(i + 1));
+      if (refused.status == 200) ++logins;
+    }
+    t::ok(logins == 10 && refused.status == 429 && has_header(refused, "Retry-After", "2"),
+          "at most 10 sign-ins at once from everyone together, then 429 (" + std::to_string(logins) + ")");
+    q.wall += 1000;
+    t::ok(q.call("POST", "/api/login", "{\"username\":\"tourist\",\"password\":\"tourist-password\"}", "", true, "192.0.3.99").status == 200,
+          "...and two a second after that");
   }
   return t::report("app/api");
 }
