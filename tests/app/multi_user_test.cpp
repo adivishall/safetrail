@@ -10,6 +10,7 @@
 #include "test_harness.hpp"
 
 #include <algorithm>
+#include <chrono>
 
 using namespace safetrail;
 using app::FixStatus;
@@ -226,6 +227,46 @@ int main() {
     t::ok(w.pf->erase_history(as(w.a, app::Role::Tourist), w.a).ok(), "the user can");
     t::ok(w.pf->tracked(w.a)->trail.empty(), "the trail is gone");
     t::ok(count_log(*w.pf, app::LogKind::HistoryErased, w.a) == 1, "and the erasure itself is on record");
+  }
+
+  // ── Retention: trail points older than the window are deleted ─────────────
+  {
+    World w;
+    w.pf->mutable_config().trail_retention_ms = 120'000;
+    for (int64_t t = 1000; t <= 600'000; t += 5000) {
+      w.pf->tick(t);
+      w.fix(w.a, kOutside, t);
+    }
+    const auto& trail = w.pf->tracked(w.a)->trail;
+    t::ok(!trail.empty(), "recent points are kept");
+    // Retention runs once a minute, so nothing older than window + one minute.
+    t::ok(trail.front().t_ms >= 600'000 - 120'000 - 60'000, "nothing older than the retention window survives");
+    t::ok(w.pf->position_at(w.a, 10'000) == nullptr, "an expired position cannot be looked up any more");
+  }
+
+  // ── Login timing does not say whether a username exists ───────────────────
+  // An unknown name must cost the same key derivation as a wrong password for
+  // a real one; a cheap path for unknown names lets anyone enumerate accounts
+  // by timing the login endpoint. The ratio is ~1 when right and ~1/20000 when
+  // the dummy hash is cheap, so a loose bound cannot flake.
+  {
+    app::PlatformConfig cfg;
+    cfg.pbkdf2_iterations = 20'000;
+    app::Platform pf(cfg);
+    pf.create_user(app::Principal::sys(), "known", "Known", app::Role::Tourist, "the-right-password");
+    auto cost = [&](const char* name) {
+      double best = 1e18;
+      for (int i = 0; i < 3; ++i) {
+        const auto t0 = std::chrono::steady_clock::now();
+        const bool in = pf.authenticate(name, "a-wrong-password") != nullptr;
+        best = std::min(best, std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+        t::ok(!in, "a wrong password never signs in");
+      }
+      return best;
+    };
+    const double known = cost("known"), unknown = cost("nobody-by-this-name");
+    t::ok(unknown > 0.3 * known, "an unknown username costs the same derivation as a wrong password");
+    t::ok(pf.authenticate("known", "the-right-password") != nullptr, "the right password still works");
   }
 
   // ── Evidence: every log entry is provably in the Merkle log ───────────────

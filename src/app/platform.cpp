@@ -374,9 +374,11 @@ Outcome Platform::create_user(const Principal& by, const std::string& username,
 const User* Platform::authenticate(const std::string& username, const std::string& password) const {
   const User* u = user_by_name(username);
   // Run the full derivation even for an unknown user, so response time does not
-  // say whether the username exists.
-  static const std::string dummy = "pbkdf2-sha256$1$00$00";
-  const bool ok = verify_password(password, u && !u->password_hash.empty() ? u->password_hash : dummy);
+  // say whether the username exists. The dummy must cost what a real hash
+  // costs: it once had 1 iteration against 120,000, which made unknown names
+  // answer ~100,000 times faster.
+  if (dummy_hash_.empty()) dummy_hash_ = hash_password("not anyone's password", cfg_.pbkdf2_iterations);
+  const bool ok = verify_password(password, u && !u->password_hash.empty() ? u->password_hash : dummy_hash_);
   if (!u || !ok || !u->active || u->password_hash.empty()) return nullptr;
   return u;
 }

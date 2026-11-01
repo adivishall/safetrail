@@ -516,6 +516,10 @@ class Platform {
 
  private:
   PlatformConfig cfg_;
+  // A hash of no one's password at the configured cost, so that signing in as
+  // an unknown name costs the same derivation as a wrong password; made on the
+  // first sign-in, not in the constructor.
+  mutable std::string dummy_hash_;
   Timestamp now_ms_ = 0;
 
   std::vector<User> users_;
