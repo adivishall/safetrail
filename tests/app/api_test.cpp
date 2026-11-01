@@ -163,5 +163,177 @@ int main() {
   t::ok(g.call("GET", "/api/bench/..%2fMakefile", "", op3).status == 404, "bench files are confined too");
   t::ok(g.call("POST", "/api/lab/spatial", "{\"n\":999999}", tou2).status == 400, "lab inputs are bounded");
   t::ok(g.call("POST", "/api/lab/graph", "{\"rows\":5,\"cols\":5}", tou2).status == 200, "lab runs for any signed-in user");
+
+  // ── two tourists in one incident: each sees only their own part ───────────
+  {
+    Rig h;
+    const std::string ad = h.login("admin", "admin-password-x");
+    t::ok(h.call("POST", "/api/users", "{\"username\":\"tourist2\",\"display_name\":\"Uma\",\"role\":\"tourist\",\"password\":\"uma-password-1\"}", ad).status == 200,
+          "admin registers a second tourist");
+    t::ok(h.call("POST", "/api/zones", zone, ad).status == 200, "a zone both will walk into");
+    const std::string ta = h.login("tourist", "tourist-password"), tb = h.login("tourist2", "uma-password-1");
+    const std::string opr = h.login("operator", "operator-password"), med = h.login("responder", "responder-password");
+    const app::UserId ua = h.id("tourist"), ub = h.id("tourist2");
+    const std::string pa = "/api/users/" + std::to_string(ua), pb = "/api/users/" + std::to_string(ub);
+    for (const auto& [p, tok] : {std::pair{pa, ta}, std::pair{pb, tb}}) {
+      h.call("POST", p + "/consent", "{\"consent\":true}", tok);
+      h.call("POST", p + "/sharing", "{\"active\":true}", tok);
+    }
+    for (int s = 1; s <= 15; ++s) {
+      h.world->tick(s * 1000);
+      const std::string ts = std::to_string(s * 1000);
+      h.call("POST", pa + "/fix", "{\"lat\":25.5810,\"lon\":91.8810,\"accuracy_m\":5,\"t_ms\":" + ts + "}", ta);
+      h.call("POST", pb + "/fix", "{\"lat\":25.5813,\"lon\":91.8813,\"accuracy_m\":5,\"t_ms\":" + ts + "}", tb);
+    }
+    IncidentId shared = kNoId;
+    for (const auto& c : h.world->cases()) {
+      const auto* ic = c.id == kNoId ? nullptr : h.world->correlator().get(c.id);
+      if (ic && ic->affected.size() == 2) shared = c.id;
+    }
+    t::ok(shared != kNoId, "both breaches fall into one incident");
+    const std::string ip = "/api/incidents/" + std::to_string(shared);
+
+    auto parse = [](const net::Response& r) { util::Json j; std::string e; util::Json::parse(r.body, j, &e); return j; };
+    // Everything about the incident a tourist can read must be about them alone.
+    auto only_mine = [&](const util::Json& ij, app::UserId me, const std::string& other) {
+      const util::Json* aff = ij.find("affected");
+      const util::Json* names = ij.find("affected_names");
+      const util::Json* centroid = ij.find("centroid");
+      const util::Json* route = ij.find("route");
+      bool ok = aff && aff->arr.size() == 1 && aff->arr[0].number_or(-1) == double(me) && names && names->arr.size() == 1 &&
+                centroid && centroid->type == util::Json::Type::Null && route && route->type == util::Json::Type::Null &&
+                ij.find("people")->number_or(0) == 1;
+      for (const auto& n : names ? names->arr : std::vector<util::Json>{}) if (n.string_or("") == other) ok = false;
+      return ok;
+    };
+    {
+      const auto r = h.call("GET", ip, "", ta);
+      t::ok(r.status == 200, "a tourist may open an incident that concerns them");
+      const util::Json j = parse(r);
+      bool alerts_mine = true, timeline_mine = true;
+      for (const auto& a : j.find("alerts")->arr) if (a.find("user")->number_or(-1) != double(ua)) alerts_mine = false;
+      for (const auto& e : j.find("timeline")->arr) {
+        const util::Json* u = e.find("user");
+        if (!u || u->number_or(-1) == double(ub)) timeline_mine = false;
+      }
+      t::ok(only_mine(*j.find("incident"), ua, "Uma"), "...and sees only themself in it: no other name, no centroid, no route");
+      t::ok(alerts_mine, "...only their own alerts, so no other person's position");
+      t::ok(timeline_mine, "...and no timeline entry about the other person");
+    }
+    {
+      const util::Json lv = parse(h.call("GET", "/api/live", "", tb));
+      bool found = false, ok = true;
+      for (const auto& i : lv.find("incidents")->arr)
+        if (i.find("id")->number_or(-1) == double(shared)) { found = true; ok = ok && only_mine(i, ub, "Tess"); }
+      t::ok(found && ok, "the live map shows the other tourist the same incident, also only their part");
+      const util::Json lst = parse(h.call("GET", "/api/incidents", "", tb));
+      ok = !lst.find("incidents")->arr.empty();
+      for (const auto& i : lst.find("incidents")->arr) ok = ok && only_mine(i, ub, "Tess");
+      t::ok(ok, "...and so does the incident list");
+    }
+    {
+      const util::Json j = parse(h.call("GET", ip, "", opr));
+      t::ok(j.find("incident")->find("affected")->arr.size() == 2 && j.find("alerts")->arr.size() >= 2,
+            "an operator sees the whole incident");
+    }
+    // Reads of someone else's data by another tourist.
+    t::ok(h.call("GET", pb + "/trail", "", ta).status == 403, "a tourist cannot read another tourist's trail");
+    t::ok(h.call("GET", pb, "", ta).status == 403, "...or their profile");
+    t::ok(h.call("DELETE", pb + "/history", "", ta).status == 403, "...or erase their history");
+    t::ok(h.call("POST", pb + "/fix", "{\"lat\":25.58,\"lon\":91.88,\"accuracy_m\":5}", ta).status == 403,
+          "...or post a fix as them");
+    t::ok(h.call("POST", pb + "/consent", "{\"consent\":false}", ta).status == 403, "...or change their consent");
+    {
+      const util::Json us = parse(h.call("GET", "/api/users", "", ta));
+      t::ok(us.find("users")->arr.size() == 1, "the user list shows a tourist only themself");
+      const util::Json al = parse(h.call("GET", "/api/alerts", "", ta));
+      bool mine = !al.find("alerts")->arr.empty();
+      for (const auto& a : al.find("alerts")->arr) if (a.find("user")->number_or(-1) != double(ua)) mine = false;
+      t::ok(mine, "the alert list shows a tourist only their own alerts");
+      const util::Json ev = parse(h.call("GET", "/api/events?user=" + std::to_string(ub), "", ta));
+      bool own = true;
+      for (const auto& e : ev.find("events")->arr) if (e.find("user")->number_or(-1) == double(ub)) own = false;
+      t::ok(own, "asking the event log for another user's events returns only your own");
+    }
+    // Staff-only and responder-only data.
+    t::ok(h.call("GET", "/api/zones/0", "", ta).status == 403, "zone detail (with its incidents) is for staff");
+    t::ok(h.call("GET", "/api/responders", "", ta).status == 403, "responder positions are not shown to tourists");
+    t::ok(parse(h.call("GET", "/api/live", "", ta)).find("responders")->arr.empty(), "...not on the live map either");
+    t::ok(h.call("GET", "/api/responders", "", med).status == 200, "a responder sees the other units");
+    t::ok(h.call("GET", "/api/history?t=5000", "", ta).status == 403 && h.call("GET", "/api/history?t=5000", "", med).status == 403,
+          "the investigation view is for staff only");
+    t::ok(h.call("GET", "/api/evidence", "", med).status == 403 && h.call("GET", "/api/stats", "", ta).status == 403,
+          "so are evidence and statistics");
+    t::ok(h.call("POST", ip + "/ack", "{}", med).status == 403, "a responder cannot acknowledge an incident");
+    t::ok(h.call("POST", ip + "/assign", "{}", med).status == 403, "...or assign one");
+    t::ok(h.call("POST", ip + "/resolve", "{\"note\":\"x\"}", med).status == 403, "...or resolve one not assigned to them");
+    t::ok(h.call("POST", "/api/zones", zone, med).status == 403, "...or create zones");
+    t::ok(h.call("POST", "/api/users", "{\"username\":\"x-user\",\"display_name\":\"X\",\"role\":\"admin\",\"password\":\"long-enough-pw\"}", opr).status == 403,
+          "an operator cannot create an administrator");
+    t::ok(h.call("PATCH", "/api/settings", "{\"auto_dispatch\":true}", opr).status == 403, "...or change settings");
+    t::ok(h.call("PATCH", pa, "{\"active\":false}", opr).status == 403, "...or deactivate a user");
+
+    // Every look at someone else's location is audited: the list, the alert
+    // feed and the incident detail as well as the profile, trail and map.
+    auto was_audited = [&](app::UserId actor, app::UserId subject, const std::string& what) {
+      for (const auto& a : h.world->access_log())
+        if (a.actor == actor && a.subject == subject && a.what == what && a.allowed) return true;
+      return false;
+    };
+    const app::UserId uo = h.id("operator");
+    h.call("GET", "/api/users", "", opr);
+    h.call("GET", "/api/alerts", "", opr);
+    t::ok(was_audited(uo, ua, "list") && was_audited(uo, ub, "list"), "the user list is audited per person shown");
+    t::ok(was_audited(uo, ua, "alerts") && was_audited(uo, ub, "alerts"), "the alert feed (which carries positions) is audited");
+    t::ok(was_audited(uo, ua, "incident") && was_audited(uo, ub, "incident"), "the incident detail is audited");
+    const size_t before = h.world->access_log().size();
+    h.call("GET", "/api/alerts", "", opr);
+    h.call("GET", "/api/users", "", opr);
+    t::ok(h.world->access_log().size() == before, "polling again within ten minutes is not re-recorded");
+
+    // ── numbers from the client never reach an undefined conversion ─────────
+    // Each of these once cast a client double straight to an integer type. JSON
+    // 1e999 parses to infinity, and NaN, infinity or an out-of-range value has
+    // no defined conversion -- UBSan's float-cast-overflow aborts on it.
+    const std::string ring = "\"ring\":[[25.590,91.890],[25.590,91.892],[25.592,91.892],[25.592,91.890]]";
+    auto zone_with = [&](const std::string& field) {
+      return "{\"name\":\"Big\",\"kind\":\"caution\",\"severity\":3," + field + "," + ring + "}";
+    };
+    t::ok(h.call("POST", "/api/zones", "{\"name\":\"Big\",\"kind\":\"caution\",\"severity\":1e999," + ring + "}", ad).status == 400,
+          "severity 1e999 is refused");
+    t::ok(h.call("POST", "/api/zones", "{\"name\":\"Big\",\"kind\":\"caution\",\"severity\":\"5\"," + ring + "}", ad).status == 400,
+          "a severity that is not a number is refused, not defaulted");
+    t::ok(h.call("POST", "/api/zones", zone_with("\"max_dwell_s\":-1e300"), ad).status == 400, "dwell -1e300 is refused");
+    t::ok(h.call("POST", "/api/zones", zone_with("\"active_from_ms\":1e300"), ad).status == 400, "validity start 1e300 is refused");
+    t::ok(h.call("POST", "/api/zones", zone_with("\"active_to_ms\":-1e999"), ad).status == 400, "validity end -1e999 is refused");
+    t::ok(h.call("POST", "/api/zones/0/validity", "{\"from_ms\":1e300,\"to_ms\":null}", ad).status == 400,
+          "a validity window starting at 1e300 is refused");
+    t::ok(h.call("POST", pa + "/fix", "{\"lat\":25.58,\"lon\":91.88,\"accuracy_m\":5,\"t_ms\":1e300}", ta).status == 400,
+          "a fix timestamped 1e300 is refused");
+    t::ok(h.call("POST", ip + "/assign", "{\"responder\":-1}", opr).status == 400, "responder -1 is refused, not wrapped");
+    t::ok(h.call("POST", ip + "/assign", "{\"responder\":1e999}", opr).status == 400, "responder 1e999 is refused");
+    const auto grp = h.call("POST", "/api/groups", "{\"name\":\"Trek\"}", opr);
+    t::ok(grp.status == 200, "a group");
+    const std::string gp = "/api/groups/" + std::to_string(int64_t(parse(grp).find("id")->number_or(0)));
+    t::ok(h.call("POST", gp + "/members", "{\"user\":-1}", opr).status == 400, "group member -1 is refused");
+    t::ok(h.call("POST", gp + "/members", "{}", opr).status == 400, "a member request without a user is refused");
+    t::ok(h.call("PATCH", gp, "{\"confirm_s\":1e300}", opr).status == 400, "confirmation time 1e300 is refused");
+    t::ok(h.call("GET", pa + "/trail?from=1e999", "", ta).status == 400, "trail from=1e999 is refused");
+    t::ok(h.call("GET", pa + "/trail?to=99999999999999999999999", "", ta).status == 400, "trail to=10^23 is refused");
+    t::ok(h.call("GET", pa + "/trail?from=junk", "", ta).status == 400, "trail from=junk is refused, not read as 0");
+    t::ok(h.call("GET", pa + "/trail?from=0&to=20000.5", "", ta).status == 200, "an ordinary window is answered");
+    t::ok(h.call("GET", "/api/history?t=1e999", "", opr).status == 400, "history t=1e999 is refused");
+    t::ok(h.call("GET", "/api/history?t=12300.000000000002", "", opr).status == 200, "a fractional time from a slider is accepted");
+    t::ok(h.call("GET", "/api/events?limit=99999999999999999999999", "", opr).status == 400, "events limit=10^23 is refused");
+    t::ok(h.call("GET", "/api/events?limit=5", "", opr).status == 200, "an ordinary limit is answered");
+    t::ok(h.call("GET", "/api/roads?min_lat=1e999&min_lon=0&max_lat=1&max_lon=1", "", opr).status == 400, "roads min_lat=1e999 is refused");
+    t::ok(h.call("GET", "/api/roads?min_lat=25.5&min_lon=91.8&max_lat=25.6&max_lon=91.9", "", opr).status == 200, "an ordinary road tile is answered");
+
+    // A profile update applies every field it carries, not just the first.
+    t::ok(h.call("PATCH", pa, "{\"display_name\":\"Tess B\",\"password\":\"tess-new-password\"}", ta).status == 200,
+          "a tourist updates their name and password together");
+    t::ok(h.world->user(ua)->display_name == "Tess B" && !h.login("tourist", "tess-new-password").empty(),
+          "...and both changes took effect");
+  }
   return t::report("app/api");
 }

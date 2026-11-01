@@ -18,7 +18,11 @@
 //   * roles: every endpoint checks the caller's role, and the platform checks
 //     again (an Outcome of 403) -- two independent gates;
 //   * location reads by anyone other than the subject are written to the
-//     access audit log;
+//     access audit log -- profile, trail, history, and the views that are
+//     polled (live map, user list, alert feed, incident detail) once per
+//     viewer, subject and view every ten minutes;
+//   * a tourist sees only their own part of an incident that concerns them,
+//     and no responder positions;
 //   * responses carry a strict Content-Security-Policy, nosniff, frame denial
 //     and no-referrer; API responses are never cached.
 //
@@ -67,11 +71,13 @@ class Api {
   ScenarioRunner* runner_;
   ds::HashMap<std::string, Session> sessions_;   // key: hex SHA-256 of the token
   ds::HashMap<std::string, Throttle> throttle_;
-  ds::HashMap<std::string, int64_t> live_audit_;  // "actor:subject" -> last audited live view
+  ds::HashMap<std::string, int64_t> live_audit_;  // "actor:subject:view" -> last audited poll
 
   Platform& pf() { return **world_; }
   int64_t wall() const;
   bool session_for(const net::Request& req, Principal* out, std::string* key);
+  // Audit a polled view of `subject`'s location at most once per ten minutes.
+  void audit_view(const Principal& me, UserId subject, const char* view);
   net::Response route(const net::Request& req);
   net::Response serve_static(const net::Request& req);
 };

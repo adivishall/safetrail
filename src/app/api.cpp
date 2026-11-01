@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -82,6 +83,48 @@ bool jbool(const util::Json& j, const char* k, bool d) {
 }
 bool jhas(const util::Json& j, const char* k) { return j.find(k) != nullptr; }
 
+// ── Numbers from the client, as integers ────────────────────────────────────
+// A double that is NaN, infinite or outside an integer type's range has no
+// defined conversion to that type in C++ (UBSan: float-cast-overflow), and
+// JSON's 1e999 parses to infinity. So client numbers become integers only
+// through these, which refuse what they cannot convert instead of casting it.
+constexpr double kMaxExactInt = 9007199254740992.0;   // 2^53
+
+bool to_int64(double x, int64_t* out) {
+  if (!std::isfinite(x) || std::fabs(x) > kMaxExactInt) return false;
+  *out = int64_t(x);
+  return true;
+}
+// Field `k` as an integer: `d` when absent, false when present but not a
+// number in range (a string "5" is refused, not silently defaulted).
+bool jint(const util::Json& j, const char* k, int64_t d, int64_t* out) {
+  const util::Json* v = j.find(k);
+  if (!v) { *out = d; return true; }
+  return v->type == util::Json::Type::Number && to_int64(v->num, out);
+}
+// Field `k` as an id: present, whole, and below kNoId.
+bool jid(const util::Json& j, const char* k, uint32_t* out) {
+  int64_t v = 0;
+  if (!jhas(j, k) || !jint(j, k, 0, &v) || v < 0 || v >= int64_t(kNoId)) return false;
+  *out = uint32_t(v);
+  return true;
+}
+// Query parameter `k` as a number: `d` when absent or empty, false when it is
+// not entirely a finite number (atoll read "junk" as 0 and 1e999 as 1).
+bool qnum(const net::Request& req, const char* k, double d, double* out) {
+  const std::string s = req.query_param(k);
+  if (s.empty()) { *out = d; return true; }
+  char* end = nullptr;
+  const double x = std::strtod(s.c_str(), &end);
+  if (end != s.c_str() + s.size() || !std::isfinite(x)) return false;
+  *out = x;
+  return true;
+}
+bool qint(const net::Request& req, const char* k, int64_t d, int64_t* out) {
+  double x = 0;
+  return qnum(req, k, double(d), &x) && to_int64(x, out);
+}
+
 bool is_staff(const Principal& p) { return p.role == Role::Admin || p.role == Role::Operator; }
 
 std::string content_type_for(const std::string& path) {
@@ -160,13 +203,20 @@ void route_json(JsonOut& w, const Route& r) {
   w.end_arr().end_obj();
 }
 
-void incident_json(JsonOut& w, const Platform& pf, const IncidentCase& c, bool full) {
+// `self`: the viewer is one of the people affected, not staff or the assigned
+// responder, and sees only their own part of the incident -- not the others'
+// names, alerts or positions. Nor the centroid, radius or route, because with
+// two people the centroid and your own position give away the other's.
+void incident_json(JsonOut& w, const Platform& pf, const IncidentCase& c, bool full, UserId self = kNoId) {
   const alert::Incident* inc = pf.correlator().get(c.id);
   if (!inc) return;
-  w.obj().ku("id", c.id).kv("state", to_string(c.state)).ku("people", inc->people())
+  const bool own = self != kNoId;
+  auto shown = [&](AlertId a) { return a < pf.alerts().size() && (!own || pf.alerts()[a].a.tourist == self); };
+  w.obj().ku("id", c.id).kv("state", to_string(c.state)).ku("people", own ? 1 : inc->people())
       .ku("severity", inc->max_severity);
-  w.key("centroid").arr().num(inc->centroid.lat).num(inc->centroid.lon).end_arr();
-  w.kn("radius_m", inc->radius_m).ki("opened_ms", inc->opened_ms).ki("updated_ms", inc->last_update_ms);
+  if (own) w.key("centroid").null().key("radius_m").null();
+  else w.key("centroid").arr().num(inc->centroid.lat).num(inc->centroid.lon).end_arr().kn("radius_m", inc->radius_m);
+  w.ki("opened_ms", inc->opened_ms).ki("updated_ms", inc->last_update_ms);
   w.kid("recommended", c.recommended).kn("recommended_m", c.recommended_m).kid("responder", c.responder);
   const auto* rec = c.recommended < pf.responders().size() ? &pf.responders()[c.recommended] : nullptr;
   w.kv("recommended_name", rec ? rec->name : std::string());
@@ -177,25 +227,40 @@ void incident_json(JsonOut& w, const Platform& pf, const IncidentCase& c, bool f
   time_or_null(w, "resolved_ms", c.resolved_ms);
   w.kv("resolution", c.resolution);
   w.key("affected").arr();
-  for (auto u : inc->affected) w.uint(u);
+  for (auto u : inc->affected) if (!own || u == self) w.uint(u);
   w.end_arr();
   w.key("affected_names").arr();
-  for (auto u : inc->affected) { const User* usr = pf.user(u); w.str(usr ? usr->display_name : std::string()); }
+  for (auto u : inc->affected)
+    if (!own || u == self) { const User* usr = pf.user(u); w.str(usr ? usr->display_name : std::string()); }
   w.end_arr();
   w.key("alerts").arr();
-  for (auto a : inc->alerts) w.uint(a);
+  for (auto a : inc->alerts) if (shown(a)) w.uint(a);
   w.end_arr();
   bool late = false;
-  for (auto a : inc->alerts) if (a < pf.alerts().size() && pf.alerts()[a].late) late = true;
+  for (auto a : inc->alerts) if (shown(a) && pf.alerts()[a].late) late = true;
   w.kb("late", late);
   w.key("route");
-  if (c.responder != kNoId) route_json(w, c.route); else w.null();
+  if (c.responder != kNoId && !own) route_json(w, c.route); else w.null();
   if (full) {
     w.key("history").arr();
     for (const auto& [t, s] : c.history) w.arr().integer(t).str(to_string(s)).end_arr();
     w.end_arr();
   }
   w.end_obj();
+}
+
+// Who may see an incident, and how much of it: staff and the assigned
+// responder all of it, a person it concerns only their own part.
+enum class IncidentView { None, Own, Full };
+
+IncidentView incident_view(const Platform& pf, const Principal& me, const IncidentCase& c) {
+  if (is_staff(me)) return IncidentView::Full;
+  const User* mu = pf.user(me.id);
+  if (me.role == Role::Responder && mu && mu->unit != kNoId && c.responder == mu->unit) return IncidentView::Full;
+  const auto* inc = pf.correlator().get(c.id);
+  if (inc && std::find(inc->affected.begin(), inc->affected.end(), me.id) != inc->affected.end())
+    return IncidentView::Own;
+  return IncidentView::None;
 }
 
 void responder_json(JsonOut& w, const Platform& pf, const dispatch::Responder& r) {
@@ -347,6 +412,16 @@ bool Api::session_for(const net::Request& req, Principal* out, std::string* key)
   return true;
 }
 
+void Api::audit_view(const Principal& me, UserId subject, const char* view) {
+  if (subject == me.id) return;
+  Platform& P = pf();
+  const std::string k = std::to_string(me.id) + ":" + std::to_string(subject) + ":" + view;
+  int64_t* last = live_audit_.get(k);
+  if (last && P.now() - *last <= 600'000 && P.now() >= *last) return;
+  P.audit_access(me, subject, view, true);
+  live_audit_.put(k, P.now());
+}
+
 std::string Api::login_token(const std::string& username, const std::string& password) {
   const User* u = pf().authenticate(username, password);
   if (!u) return {};
@@ -493,31 +568,19 @@ net::Response Api::route(const net::Request& req) {
       const bool vis = P.may_view_location(me, u.id);
       if (!vis && u.id != me.id && !staff) continue;
       write_user(w, P, u, vis, false);
-      if (vis && u.id != me.id && u.sharing) {
-        const std::string k = std::to_string(me.id) + ":" + std::to_string(u.id);
-        int64_t* last = live_audit_.get(k);
-        if (!last || P.now() - *last > 600'000 || P.now() < *last) {
-          P.audit_access(me, u.id, "live", true);
-          live_audit_.put(k, P.now());
-        }
-      }
+      if (vis && u.sharing) audit_view(me, u.id, "live");
     }
     w.end_arr();
+    // Unit positions are for the people who coordinate or are the units.
     w.key("responders").arr();
-    for (const auto& r : P.responders().all()) responder_json(w, P, r);
+    if (staff || me.role == Role::Responder)
+      for (const auto& r : P.responders().all()) responder_json(w, P, r);
     w.end_arr();
     w.key("incidents").arr();
     for (const auto& c : P.cases()) {
       if (c.id == kNoId) continue;
-      if (!staff) {
-        const User* mu = P.user(me.id);
-        const bool mine = me.role == Role::Responder && mu && mu->unit != kNoId && c.responder == mu->unit;
-        bool about_me = false;
-        if (const auto* inc = P.correlator().get(c.id))
-          about_me = std::find(inc->affected.begin(), inc->affected.end(), me.id) != inc->affected.end();
-        if (!mine && !about_me) continue;
-      }
-      incident_json(w, P, c, false);
+      const IncidentView v = incident_view(P, me, c);
+      if (v != IncidentView::None) incident_json(w, P, c, false, v == IncidentView::Own ? me.id : kNoId);
     }
     w.end_arr();
     w.key("groups").arr();
@@ -549,7 +612,9 @@ net::Response Api::route(const net::Request& req) {
       w.obj().key("users").arr();
       for (const auto& u : P.users()) {
         if (!staff && u.id != me.id && !(me.role == Role::Responder && P.may_view_location(me, u.id))) continue;
-        write_user(w, P, u, P.may_view_location(me, u.id), false);
+        const bool vis = P.may_view_location(me, u.id);
+        write_user(w, P, u, vis, false);
+        if (vis && u.role == Role::Tourist && u.sharing) audit_view(me, u.id, "list");
       }
       w.end_arr().end_obj();
       return json(200, w.take());
@@ -573,9 +638,10 @@ net::Response Api::route(const net::Request& req) {
       return json(200, w.take());
     }
     if (sub.empty() && m == "PATCH") {
+      // Every field the request carries, in order; the first refusal stops it.
       if (jhas(b, "active")) { Outcome o = P.set_active(me, uid, jbool(b, "active", true)); if (!o.ok()) return from(o); }
-      if (jhas(b, "display_name")) return from(P.set_display_name(me, uid, jstr(b, "display_name")));
-      if (jhas(b, "password")) return from(P.set_password(me, uid, jstr(b, "password")));
+      if (jhas(b, "display_name")) { Outcome o = P.set_display_name(me, uid, jstr(b, "display_name")); if (!o.ok()) return from(o); }
+      if (jhas(b, "password")) { Outcome o = P.set_password(me, uid, jstr(b, "password")); if (!o.ok()) return from(o); }
       return from(Outcome::good(uid));
     }
     if (sub == "trail" && m == "GET") {
@@ -583,9 +649,9 @@ net::Response Api::route(const net::Request& req) {
       P.audit_access(me, uid, "trail", ok);
       if (!ok) return error(403, "not allowed to view this user's movement history");
       const Tracked* tr = P.tracked(uid);
-      const Timestamp from_t = Timestamp(std::atoll(req.query_param("from").c_str()));
-      const std::string to_s = req.query_param("to");
-      const Timestamp to_t = to_s.empty() ? P.now() : Timestamp(std::atoll(to_s.c_str()));
+      Timestamp from_t = 0, to_t = 0;
+      if (!qint(req, "from", 0, &from_t) || !qint(req, "to", P.now(), &to_t))
+        return error(400, "from and to: times in milliseconds");
       JsonOut w;
       w.obj().ku("user", uid).ki("retention_ms", P.config().trail_retention_ms).key("points").arr();
       if (tr) {
@@ -614,7 +680,7 @@ net::Response Api::route(const net::Request& req) {
       f.lat = jnum(b, "lat", kNaN);
       f.lon = jnum(b, "lon", kNaN);
       f.accuracy_m = jnum(b, "accuracy_m", 10.0);
-      f.t_ms = jhas(b, "t_ms") ? Timestamp(jnum(b, "t_ms", -1)) : -1;
+      if (!jint(b, "t_ms", -1, &f.t_ms)) return error(400, "t_ms: a time in milliseconds");
       const double seq = jnum(b, "seq", 0);
       f.seq = seq > 0 && seq < 9e15 ? uint64_t(seq) : 0;
       const FixResult fr = P.ingest_fix(me, uid, f);
@@ -658,14 +724,17 @@ net::Response Api::route(const net::Request& req) {
     uint32_t gid = 0;
     if (!parse_id(at(2), &gid) || !P.group_rec(gid)) return error(404, "no such group");
     if (at(3) == "members" && m == "POST") {
-      const auto u = uint32_t(jnum(b, "user", -1));
+      uint32_t u = kNoId;
+      if (!jid(b, "user", &u)) return error(400, "user: a user id");
       return from(jstr(b, "action") == "remove" ? P.remove_member(me, gid, u) : P.add_member(me, gid, u));
     }
     if (seg.size() == 3 && m == "PATCH") {
       const GroupRecord* g = P.group_rec(gid);
+      int64_t confirm_ms = 0;
+      if (!to_int64(jnum(b, "confirm_s", double(g->cfg.confirm_ms) / 1000.0) * 1000.0, &confirm_ms))
+        return error(400, "confirm_s out of range");
       return from(P.set_group_thresholds(me, gid, jnum(b, "proximity_m", g->cfg.proximity_m),
-                                         jnum(b, "straggler_m", g->cfg.straggler_m),
-                                         int64_t(jnum(b, "confirm_s", double(g->cfg.confirm_ms) / 1000.0) * 1000.0)));
+                                         jnum(b, "straggler_m", g->cfg.straggler_m), confirm_ms));
     }
     return error(404, "unknown group endpoint");
   }
@@ -695,11 +764,16 @@ net::Response Api::route(const net::Request& req) {
     auto zone_input = [&](Platform::ZoneInput* zi, std::string* err) -> bool {
       zi->name = jstr(b, "name");
       if (!zone_kind_from(jstr(b, "kind"), &zi->kind)) { *err = "kind must be restricted, caution, advisory or safe"; return false; }
-      zi->severity = int(jnum(b, "severity", 3));
-      zi->max_dwell_s = int64_t(jnum(b, "max_dwell_s", 0));
-      zi->active_from = Timestamp(jnum(b, "active_from_ms", 0));
+      int64_t sev = 0;
       const util::Json* to = b.find("active_to_ms");
-      zi->active_to = !to || to->type == util::Json::Type::Null ? kForever : Timestamp(to->number_or(0));
+      if (!jint(b, "severity", 3, &sev) || !jint(b, "max_dwell_s", 0, &zi->max_dwell_s) ||
+          !jint(b, "active_from_ms", 0, &zi->active_from) ||
+          !(!to || to->type == util::Json::Type::Null ? (zi->active_to = kForever, true)
+                                                      : jint(b, "active_to_ms", 0, &zi->active_to))) {
+        *err = "severity, max_dwell_s, active_from_ms and active_to_ms must be numbers in range";
+        return false;
+      }
+      zi->severity = int(std::clamp<int64_t>(sev, -1, 99));   // outside 1..5 is refused by the platform
       const util::Json* ring = b.find("ring");
       if (!ring || ring->type != util::Json::Type::Array) { *err = "ring: array of [lat, lon]"; return false; }
       for (const auto& p : ring->arr) {
@@ -717,6 +791,7 @@ net::Response Api::route(const net::Request& req) {
     uint32_t zid = 0;
     if (!parse_id(at(2), &zid) || !P.zones().get(zid)) return error(404, "no such zone");
     if (seg.size() == 3 && m == "GET") {
+      if (!staff) return error(403, "operators and administrators only");   // it lists incidents and who caused changes
       JsonOut w;
       w.obj().key("zone");
       zone_json(w, P, *P.zones().get(zid), true);
@@ -761,8 +836,10 @@ net::Response Api::route(const net::Request& req) {
         return from(P.set_zone_validity(me, zid, std::min(z->validity.from, P.now()), std::max<Timestamp>(P.now(), 1)));
       }
       const util::Json* to = b.find("to_ms");
-      return from(P.set_zone_validity(me, zid, Timestamp(jnum(b, "from_ms", 0)),
-                                      !to || to->type == util::Json::Type::Null ? kForever : Timestamp(to->number_or(0))));
+      Timestamp from_t = 0, to_t = kForever;
+      if (!jint(b, "from_ms", 0, &from_t) || (to && to->type != util::Json::Type::Null && !jint(b, "to_ms", 0, &to_t)))
+        return error(400, "from_ms and to_ms: times in milliseconds");
+      return from(P.set_zone_validity(me, zid, from_t, to_t));
     }
     return error(404, "unknown zone endpoint");
   }
@@ -787,6 +864,7 @@ net::Response Api::route(const net::Request& req) {
         const AlertRecord& r = P.alerts()[id];
         if (!staff && r.a.tourist != me.id) continue;
         alert_json(w, P, r, pr);
+        if (!r.redacted && r.a.tourist != kNoId) audit_view(me, r.a.tourist, "alerts");
       }
       w.end_arr().end_obj();
       return json(200, w.take());
@@ -801,19 +879,14 @@ net::Response Api::route(const net::Request& req) {
 
   // ── incidents ─────────────────────────────────────────────────────────────
   if (res == "incidents") {
-    const User* mu = P.user(me.id);
-    auto visible = [&](const IncidentCase& c) {
-      if (staff) return true;
-      if (me.role == Role::Responder && mu && mu->unit != kNoId && c.responder == mu->unit) return true;
-      const auto* inc = P.correlator().get(c.id);
-      return inc && std::find(inc->affected.begin(), inc->affected.end(), me.id) != inc->affected.end();
-    };
     if (seg.size() == 2 && m == "GET") {
       JsonOut w;
       w.obj().key("incidents").arr();
       for (size_t i = P.cases().size(); i-- > 0;) {
         const auto& c = P.cases()[i];
-        if (c.id != kNoId && visible(c)) incident_json(w, P, c, false);
+        if (c.id == kNoId) continue;
+        const IncidentView v = incident_view(P, me, c);
+        if (v != IncidentView::None) incident_json(w, P, c, false, v == IncidentView::Own ? me.id : kNoId);
       }
       w.end_arr().end_obj();
       return json(200, w.take());
@@ -822,12 +895,19 @@ net::Response Api::route(const net::Request& req) {
     if (!parse_id(at(2), &iid) || !P.incident_case(iid)) return error(404, "no such incident");
     const IncidentCase& c = *P.incident_case(iid);
     if (seg.size() == 3 && m == "GET") {
-      if (!visible(c)) return error(403, "not allowed");
+      const IncidentView v = incident_view(P, me, c);
+      if (v == IncidentView::None) return error(403, "not allowed");
+      const UserId self = v == IncidentView::Own ? me.id : kNoId;
       JsonOut w;
       w.obj().key("incident");
-      incident_json(w, P, c, true);
+      incident_json(w, P, c, true, self);
       w.key("alerts").arr();
-      for (AlertId a : P.correlator().get(iid)->alerts) alert_json(w, P, P.alerts()[a], 0);
+      for (AlertId a : P.correlator().get(iid)->alerts) {
+        const AlertRecord& r = P.alerts()[a];
+        if (self != kNoId && r.a.tourist != self) continue;
+        alert_json(w, P, r, 0);
+        if (!r.redacted && r.a.tourist != kNoId) audit_view(me, r.a.tourist, "incident");
+      }
       w.end_arr();
       w.key("timeline").arr();
       for (const auto& e : P.log()) {
@@ -836,16 +916,19 @@ net::Response Api::route(const net::Request& req) {
           const auto& al = P.correlator().get(iid)->alerts;
           rel = std::find(al.begin(), al.end(), e.alert) != al.end();
         }
-        if (!rel) continue;
+        if (!rel || (self != kNoId && e.user != kNoId && e.user != self)) continue;
         w.obj().ku("seq", e.seq).ki("t_ms", e.t_ms).ki("recorded_ms", e.recorded_ms).kv("kind", to_string(e.kind))
-            .kv("detail", e.detail).kb("late", e.late).ku("evidence_index", e.evidence_index).end_obj();
+            .kid("user", e.user).kv("detail", e.detail).kb("late", e.late).ku("evidence_index", e.evidence_index).end_obj();
       }
       w.end_arr().end_obj();
       return json(200, w.take());
     }
     if (at(3) == "ack" && m == "POST") return from(P.acknowledge_incident(me, iid));
-    if (at(3) == "assign" && m == "POST")
-      return from(P.assign_incident(me, iid, jhas(b, "responder") ? uint32_t(jnum(b, "responder", -1)) : kNoId));
+    if (at(3) == "assign" && m == "POST") {
+      uint32_t rid = kNoId;   // absent: the recommended unit
+      if (jhas(b, "responder") && !jid(b, "responder", &rid)) return error(400, "responder: a responder id");
+      return from(P.assign_incident(me, iid, rid));
+    }
     if (at(3) == "resolve" && m == "POST") return from(P.resolve_incident(me, iid, jstr(b, "note")));
     return error(404, "unknown incident endpoint");
   }
@@ -875,6 +958,7 @@ net::Response Api::route(const net::Request& req) {
   // ── responders ────────────────────────────────────────────────────────────
   if (res == "responders") {
     if (seg.size() == 2 && m == "GET") {
+      if (!staff && me.role != Role::Responder) return error(403, "operators, administrators and responders only");
       JsonOut w;
       w.obj().key("responders").arr();
       for (const auto& r : P.responders().all()) responder_json(w, P, r);
@@ -899,8 +983,10 @@ net::Response Api::route(const net::Request& req) {
   // ── roads (for drawing the network under the map) ─────────────────────────
   if (res == "roads" && m == "GET") {
     const graph::RoadGraph& g = P.roads();
-    const geo::Bbox bb{std::atof(req.query_param("min_lat").c_str()), std::atof(req.query_param("min_lon").c_str()),
-                       std::atof(req.query_param("max_lat").c_str()), std::atof(req.query_param("max_lon").c_str())};
+    geo::Bbox bb{};
+    if (!qnum(req, "min_lat", 0, &bb.min_lat) || !qnum(req, "min_lon", 0, &bb.min_lon) ||
+        !qnum(req, "max_lat", 0, &bb.max_lat) || !qnum(req, "max_lon", 0, &bb.max_lon))
+      return error(400, "min_lat, min_lon, max_lat, max_lon: numbers");
     JsonOut w;
     w.obj().ku("nodes", g.node_count()).ku("edges", g.edge_count()).key("segments").arr();
     size_t n = 0;
@@ -925,7 +1011,8 @@ net::Response Api::route(const net::Request& req) {
   // ── history and evidence ──────────────────────────────────────────────────
   if (res == "history" && m == "GET") {
     if (!staff) return error(403, "operators and administrators only");
-    const Timestamp t = Timestamp(std::atoll(req.query_param("t").c_str()));
+    Timestamp t = 0;
+    if (!qint(req, "t", 0, &t)) return error(400, "t: a time in milliseconds");
     JsonOut w;
     w.obj().ki("t_ms", t).ki("now_ms", P.now());
     w.kv("semantics", "what the system knew at t: points and records received by t (transaction time)");
@@ -979,8 +1066,9 @@ net::Response Api::route(const net::Request& req) {
     const std::string uq = req.query_param("user");
     const std::string kind = req.query_param("kind");
     const bool lamport = req.query_param("order") == "lamport";
-    size_t limit = size_t(std::max(1L, std::min(2000L, std::atol(req.query_param("limit").c_str()))));
-    if (req.query_param("limit").empty()) limit = 400;
+    int64_t lim = 400;
+    if (!qint(req, "limit", 400, &lim)) return error(400, "limit: a number");
+    const size_t limit = size_t(std::clamp<int64_t>(lim, 1, 2000));
     uint32_t only = kNoId;
     if (!uq.empty() && !parse_id(uq, &only)) return error(400, "bad user");
     if (!staff) only = me.id;
