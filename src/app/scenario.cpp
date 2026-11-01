@@ -297,11 +297,11 @@ ScenarioRunner::ScenarioRunner(std::unique_ptr<Platform>* world, std::function<v
 
 ScenarioRunner::~ScenarioRunner() = default;
 
-bool ScenarioRunner::load(const std::string& id, std::string* err) {
+bool ScenarioRunner::load(const std::string& id, std::string* err, bool fresh) {
   bool known = false;
   for (const auto& c : catalogue()) if (c.id == id) { known = true; duration_ms_ = c.duration_ms; }
   if (!known) { if (err) *err = "unknown scenario"; return false; }
-  rebuild_();
+  if (!fresh) rebuild_();
   Platform& pf = **world_;
   if (!zone_named(pf, "Sonapani Waterfall Cliff") || !zone_named(pf, "Deep Water 4")) {
     if (err) *err = "scenarios need the Shillong zone set (data/zones/shillong_osm.geojson)";

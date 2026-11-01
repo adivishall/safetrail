@@ -38,7 +38,7 @@ const ROUTES = [
 ];
 
 const ctx = {
-  me: null, mode: 'demo', live: null, listeners: new Set(),
+  me: null, mode: 'demo', public: false, live: null, listeners: new Set(),
   get staff() { return this.me && STAFF.includes(this.me.role); },
   get admin() { return this.me && this.me.role === 'admin'; },
   onLive(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
@@ -57,6 +57,7 @@ async function boot() {
   try {
     const s = await get('/api/session');
     ctx.mode = s.mode;
+    ctx.public = !!s.public;
     if (s.user) { ctx.me = s.user; startApp(); }
     else showLogin();
   } catch (e) {
@@ -89,7 +90,9 @@ function showLogin(message) {
     h('label', { class: 'field' }, 'Password', pass),
     err,
     h('button', { class: 'primary', type: 'submit' }, 'Sign in'),
-    h('p', { class: 'hint' }, 'Accounts and passwords are printed by safetrail_server when it starts and kept in var/demo-credentials.txt (never in the repository). Location sharing is opt-in: tourists are tracked only after they consent and start a session.'));
+    ctx.public
+      ? h('p', { class: 'public-note' }, 'Public demonstration. Every tourist here is simulated; no real person is tracked. Everything resets when the server restarts or wakes from sleep, so nothing you enter is kept. Accounts are issued by the project owner.')
+      : h('p', { class: 'hint' }, 'Accounts and passwords are printed by safetrail_server when it starts and kept in var/demo-credentials.txt (never in the repository). Location sharing is opt-in: tourists are tracked only after they consent and start a session.'));
   mount(root, h('div', { class: 'login' }, form));
 }
 
@@ -109,8 +112,8 @@ function startApp() {
     h('button', { class: 'ghost small', onclick: logout }, 'Sign out'));
   const top = h('header', { class: 'topbar' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }), h('span', null, 'SafeTrail'), h('small', null, 'operations')),
-    h('span', { class: 'mode-tag ' + ctx.mode, title: ctx.mode === 'demo' ? 'Demonstration mode: records marked SIM are simulated people; DEMO marks fixtures.' : 'Production mode' },
-      ctx.mode === 'demo' ? 'demo data' : 'production'),
+    h('span', { class: 'mode-tag ' + ctx.mode, title: ctx.public ? 'Public demonstration: every person is simulated, and all state resets when the server restarts or wakes from sleep.' : ctx.mode === 'demo' ? 'Demonstration mode: records marked SIM are simulated people; DEMO marks fixtures.' : 'Production mode' },
+      ctx.public ? 'public demo · resets' : ctx.mode === 'demo' ? 'demo data' : 'production'),
     clockEl, runbar, h('div', { class: 'spacer' }), who);
   const main = h('main', { class: 'main' });
   mount(root, h('div', { class: 'shell' }, top, nav, main));

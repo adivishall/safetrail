@@ -53,7 +53,10 @@ class ScenarioRunner {
 
   static std::vector<ScenarioInfo> catalogue();
 
-  bool load(const std::string& id, std::string* err);   // resets the world first
+  // Resets the world first -- unless `fresh`: the world was just built and is
+  // untouched, so it is used as it is (server start-up, where building it twice
+  // doubled a cold start on a small host).
+  bool load(const std::string& id, std::string* err, bool fresh = false);
   void start();
   void pause();
   void resume();

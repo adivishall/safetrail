@@ -13,6 +13,7 @@ import hashlib
 import http.cookiejar
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -111,6 +112,68 @@ def slow_client(port, result):
         pass                                   # reset by the server: also closed
     result["closed_after_s"] = time.monotonic() - t0
     s.close()
+
+
+def public_mode_checks():
+    """The hosted (--public) configuration as Render runs it: secrets only
+    from the environment, port from $PORT, client address from the proxy's
+    header, Secure cookie and HSTS, nothing on disk, clean SIGTERM."""
+    work = tempfile.mkdtemp(prefix="safetrail-public-")
+    var = os.path.join(work, "var")
+    bare = {k: v for k, v in os.environ.items() if not k.startswith("SAFETRAIL_")}
+    r = subprocess.run([SERVER, "--public", "--port", str(free_port()), "--var", var], cwd=ROOT, env=bare,
+                       capture_output=True, text=True, timeout=60)
+    ok(r.returncode == 2 and "SAFETRAIL_ADMIN_PASSWORD" in r.stderr and not os.path.exists(var),
+       "public mode refuses to start without its secrets, names them, writes nothing")
+    secrets = {"SAFETRAIL_ADMIN_PASSWORD": "pub-admin-secret-0123456789",
+               "SAFETRAIL_OPERATOR_PASSWORD": "pub-operator-secret-0123456789",
+               "SAFETRAIL_RESPONDER_PASSWORD": "pub-responder-secret-0123456789",
+               "SAFETRAIL_TOURIST_PASSWORD": "pub-tourist-secret-0123456789"}
+    port = free_port()
+    env = dict(bare, PORT=str(port), **secrets)
+    proc = subprocess.Popen([SERVER, "--public", "--client-ip-header", "CF-Connecting-IP", "--var", var], cwd=ROOT,
+                            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    base = "http://127.0.0.1:%d" % port
+    try:
+        for _ in range(150):
+            try:
+                urllib.request.urlopen(base + "/api/health", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+        c = Client(base)
+        st, h = c.json("GET", "/api/health")
+        ok(st == 200 and h["public"] is True, "listens on $PORT and reports public mode")
+        req = urllib.request.Request(base + "/api/login", method="POST",
+                                     data=json.dumps({"username": "operator", "password": secrets["SAFETRAIL_OPERATOR_PASSWORD"]}).encode())
+        req.add_header("X-SafeTrail-Request", "1")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("CF-Connecting-IP", "203.0.113.77")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            cookie = resp.headers.get("Set-Cookie", "")
+            hsts = resp.headers.get("Strict-Transport-Security", "")
+        ok("; Secure" in cookie and "HttpOnly" in cookie and "max-age=" in hsts, "Secure session cookie and HSTS")
+        req = urllib.request.Request(base + "/api/session")
+        req.add_header("CF-Connecting-IP", "203.0.113.77")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            seen = json.loads(resp.read())["client_address"]
+        ok(seen == "203.0.113.77", "the client address comes from the proxy header (the peer is a trusted proxy)")
+        limited = 0
+        for _ in range(30):
+            if c.call("GET", "/api/session")[0] == 429:
+                limited += 1
+        ok(limited > 0, "anonymous API requests are rate limited")
+    finally:
+        proc.send_signal(signal.SIGTERM)
+        t0 = time.monotonic()
+        try:
+            out = proc.communicate(timeout=10)[0].decode()
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out = proc.communicate()[0].decode()
+    ok(proc.returncode == 0 and "stopped." in out and time.monotonic() - t0 < 5, "SIGTERM stops it cleanly")
+    ok(not any(v in out for v in secrets.values()), "no secret appears in the server's output")
+    ok(not os.path.exists(var), "public mode writes no credentials file")
 
 
 def main():
@@ -218,6 +281,7 @@ def main():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+    public_mode_checks()
     print("%s api/e2e %d checks, %d failed" % ("[ ok ]" if not failures else "[FAIL]", checks, failures))
     return 1 if failures else 0
 

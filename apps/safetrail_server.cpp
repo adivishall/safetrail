@@ -13,6 +13,13 @@
 // its environment variable (SAFETRAIL_ADMIN_PASSWORD, ...); failing that, from
 // var/demo-credentials.txt (git-ignored, mode 0600) if an earlier run created
 // it; failing that, it is generated at random and written there.
+//
+// --public is for a hosted deployment behind a TLS-terminating proxy (Render;
+// docs/final/DEPLOYMENT_GUIDE.md). Every account's password must then come
+// from the environment -- the server refuses to start otherwise, and never
+// generates, writes or prints one -- and it turns on Secure cookies with HSTS,
+// request rate limits, and the console's "simulated people, state resets"
+// notice. The port comes from --port, else $PORT, else 8080.
 #include <sys/stat.h>
 
 #include <chrono>
@@ -46,14 +53,38 @@ struct Options {
   std::string var = "var";
   std::string scenario = "walkthrough";
   bool secure_cookies = false;
+  bool port_given = false;
+  bool public_demo = false;
+  uint32_t pbkdf2_iterations = 0;   // 0: the platform default (120,000)
+  std::string client_ip_header;
+  std::vector<std::string> trusted_proxies;
 };
+
+bool parse_port(const char* s, int* out) {
+  if (!s || !*s) return false;
+  long v = 0;
+  for (const char* p = s; *p; ++p) {
+    if (*p < '0' || *p > '9' || v > 65535) return false;
+    v = v * 10 + (*p - '0');
+  }
+  if (v < 1 || v > 65535) return false;
+  *out = int(v);
+  return true;
+}
 
 void usage() {
   std::printf(
       "safetrail_server [--host 127.0.0.1] [--port 8080] [--mode demo|production]\n"
       "                 [--web web/app] [--zones FILE] [--roads FILE] [--var DIR]\n"
       "                 [--scenario walkthrough|normal|entry|separation|offline|none]\n"
-      "                 [--secure-cookies]   (only behind a TLS-terminating proxy)\n");
+      "                 [--secure-cookies]   (only behind a TLS-terminating proxy)\n"
+      "                 [--public] [--client-ip-header NAME] [--trusted-proxy CIDR]...\n"
+      "  --public            hosted deployment: passwords only from SAFETRAIL_*_PASSWORD (16+ chars),\n"
+      "                      none generated or printed; Secure cookies, HSTS, rate limits\n"
+      "  --client-ip-header  take the client address from this header (e.g. CF-Connecting-IP),\n"
+      "                      only on connections from a trusted proxy (default: private ranges)\n"
+      "  --pbkdf2-iterations N  password-hash cost (default 120000; at least 10000)\n"
+      "  port                --port, else $PORT, else 8080\n");
 }
 
 // "username password" lines; '#' comments.
@@ -82,6 +113,9 @@ void load_credentials(const std::string& path, std::vector<app::StaffAccount>& s
 }  // namespace
 
 int main(int argc, char** argv) {
+  // Line-buffered even into a pipe, so a hosting platform's log shows each line
+  // as it is printed, not when the process exits.
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);
   Options o;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -90,7 +124,10 @@ int main(int argc, char** argv) {
       return argv[++i];
     };
     if (a == "--host") o.host = next("--host");
-    else if (a == "--port") o.port = std::atoi(next("--port").c_str());
+    else if (a == "--port") {
+      if (!parse_port(next("--port").c_str(), &o.port)) { std::fprintf(stderr, "--port: 1-65535\n"); return 2; }
+      o.port_given = true;
+    }
     else if (a == "--mode") {
       const std::string m = next("--mode");
       if (m != "demo" && m != "production") { usage(); return 2; }
@@ -101,10 +138,30 @@ int main(int argc, char** argv) {
     else if (a == "--var") o.var = next("--var");
     else if (a == "--scenario") o.scenario = next("--scenario");
     else if (a == "--secure-cookies") o.secure_cookies = true;
+    else if (a == "--public") o.public_demo = true;
+    else if (a == "--pbkdf2-iterations") {
+      const std::string v = next("--pbkdf2-iterations");
+      char* end = nullptr;
+      const unsigned long n = std::strtoul(v.c_str(), &end, 10);
+      if (v.empty() || *end || n < 10'000 || n > 10'000'000) { std::fprintf(stderr, "--pbkdf2-iterations: 10000 to 10000000\n"); return 2; }
+      o.pbkdf2_iterations = uint32_t(n);
+    }
+    else if (a == "--client-ip-header") o.client_ip_header = next("--client-ip-header");
+    else if (a == "--trusted-proxy") {
+      const std::string c = next("--trusted-proxy");
+      uint32_t network = 0, mask = 0;
+      if (!app::parse_cidr(c, &network, &mask)) { std::fprintf(stderr, "--trusted-proxy: an IPv4 CIDR such as 10.0.0.0/8\n"); return 2; }
+      o.trusted_proxies.push_back(c);
+    }
     else if (a == "--help" || a == "-h") { usage(); return 0; }
     else { usage(); return 2; }
   }
-  if (o.host != "127.0.0.1")
+  if (!o.port_given) {
+    const char* env_port = std::getenv("PORT");
+    if (env_port && !parse_port(env_port, &o.port)) { std::fprintf(stderr, "PORT: 1-65535\n"); return 2; }
+  }
+  if (o.public_demo) o.secure_cookies = true;
+  if (o.host != "127.0.0.1" && !o.public_demo)
     std::printf("WARNING: listening on %s, not loopback. There is no TLS: put a TLS-terminating proxy in front\n"
                 "         before exposing this to any network (docs/final/SECURITY_AND_PRIVACY.md).\n",
                 o.host.c_str());
@@ -112,10 +169,31 @@ int main(int argc, char** argv) {
   // ── Credentials ──────────────────────────────────────────────────────────
   std::vector<std::string> generated, still;
   std::vector<app::StaffAccount> staff = app::staff_from_environment(o.demo, &generated);
-  ::mkdir(o.var.c_str(), 0700);
+  if (o.public_demo) {
+    // Public: every password from the deployment's secrets, none generated.
+    // Name the missing variables, never print a value.
+    std::vector<std::string> missing;
+    for (const auto& s : staff) {
+      std::string env = "SAFETRAIL_" + s.username + "_PASSWORD";
+      for (char& c : env) if (c >= 'a' && c <= 'z') c = char(c - 'a' + 'A');
+      const char* v = std::getenv(env.c_str());
+      if (!v || std::strlen(v) < 16) missing.push_back(env);
+    }
+    if (!missing.empty()) {
+      std::fprintf(stderr, "--public needs every account's password from a secret of at least 16 characters; "
+                           "missing or too short:");
+      for (const auto& m : missing) std::fprintf(stderr, " %s", m.c_str());
+      std::fprintf(stderr, "\n");
+      return 2;
+    }
+    generated.clear();
+  }
   const std::string cred_path = o.var + "/demo-credentials.txt";
-  load_credentials(cred_path, staff, generated, &still);
-  if (!still.empty() || !generated.empty()) {
+  if (!o.public_demo) {
+    ::mkdir(o.var.c_str(), 0700);
+    load_credentials(cred_path, staff, generated, &still);
+  }
+  if (!o.public_demo && (!still.empty() || !generated.empty())) {
     std::ofstream f(cred_path, std::ios::trunc);
     f << "# SafeTrail local credentials -- generated, git-ignored, never commit.\n"
       << "# Set SAFETRAIL_<ROLE>_PASSWORD to override. Delete this file to regenerate.\n";
@@ -132,6 +210,7 @@ int main(int argc, char** argv) {
   wo.roads_path = o.roads;
   wo.demo = o.demo;
   wo.staff = staff;
+  if (o.pbkdf2_iterations) wo.config.pbkdf2_iterations = o.pbkdf2_iterations;
   std::unique_ptr<app::Platform> world;
   std::string err;
   const auto t0 = std::chrono::steady_clock::now();
@@ -146,7 +225,7 @@ int main(int argc, char** argv) {
       auto w = app::build_world(wo, &e);
       if (w) world = std::move(w);
     });
-    if (o.scenario != "none" && !runner->load(o.scenario, &err))
+    if (o.scenario != "none" && !runner->load(o.scenario, &err, /*fresh=*/true))
       std::fprintf(stderr, "scenario %s not loaded: %s\n", o.scenario.c_str(), err.c_str());
   }
 
@@ -154,6 +233,10 @@ int main(int argc, char** argv) {
   ao.web_root = o.web;
   ao.demo = o.demo;
   ao.secure_cookies = o.secure_cookies;
+  ao.public_demo = o.public_demo;
+  ao.limits.enabled = o.public_demo;
+  ao.client_ip_header = o.client_ip_header;
+  if (!o.trusted_proxies.empty()) ao.trusted_proxies = o.trusted_proxies;
   app::Api api(ao, &world, runner.get());
 
   net::Server server;
@@ -164,7 +247,11 @@ int main(int argc, char** argv) {
   std::printf("SafeTrail %s mode — http://%s:%d  (world built in %.1f s: %zu zones, %zu road junctions)\n",
               o.demo ? "demo" : "production", o.host.c_str(), server.port(), load_s,
               world->zones().all_ids().size(), world->roads().node_count());
-  std::printf("Accounts (passwords from the environment or %s):\n", cred_path.c_str());
+  if (o.public_demo)
+    std::printf("Public mode: Secure cookies, HSTS, rate limits; client address from %s; every person is simulated, "
+                "and all state resets when the process restarts.\n",
+                o.client_ip_header.empty() ? "the TCP peer" : o.client_ip_header.c_str());
+  std::printf("Accounts (passwords from the environment%s):\n", o.public_demo ? "" : (" or " + cred_path).c_str());
   for (const auto& s : staff) {
     bool gen = false;
     for (const auto& g : generated) if (g == s.username) gen = true;
