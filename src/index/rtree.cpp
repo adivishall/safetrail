@@ -367,6 +367,30 @@ void RTree::collect_node_boxes(std::vector<geo::Bbox>& out) const {
   collect_boxes(root_.get(), out);
 }
 
+static void describe_node(const RTree::Node* n, uint16_t depth, std::vector<NodeTrace>& out) {
+  out.push_back({n->box, depth, n->leaf, false, uint32_t(n->leaf ? n->entries.size() : n->kids.size())});
+  if (!n->leaf)
+    for (const auto& k : n->kids) describe_node(k.get(), uint16_t(depth + 1), out);
+}
+static void trace_node(const RTree::Node* n, const geo::Bbox& q, uint16_t depth,
+                       std::vector<ZoneId>& out, std::vector<NodeTrace>& visited) {
+  const bool hit = n->box.intersects(q);
+  visited.push_back({n->box, depth, n->leaf, hit, uint32_t(n->leaf ? n->entries.size() : n->kids.size())});
+  if (!hit) return;
+  if (n->leaf) {
+    for (const auto& e : n->entries) if (e.second.intersects(q)) out.push_back(e.first);
+    return;
+  }
+  for (const auto& k : n->kids) trace_node(k.get(), q, uint16_t(depth + 1), out, visited);
+}
+void RTree::describe(std::vector<NodeTrace>& out) const {
+  if (root_) describe_node(root_.get(), 0, out);
+}
+void RTree::trace_query(const geo::Bbox& q, std::vector<ZoneId>& out,
+                        std::vector<NodeTrace>& visited) const {
+  if (root_) trace_node(root_.get(), q, 0, out, visited);
+}
+
 static bool same_box(const geo::Bbox& a, const geo::Bbox& b) {
   return a.min_lat == b.min_lat && a.min_lon == b.min_lon &&
          a.max_lat == b.max_lat && a.max_lon == b.max_lon;

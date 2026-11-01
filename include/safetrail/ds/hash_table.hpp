@@ -124,6 +124,13 @@ class HashMap {
     return true;
   }
 
+  // ── Lab diagnostics ───────────────────────────────────────────────────────
+  // The slot array as it is: state 0 empty, 1 full, 2 tombstone; and the home
+  // slot a key hashes to, where its linear probe sequence starts.
+  struct SlotView { uint8_t state; K key; };
+  SlotView slot_view(size_t i) const { return {uint8_t(slots_[i].state), slots_[i].key}; }
+  size_t home_slot(const K& key) const { return H{}(key) & (slots_.size() - 1); }
+
   // Visit every live entry. Order is unspecified (it is a hash table).
   template <typename Fn>
   void for_each(Fn fn) const {

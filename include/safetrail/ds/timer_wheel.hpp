@@ -68,6 +68,15 @@ class TimerWheel {
   }
 
   size_t  pending() const { return count_; }
+  // Lab diagnostics: slot count, the current tick, and one slot's timers as
+  // (id, expiry tick) -- an expiry beyond this revolution waits for a later lap.
+  size_t  slot_count() const { return slots_; }
+  int64_t current_tick() const { return cur_tick_; }
+  std::vector<std::pair<Id, int64_t>> slot_items(size_t s) const {
+    std::vector<std::pair<Id, int64_t>> v;
+    for (const auto& e : wheel_[s]) v.emplace_back(e.id, e.expiry_tick);
+    return v;
+  }
   int64_t now() const { return start_ms_ + cur_tick_ * tick_ms_; }
 
   // Schedule `id` to fire at absolute time `deadline_ms`. Quantised to the tick

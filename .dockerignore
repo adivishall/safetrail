@@ -1,0 +1,20 @@
+# Only what the build stage compiles and the final stage copies. Everything else
+# (history, outputs, documents, local state and secrets) stays out of the image
+# and out of the build context.
+.git
+.github
+.claude
+.vercel
+.env*
+var
+build
+build-*
+public
+dashboard.html
+docs
+*.pdf
+*.pptx
+bench/plots
+data/osm/*.pbf
+data/osm/*.graph
+node_modules

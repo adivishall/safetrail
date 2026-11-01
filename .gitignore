@@ -20,3 +20,6 @@ dashboard.html
 /.vercel/
 # `.env.local` is written by `vercel link` too, and holds a token
 .env*
+
+# local runtime state of safetrail_server: generated demo credentials (mode 0600)
+/var/

@@ -1,0 +1,26 @@
+# Render Blueprint: the public SafeTrail demonstration on the FREE plan.
+# docs/final/DEPLOYMENT_GUIDE.md explains every line and the free plan's limits
+# (it sleeps after 15 idle minutes, and every restart resets all state).
+#
+# No secret is in this file. On first creation Render generates each account's
+# password (a random 256-bit value); read them in the Render Dashboard under the
+# service's Environment tab.
+services:
+  - type: web
+    name: safetrail
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: final/product-completion
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: SAFETRAIL_ADMIN_PASSWORD
+        generateValue: true
+      - key: SAFETRAIL_OPERATOR_PASSWORD
+        generateValue: true
+      - key: SAFETRAIL_RESPONDER_PASSWORD
+        generateValue: true
+      - key: SAFETRAIL_TOURIST_PASSWORD
+        generateValue: true
