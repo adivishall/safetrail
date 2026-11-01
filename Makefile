@@ -189,15 +189,21 @@ SAN_KIND  ?= address,undefined
 SAN_DIR   ?= $(BUILD)/asan
 # -fno-sanitize-recover makes UB abort rather than print-and-continue: a
 # sanitizer whose findings do not fail the build is a sanitizer nobody reads.
-SAN_FLAGS := -O1 -g -fsanitize=$(SAN_KIND) -fno-omit-frame-pointer \
-             -fno-sanitize-recover=undefined
+# float-cast-overflow is named explicitly because g++ leaves it out of
+# "undefined" (clang includes it): a client number such as 1e999 cast to int
+# is UB that only the macOS job caught until it was added here.
+SAN_FLAGS := -O1 -g -fsanitize=$(SAN_KIND),float-cast-overflow -fno-omit-frame-pointer \
+             -fno-sanitize-recover=undefined,float-cast-overflow
 SAN_OBJ   := $(patsubst src/%.cpp,$(SAN_DIR)/obj/%.o,$(SRC))
 SAN_LIB   := $(SAN_DIR)/libsafetrail.a
 SAN_BIN   := $(patsubst tests/%.cpp,$(SAN_DIR)/test/%,$(TEST_SRC))
 
+# -MMD -MP as in the main build: without them a header change left stale
+# sanitizer objects compiled against the old layout of a class, and the next
+# local run crashed in code that was fine (CI builds fresh, so never saw it).
 $(SAN_DIR)/obj/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -MMD -MP -c $< -o $@
 
 $(SAN_LIB): $(SAN_OBJ)
 	@mkdir -p $(dir $@)
@@ -205,7 +211,9 @@ $(SAN_LIB): $(SAN_OBJ)
 
 $(SAN_DIR)/test/%: tests/%.cpp $(SAN_LIB)
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -Itests $< $(SAN_LIB) -o $@
+	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -Itests -MMD -MP $< $(SAN_LIB) -o $@
+
+-include $(SAN_OBJ:.o=.d) $(SAN_BIN:=.d)
 
 asan: $(SAN_BIN)
 	@fail=0; for t in $(SAN_BIN); do ./$$t || fail=1; done; \
