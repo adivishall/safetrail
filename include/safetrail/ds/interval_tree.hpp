@@ -115,6 +115,24 @@ class IntervalTree {
     descend(root_, at, at + 1, out);
   }
 
+  // ── Lab diagnostics ───────────────────────────────────────────────────────
+  // The node array as a tree (indices; -1 = none), the rotations performed so
+  // far, and a stabbing query that records every node it entered -- the same
+  // descend() as above, so the pruning it shows is the pruning queries do.
+  struct NodeView { Timestamp low, high, max_high; int height; int32_t left, right; T value; };
+  std::vector<std::pair<int32_t, NodeView>> view() const {
+    std::vector<std::pair<int32_t, NodeView>> v;
+    collect_view(root_, v);
+    return v;
+  }
+  int32_t root_index() const { return root_; }
+  uint64_t rotations_left() const { return rot_l_; }
+  uint64_t rotations_right() const { return rot_r_; }
+  void stabbing_traced(Timestamp at, std::vector<T>& out, std::vector<int32_t>& visited) const {
+    if (at == INT64_MAX) return;
+    descend(root_, at, at + 1, out, &visited);
+  }
+
   size_t height() const { return root_ < 0 ? 0 : size_t(nodes_[size_t(root_)].height); }
 
   // Balance evidence for the report: an AVL tree must satisfy h <= 1.44 log2(n+2).
@@ -150,6 +168,7 @@ class IntervalTree {
   int32_t root_ = -1;
   size_t count_ = 0;
   uint64_t next_seq_ = 0;          // never reused, unlike a slot index
+  uint64_t rot_l_ = 0, rot_r_ = 0; // rotations performed (lab diagnostics only)
 
   // ── The order ──────────────────────────────────────────────────────────────
   // cmp_triple is what the PUBLIC operations compare on: it is monotone in the
@@ -196,6 +215,7 @@ class IntervalTree {
   }
 
   int32_t rot_right(int32_t y) {
+    ++rot_r_;
     int32_t x = nodes_[size_t(y)].left;
     nodes_[size_t(y)].left = nodes_[size_t(x)].right;
     nodes_[size_t(x)].right = y;
@@ -203,6 +223,7 @@ class IntervalTree {
     return x;
   }
   int32_t rot_left(int32_t x) {
+    ++rot_l_;
     int32_t y = nodes_[size_t(x)].right;
     nodes_[size_t(x)].right = nodes_[size_t(y)].left;
     nodes_[size_t(y)].left = x;
@@ -311,13 +332,23 @@ class IntervalTree {
   // Both prunes survive the richer key unchanged, because the total order is
   // lexicographic with `low` first: everything in the right subtree has a low at
   // least this node's, so `n.e.low >= high` still rules the whole subtree out.
-  void descend(int32_t i, Timestamp low, Timestamp high, std::vector<T>& out) const {
+  void descend(int32_t i, Timestamp low, Timestamp high, std::vector<T>& out,
+               std::vector<int32_t>* trace = nullptr) const {
     if (i < 0) return;
+    if (trace) trace->push_back(i);
     const Node& n = nodes_[size_t(i)];
     if (n.max_high <= low) return;                 // ← the augmentation earning its keep
-    descend(n.left, low, high, out);
+    descend(n.left, low, high, out, trace);
     if (n.e.low < high && low < n.e.high) out.push_back(n.e.value);
-    if (n.e.low < high) descend(n.right, low, high, out);
+    if (n.e.low < high) descend(n.right, low, high, out, trace);
+  }
+
+  void collect_view(int32_t i, std::vector<std::pair<int32_t, NodeView>>& v) const {
+    if (i < 0) return;
+    const Node& n = nodes_[size_t(i)];
+    v.push_back({i, NodeView{n.e.low, n.e.high, n.max_high, n.height, n.left, n.right, n.e.value}});
+    collect_view(n.left, v);
+    collect_view(n.right, v);
   }
 
   // `lo` and `hi` are node indices bounding this subtree in the TOTAL order

@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "safetrail/ds/hash_table.hpp"
 #include "safetrail/types.hpp"
 
 namespace safetrail::sync {
@@ -79,7 +80,15 @@ class Reconciler {
  public:
   // Idempotent: replaying the same batch must not duplicate events, because
   // flaky links mean it will happen. Returns count actually admitted.
+  //
+  // Duplicate detection is a lookup in a hash set of (counter, device) stamps --
+  // the project's own open-addressing ds::HashMap -- so it is O(1) expected per
+  // event. It used to scan the whole timeline for every incoming event, which
+  // made one merge O(n·m) for n events already held and m arriving.
   size_t merge(const std::vector<StampedEvent>& batch);
+  // The same, and appends every event actually admitted (in batch order) to
+  // `admitted`, so the caller can apply exactly the new ones.
+  size_t merge(const std::vector<StampedEvent>& batch, std::vector<StampedEvent>* admitted);
 
   // The reconciled timeline, in Lamport order.
   const std::vector<StampedEvent>& timeline() const { return timeline_; }
@@ -91,8 +100,20 @@ class Reconciler {
   Stats stats() const { return stats_; }
 
  private:
+  struct StampKey {
+    uint64_t counter = 0;
+    DeviceId device = 0;
+    bool operator==(const StampKey& o) const { return counter == o.counter && device == o.device; }
+  };
+  struct StampHash {
+    size_t operator()(const StampKey& k) const {
+      return size_t((k.counter * 0x9E3779B97F4A7C15ull) ^ (uint64_t(k.device) * 0xC2B2AE3D27D4EB4Full));
+    }
+  };
+
   LamportClock clock_;
   std::vector<StampedEvent> timeline_;
+  ds::HashMap<StampKey, uint8_t, StampHash> seen_;
   Stats stats_{};
 };
 

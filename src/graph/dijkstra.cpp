@@ -34,7 +34,7 @@ struct QItem {
   }
 };
 
-ShortestPaths run(const RoadGraph& g, NodeId source, NodeId target) {
+ShortestPaths run(const RoadGraph& g, NodeId source, NodeId target, SearchTrace* tr) {
   ShortestPaths sp;
   sp.source = source;
   sp.dist.assign(g.node_count(), kUnreachable);
@@ -49,10 +49,16 @@ ShortestPaths run(const RoadGraph& g, NodeId source, NodeId target) {
   frontier.push({0.0, source});
 
   while (!frontier.empty()) {
+    if (tr && tr->frontier.size() < tr->snapshot_limit) {
+      std::vector<std::pair<double, NodeId>> snap;
+      for (const auto& q : frontier.data()) snap.emplace_back(q.dist, q.node);
+      tr->frontier.push_back(std::move(snap));
+    }
     const QItem cur = frontier.pop();
     // Stale entry: a shorter path to `node` was found after this was queued.
-    if (cur.dist > sp.dist[size_t(cur.node)]) continue;
+    if (cur.dist > sp.dist[size_t(cur.node)]) { if (tr) ++tr->stale_pops; continue; }
     ++sp.nodes_expanded;
+    if (tr) { tr->settled.push_back(cur.node); tr->frontier_size.push_back(frontier.size()); }
     if (cur.node == target) break;   // early exit (kNoNode target never matches)
 
     for (const auto& e : g.neighbors(cur.node)) {
@@ -65,6 +71,7 @@ ShortestPaths run(const RoadGraph& g, NodeId source, NodeId target) {
         sp.dist[size_t(e.to)]   = nd;
         sp.parent[size_t(e.to)] = cur.node;
         frontier.push({nd, e.to});
+        if (tr) ++tr->pushes;
       } else if (e.weight_m > 0.0 && nd == sp.dist[size_t(e.to)] &&
                  cur.node < sp.parent[size_t(e.to)]) {
         // The positive-weight guard is not cosmetic. Rewriting a parent on an
@@ -82,11 +89,15 @@ ShortestPaths run(const RoadGraph& g, NodeId source, NodeId target) {
 }  // namespace
 
 ShortestPaths dijkstra(const RoadGraph& g, NodeId source) {
-  return run(g, source, kNoNode);
+  return run(g, source, kNoNode, nullptr);
 }
 
 ShortestPaths dijkstra(const RoadGraph& g, NodeId source, NodeId target) {
-  return run(g, source, target);
+  return run(g, source, target, nullptr);
+}
+
+ShortestPaths dijkstra(const RoadGraph& g, NodeId source, NodeId target, SearchTrace* trace) {
+  return run(g, source, target, trace);
 }
 
 }  // namespace safetrail::graph

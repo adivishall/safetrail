@@ -20,7 +20,7 @@ than the first:
 ```bash
 make test        # the suite (~20 s to run; ~1.5 min from a clean build)
 make stress      # the randomised tests at 10x their default size
-make mutation    # 22 injected bugs; every one must be caught
+make mutation    # 28 injected bugs (23 engine, in §4; 5 platform); every one must be caught
 make sanitize    # ASan+UBSan on Linux, UBSan on macOS
 make validate    # all of the above that gates a merge, in one command
 ```

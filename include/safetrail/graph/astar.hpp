@@ -16,6 +16,7 @@
 // need dividing by the max road speed to stay admissible -- noted so the trade is
 // explicit rather than a latent bug.
 #include <vector>
+#include "safetrail/graph/dijkstra.hpp"
 #include "safetrail/graph/road_graph.hpp"
 
 namespace safetrail::graph {
@@ -28,6 +29,8 @@ struct AStarResult {
 };
 
 AStarResult astar(const RoadGraph& g, NodeId source, NodeId target);
+// The same search, filling a SearchTrace (dijkstra.hpp); keys are f = g + h.
+AStarResult astar(const RoadGraph& g, NodeId source, NodeId target, SearchTrace* trace);
 
 // Does the great-circle heuristic actually under-estimate on THIS graph?
 //

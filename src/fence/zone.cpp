@@ -60,9 +60,28 @@ const char* to_string(ZoneKind k) {
 // GeoJSON FeatureCollection. Note the coordinate order: GeoJSON is [lon, lat],
 // which is the reverse of how everyone says it out loud. Getting this backwards
 // puts Meghalaya in the Indian Ocean and is the single most common import bug.
+namespace {
+bool parse_features(const util::Json& root, std::vector<Zone>& out, std::string* error);
+}  // namespace
+
 bool ZoneStore::load_geojson(const std::string& path, std::string* error) {
   util::Json root;
   if (!util::Json::parse_file(path, root, error)) return false;
+  std::vector<Zone> parsed;
+  if (!parse_features(root, parsed, error)) return false;
+  for (auto& z : parsed) add(std::move(z));
+  return true;
+}
+
+bool ZoneStore::parse_geojson(const std::string& text, std::vector<Zone>& out,
+                              std::string* error) {
+  util::Json root;
+  if (!util::Json::parse(text, root, error)) return false;
+  return parse_features(root, out, error);
+}
+
+namespace {
+bool parse_features(const util::Json& root, std::vector<Zone>& out, std::string* error) {
   const util::Json* feats = root.find("features");
   if (!feats || feats->type != util::Json::Type::Array) {
     if (error) *error = "no features array";
@@ -148,10 +167,11 @@ bool ZoneStore::load_geojson(const std::string& path, std::string* error) {
       if (error) *error = "zone '" + z.name + "': " + geo::Polygon::to_string(v);
       return false;
     }
-    add(std::move(z));
+    out.push_back(std::move(z));
   }
   return true;
 }
+}  // namespace
 
 // The matching writer.
 //

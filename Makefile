@@ -5,6 +5,10 @@
 #                    then regenerates every results table in the docs
 #   make demo        run the engine on real OSM zones, print the event stream
 #   make dashboard   write dashboard.html (self-contained; open it in a browser)
+#   make app         the operations platform: build and serve http://127.0.0.1:8080
+#                    (demo mode; APP_ARGS="--mode production" for production)
+#   make app-reset   delete var/ (generated local credentials) for a clean start
+#   make e2e         start the server on a free port and drive it over HTTP
 #   make review      the project review: brute force -> quadtree/R-tree -> same
 #                    answer -> transitions -> noise -> history -> benchmark ->
 #                    tests -> dashboard, from real runs (PAUSE=1 to step through)
@@ -61,8 +65,10 @@ LIB      := $(BUILD)/libsafetrail.a
 TEST_SRC := $(sort $(shell find tests -name '*_test.cpp'))
 TEST_BIN := $(patsubst tests/%.cpp,$(BUILD)/test/%,$(TEST_SRC))
 
-APPS     := $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench
+APPS     := $(BUILD)/safetrail_headless $(BUILD)/safetrail_bench $(BUILD)/safetrail_server
 
+
+.PHONY: app app-reset e2e
 .PHONY: all demo dashboard review bench bench-variation test stress check validate sanitize asan ubsan \
         mutation analyze cmake-build rebuild clean help manifest determinism
 
@@ -96,6 +102,15 @@ review: $(APPS)
 	@PAUSE=$(PAUSE) tools/review.sh
 
 # A single self-contained HTML file -- no server, no network, no Leaflet.
+app: $(BUILD)/safetrail_server
+	@./$(BUILD)/safetrail_server $(APP_ARGS)
+
+e2e: $(BUILD)/safetrail_server
+	@python3 tools/api_e2e.py
+
+app-reset:
+	@rm -rf var && echo "var/ removed: credentials will be regenerated on the next start"
+
 dashboard: $(BUILD)/safetrail_headless
 	@./$(BUILD)/safetrail_headless --zones data/zones/shillong_osm.geojson --tourists 60 --hours 2 --synthetic 400 --show 6 --export-html dashboard.html
 
@@ -174,15 +189,21 @@ SAN_KIND  ?= address,undefined
 SAN_DIR   ?= $(BUILD)/asan
 # -fno-sanitize-recover makes UB abort rather than print-and-continue: a
 # sanitizer whose findings do not fail the build is a sanitizer nobody reads.
-SAN_FLAGS := -O1 -g -fsanitize=$(SAN_KIND) -fno-omit-frame-pointer \
-             -fno-sanitize-recover=undefined
+# float-cast-overflow is named explicitly because g++ leaves it out of
+# "undefined" (clang includes it): a client number such as 1e999 cast to int
+# is UB that only the macOS job caught until it was added here.
+SAN_FLAGS := -O1 -g -fsanitize=$(SAN_KIND),float-cast-overflow -fno-omit-frame-pointer \
+             -fno-sanitize-recover=undefined,float-cast-overflow
 SAN_OBJ   := $(patsubst src/%.cpp,$(SAN_DIR)/obj/%.o,$(SRC))
 SAN_LIB   := $(SAN_DIR)/libsafetrail.a
 SAN_BIN   := $(patsubst tests/%.cpp,$(SAN_DIR)/test/%,$(TEST_SRC))
 
+# -MMD -MP as in the main build: without them a header change left stale
+# sanitizer objects compiled against the old layout of a class, and the next
+# local run crashed in code that was fine (CI builds fresh, so never saw it).
 $(SAN_DIR)/obj/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -MMD -MP -c $< -o $@
 
 $(SAN_LIB): $(SAN_OBJ)
 	@mkdir -p $(dir $@)
@@ -190,7 +211,9 @@ $(SAN_LIB): $(SAN_OBJ)
 
 $(SAN_DIR)/test/%: tests/%.cpp $(SAN_LIB)
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -Itests $< $(SAN_LIB) -o $@
+	@$(CXX) $(CXXFLAGS) $(SAN_FLAGS) -Itests -MMD -MP $< $(SAN_LIB) -o $@
+
+-include $(SAN_OBJ:.o=.d) $(SAN_BIN:=.d)
 
 asan: $(SAN_BIN)
 	@fail=0; for t in $(SAN_BIN); do ./$$t || fail=1; done; \
@@ -236,6 +259,7 @@ validate:
 	@python3 tools/check_docs.py
 	@python3 tools/render_results.py --check
 	@$(MAKE) --no-print-directory WERROR=1 check all test determinism
+	@python3 tools/api_e2e.py
 	@$(MAKE) --no-print-directory sanitize
 	@$(MAKE) --no-print-directory cmake-build
 	@ctest --test-dir $(BUILD)-cmake --output-on-failure -j4 >/dev/null \
@@ -262,4 +286,4 @@ clean:
 	@rm -rf $(BUILD) $(BUILD)-cmake
 
 help:
-	@sed -n '3,18p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '3,22p' Makefile | sed 's/^# \{0,1\}//'

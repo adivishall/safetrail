@@ -65,8 +65,17 @@ class ZoneStore {
   // jurisdiction, per-zone hysteresis margins) plus the outer ring and all
   // holes, with strings JSON-escaped. load -> save -> load is asserted
   // semantically identical in tests/fence/zone_roundtrip_test.cpp.
+  //
+  // All or nothing: every feature is parsed and validated before any is added,
+  // so a file whose tenth zone is invalid leaves the store exactly as it was.
+  // (It used to add the first nine and then report failure -- a half-loaded
+  // store that the caller had been told was not loaded.)
   bool load_geojson(const std::string& path, std::string* error);
   bool save_geojson(const std::string& path) const;
+
+  // The same parser over text already in memory (an upload), into `out`
+  // without touching any store. Ids in `out` are unassigned (kNoId).
+  static bool parse_geojson(const std::string& text, std::vector<Zone>& out, std::string* error);
 
  private:
   std::vector<Zone> zones_;

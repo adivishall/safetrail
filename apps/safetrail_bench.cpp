@@ -20,6 +20,8 @@
 //  10. Hysteresis A/B    11. Routing    12. Dispatch    13. Adaptive sampling
 //  14. Index churn       15. Serialisation    16. Self-intersection
 //  17. Node snapping
+//  19. Multi-user platform  fixes from 1..5000 independent users through
+//                           app::Platform::ingest_fix, three update patterns
 //
 // ── Measurement protocol (applies to every "median" in the core sections) ────
 //
@@ -59,6 +61,7 @@
 #include <pthread.h>
 #include <sys/qos.h>
 #endif
+#include "safetrail/app/platform.hpp"
 #include "safetrail/ds/interval_tree.hpp"
 #include "safetrail/geo/containment.hpp"
 #include "safetrail/geo/polygon.hpp"
@@ -1452,6 +1455,147 @@ static bool bench_evaluator(FILE* csv) {
   return all_ok;
 }
 
+// ── 19. Multi-user evaluation through the platform ──────────────────────────
+//
+// Not the evaluator alone (section 18) but the whole ingestion path a phone's
+// fix takes: validation, duplicate and ordering checks, the trail, the
+// evaluator, alert raising and correlation, plus the per-tick work (anomaly
+// detection over every tracked user, escalation, retention). Users walk at
+// 1.4 m/s from random starts over the 38 OpenStreetMap zones around Shillong
+// with the simulator's GPS error model, 60 fixes each.
+//
+// Patterns:
+//   in-order     round-robin: every user's fix for second 1, then second 2...
+//   user-batched one user's whole minute, then the next user's -- the order a
+//                server sees after reconnects; each user's own fixes are still
+//                in time order, which is all the platform requires
+//   noisy        in-order, with 5 % of fixes re-sent (duplicates) and 5 % of
+//                fixes delayed past their successor (out of order)
+//
+// Gate: the duplicate and out-of-order counters must equal what was injected.
+static bool bench_multi_user(FILE* csv) {
+  printf("\n\033[1m19. Multi-user evaluation through app::Platform\033[0m\n");
+  printf("  %-12s %6s %8s %10s %12s %10s %8s %7s %6s %6s %9s\n", "pattern", "users", "fixes",
+         "us/fix", "fixes/s", "tick us", "events", "alerts", "dups", "late", "B/user");
+  if (csv) std::fprintf(csv, "pattern,users,fixes,us_per_fix,fixes_per_sec,tick_us_per_user,transitions,alerts,duplicates,out_of_order,bytes_per_user\n");
+  bool ok = true;
+  const int ticks = 60;
+  for (const char* pattern : {"in-order", "user-batched", "noisy"}) {
+    for (size_t users : {size_t(1), size_t(10), size_t(100), size_t(1000), size_t(5000)}) {
+      std::vector<double> runs;
+      double tick_us = 0;
+      app::Platform::Stats st{};
+      size_t bytes = 0, inj_dup = 0, inj_late = 0;
+      for (int rep = 0; rep < 3; ++rep) {
+        app::PlatformConfig cfg;
+        app::Platform pf(cfg);
+        std::string err;
+        if (!pf.load_zones_file("data/zones/shillong_osm.geojson", &err)) { printf("  zones: %s\n", err.c_str()); return false; }
+        const app::Principal sys = app::Principal::sys();
+        sim::Rng rng(1234);
+        sim::GpsErrorModel gps;
+        gps.dropout_probability = 0.0;
+        struct Walker { app::UserId id; geo::LatLon pos; double bearing; sim::GpsDrift drift; };
+        std::vector<Walker> w;
+        for (size_t i = 0; i < users; ++i) {
+          const app::Outcome made = pf.create_user(sys, "user-" + std::to_string(i), "SIM " + std::to_string(i),
+                                         app::Role::Tourist, "", app::Source::Scenario);
+          if (!made.ok()) { printf("  create_user: %s\n", made.error.c_str()); return false; }
+          const app::UserId id = made.id;
+          pf.set_consent(sys, id, true);
+          pf.start_sharing(sys, id);
+          w.push_back({id, {rng.range(25.55, 25.62), rng.range(91.83, 91.93)}, rng.range(0, 360), {}});
+        }
+        // Precompute every fix so the timed loop is ingestion only.
+        std::vector<std::vector<app::FixInput>> fx(users);
+        for (size_t i = 0; i < users; ++i)
+          for (int t = 1; t <= ticks; ++t) {
+            w[i].pos = geo::offset(w[i].pos, w[i].bearing, 1.4);
+            const auto f = sim::apply_gps_error(w[i].pos, t * 1000, gps, w[i].drift, rng);
+            app::FixInput in;
+            in.lat = f.pos.lat; in.lon = f.pos.lon; in.accuracy_m = f.accuracy_m; in.t_ms = t * 1000;
+            in.seq = uint64_t(t);
+            fx[i].push_back(in);
+          }
+        // The order fixes reach the server.
+        std::vector<std::pair<size_t, int>> order;   // (user, fix index)
+        if (std::string(pattern) == "user-batched") {
+          for (size_t i = 0; i < users; ++i) for (int t = 0; t < ticks; ++t) order.push_back({i, t});
+        } else {
+          for (int t = 0; t < ticks; ++t) for (size_t i = 0; i < users; ++i) order.push_back({i, t});
+        }
+        std::vector<std::pair<size_t, int>> stream;
+        inj_dup = inj_late = 0;
+        if (std::string(pattern) == "noisy") {
+          sim::Rng nr(99);
+          for (size_t k = 0; k < order.size(); ++k) {
+            const auto cur = order[k];
+            const double r = nr.uniform();
+            if (r < 0.05 && cur.second > 0 && cur.second + 1 < ticks) {
+              // delay this fix past the user's next one: it arrives late
+              stream.push_back({cur.first, cur.second + 1});
+              stream.push_back(cur);
+              ++inj_late;
+              // skip the user's next fix in `order`; it has been sent already
+              for (size_t m = k + 1; m < order.size(); ++m)
+                if (order[m].first == cur.first && order[m].second == cur.second + 1) { order[m].second = -1; break; }
+            } else if (cur.second >= 0) {
+              stream.push_back(cur);
+              if (r > 0.95) { stream.push_back(cur); ++inj_dup; }
+            }
+          }
+        } else {
+          stream = order;
+        }
+        const auto t0 = Clock::now();
+        if (std::string(pattern) == "user-batched") {
+          pf.tick(int64_t(ticks) * 1000);   // the server clock is already at the end
+          for (const auto& [i, t] : stream) pf.ingest_fix(sys, w[i].id, fx[i][size_t(t)]);
+        } else {
+          int64_t now = 0;
+          double tt = 0;
+          for (const auto& [i, t] : stream) {
+            const int64_t ft = fx[i][size_t(t)].t_ms;
+            if (ft > now) {
+              const auto a = Clock::now();
+              pf.tick(ft);
+              tt += ms_since(a);
+              now = ft;
+            }
+            pf.ingest_fix(sys, w[i].id, fx[i][size_t(t)]);
+          }
+          tick_us = tt * 1000.0 / double(ticks) / double(users);
+        }
+        runs.push_back(ms_since(t0) * 1000.0 / double(users * size_t(ticks)));
+        st = pf.stats();
+        bytes = 0;
+        for (const auto& x : w) {
+          const app::Tracked* tr = pf.tracked(x.id);
+          bytes += sizeof(app::Tracked) + tr->trail.capacity() * sizeof(app::TrailPoint) +
+                   tr->tourist.zone_states.capacity() * sizeof(track::ZoneState);
+        }
+        bytes /= users;
+      }
+      std::sort(runs.begin(), runs.end());
+      const double us = runs[1];
+      const bool gate = st.fixes_duplicate == inj_dup && st.fixes_out_of_order == inj_late &&
+                        st.fixes_accepted == users * size_t(ticks) - inj_late;
+      ok = ok && gate;
+      printf("  %-12s %6zu %8zu %10.2f %12.0f %10.2f %8llu %7llu %6llu %6llu %9zu %s\n", pattern, users,
+             users * size_t(ticks), us, 1e6 / us, tick_us, (unsigned long long)st.transitions,
+             (unsigned long long)st.alerts, (unsigned long long)st.fixes_duplicate,
+             (unsigned long long)st.fixes_out_of_order, bytes, gate ? "" : "\033[31mCOUNTER MISMATCH\033[0m");
+      if (csv) std::fprintf(csv, "%s,%zu,%zu,%.3f,%.0f,%.3f,%llu,%llu,%llu,%llu,%zu\n", pattern, users,
+                            users * size_t(ticks), us, 1e6 / us, tick_us, (unsigned long long)st.transitions,
+                            (unsigned long long)st.alerts, (unsigned long long)st.fixes_duplicate,
+                            (unsigned long long)st.fixes_out_of_order, bytes);
+    }
+  }
+  printf("  us/fix is the whole ingest path per fix (median of 3 runs); tick us is the per-user cost of\n"
+         "  the once-a-second sweep (anomalies, escalation, retention). Single-threaded, one process.\n");
+  return ok;
+}
+
 static FILE* open_csv(const std::string& dir, const char* name) {
   return dir.empty() ? nullptr : std::fopen((dir + "/" + name).c_str(), "w");
 }
@@ -1503,6 +1647,8 @@ int main(int argc, char** argv) {
     close_csv(f); close_csv(f2);
   }
   if (want(18)) { f = open_csv(out, "evaluator_cost.csv"); g18 = bench_evaluator(f); close_csv(f); }
+  bool g19 = true;
+  if (want(19)) { f = open_csv(out, "multi_user.csv"); g19 = bench_multi_user(f); close_csv(f); }
 
   if (want(10) || want(11) || want(12) || want(13) || want(14) || want(15) || want(16) || want(17))
     printf("\n\033[1m── extensions ──────────────────────────────────────────────────────────────\033[0m\n");
@@ -1515,11 +1661,11 @@ int main(int argc, char** argv) {
   if (want(16)) { f = open_csv(out, "self_intersection.csv"); bench_selfintersect(f); close_csv(f); }
   if (want(17)) { f = open_csv(out, "node_snap.csv");         bench_snap(f);          close_csv(f); }
 
-  const bool all = g1 && g2 && g3 && g5 && g6 && g8 && g18;
+  const bool all = g1 && g2 && g3 && g5 && g6 && g8 && g18 && g19;
   printf("\n═════════════════════════════════════════════════════════════════════════════\n");
   printf("  correctness gates: scaling %s  density %s  end-to-end %s  equivalence %s  "
-         "containment %s  interval %s  evaluator %s\n", ok_str(g1), ok_str(g2), ok_str(g3),
-         ok_str(g5), ok_str(g6), ok_str(g8), ok_str(g18));
+         "containment %s  interval %s  evaluator %s  multi-user %s\n", ok_str(g1), ok_str(g2), ok_str(g3),
+         ok_str(g5), ok_str(g6), ok_str(g8), ok_str(g18), ok_str(g19));
   if (!out.empty()) printf("  csv written to %s/\n", out.c_str());
   printf("\n");
   return all ? 0 : 1;

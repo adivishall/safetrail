@@ -25,12 +25,13 @@ trustworthy transitions, a benchmark harness, and a one-file dashboard.
 **What makes it interesting.** The index is only allowed to make the answer
 faster, never different. Every structure is compared with a brute-force oracle on
 randomized hostile workloads with its invariants audited after every operation;
-the whole engine must emit bit-identical events under all four indexes; and 22
-injected bugs must each be caught by a test (23/23). That process found **ten
+the whole engine must emit bit-identical events under all four indexes; and 28
+injected bugs (23 in the engine, 5 in the platform) must each be caught by a
+test (28/28). That process found **ten
 real defects** in code that was passing its tests.
 
 - **Result (measured):** at 100,000 zones in one district,
-  <!-- results:keyline -->the R-tree answers the index query **224× faster** than a linear scan (211–224× over 4 runs in one session) and the quadtree **33.7×** (31.7–33.7×), returning identical results<!-- /results:keyline -->.
+  <!-- results:keyline -->the R-tree answers the index query **224× faster** than a linear scan (211–224× over 4 runs in one session) and the quadtree **32.7×** (31.7–33.5×), returning identical results<!-- /results:keyline -->.
   The R-tree's ratio moves between sessions: an earlier session on the same
   laptop measured 102–114×, so read ~100× as the floor
   ([why](docs/RESULTS.md#read-this-first)).
@@ -38,10 +39,76 @@ real defects** in code that was passing its tests.
   ending with the dashboard. Or piece by piece: `make test && make demo && make
   dashboard`. A C++17 compiler and `make`, nothing else.
 
+| | Link |
+|---|---|
+| **Integrated application** (public demo: sign-in, live multi-user tracking, alerts, incidents, dispatch, Lab) | https://safetrail-v0bh.onrender.com |
+| **Static dashboard** (a replay; no server, no accounts) | https://adivishall.github.io/safetrail/ · mirror https://safetrail-adivishall.vercel.app |
+| Source code | https://github.com/adivishall/safetrail |
+| Academic report | [SafeTrail_Project_Report.pdf](docs/final/SafeTrail_Project_Report.pdf) |
+| Technical reference | [SafeTrail_Technical_Reference.pdf](docs/final/SafeTrail_Technical_Reference.pdf) |
+| Presentation | [SafeTrail_final_presentation.pptx](docs/final/SafeTrail_final_presentation.pptx) |
+| Viva guide | [SafeTrail_Viva_Guide.pdf](docs/final/SafeTrail_Viva_Guide.pdf) |
+
+The public application runs on a free host: it sleeps after 15 idle minutes
+(the first visit then waits while it starts: 13.5 s when measured, up to
+about a minute by Render's account), every person in it is simulated,
+and all state resets whenever it restarts. Accounts are issued by the project
+owner. See [Public deployment](#public-deployment).
+
 > **Project review:** [REVIEW_DEMO.md](docs/REVIEW_DEMO.md) is the 5-minute live
 > demo built on `make review`; [REVIEW_QA.md](docs/REVIEW_QA.md) answers the
 > questions it raises from the code; [REVIEW_SLIDES.html](docs/REVIEW_SLIDES.html)
 > is ten slides whose numbers are generated from the committed benchmark results.
+
+## The operations platform
+
+`make app` builds and starts **SafeTrail as a working product** on
+http://127.0.0.1:8080 (accounts and generated passwords are printed in the
+terminal; nothing to install beyond a C++17 compiler):
+
+- **Multi-user tracking with consent** — tourists opt in and start a session
+  themselves; each user's engine state is separate; duplicate, late, noisy and
+  missing fixes are handled at the ingestion boundary.
+- **Alerts → incidents → dispatch** — escalation on a timing wheel, triage on a
+  binary heap, correlation by union-find, nearest responder by road distance
+  (Dijkstra) and an A* route over the OpenStreetMap road graph.
+- **Groups, zones, offline phones, history** — separation detection, zone
+  editing with persistent-quadtree history, phones that evaluate offline and
+  reconcile by Lamport order, "what did the system know at time t", Merkle proofs
+  checked in the browser.
+- **A Data Structures Lab** that runs the real C++ structures and draws what they
+  did, and scripted, labelled-simulation scenarios with pause, step and speed.
+
+![SafeTrail operations console: live monitoring](docs/final/images/shot-live.png)
+
+The final academic material — report, slides, viva guide, syllabus mapping,
+demo script — is in [docs/final/](docs/final/README.md).
+
+## Public deployment
+
+The integrated application is deployed at **https://safetrail-v0bh.onrender.com**
+as a Render **free** web service in Singapore, built from this repository's
+[Dockerfile](Dockerfile) through the Blueprint [render.yaml](render.yaml), and
+redeployed automatically on every push to its branch.
+
+- **Same server, public mode.** `safetrail_server --public` serves the console
+  and the API from one origin over Render's HTTPS, with `Secure` cookies and
+  HSTS, the visitor's address taken from Cloudflare's `CF-Connecting-IP` (only
+  from the proxy), request and sign-in rate limits, and sign-in locks that a
+  shared proxy address cannot turn against everyone.
+- **No secrets in the repository or the logs.** The four account passwords are
+  generated by Render and live only in the service's environment; without them
+  the server refuses to start.
+- **Simulated and temporary.** Every tourist is simulated (SIM); nothing real is
+  tracked. The free instance sleeps after 15 idle minutes and keeps everything
+  in memory, so each restart or wake begins a fresh world with the walkthrough
+  paused at 00:00. Nothing there is durable history.
+
+[DEPLOYMENT_GUIDE.md](docs/final/DEPLOYMENT_GUIDE.md) records the settings, the
+free plan's limits, how to operate and redeploy it, and the live smoke test;
+[SECURITY_AND_PRIVACY.md](docs/final/SECURITY_AND_PRIVACY.md) §7 the controls.
+The static dashboard on GitHub Pages and Vercel is a separate, server-less
+replay ([DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 | Structure | Answers | Bound (theoretical) | Implementation |
 |---|---|---|---|
@@ -70,16 +137,16 @@ draws each index's actual structure on the same data.</sub>
 
 Speedups are **paired ratios against this project's own brute force**, shown with
 their range over independent runs. Absolute times are one laptop's
-(<!-- results:machine -->Apple M4, Battery power, load average 2.61 at the start, commit a29ef13<!-- /results:machine -->; see
+(<!-- results:machine -->Apple M4, Battery power, load average 2.91 at the start, commit 9d33bb6<!-- /results:machine -->; see
 [RESULTS.md](docs/RESULTS.md) for the protocol). Every number is generated from
 `bench/results/*.csv`.
 
 <!-- results:headline -->
 | Workload | Brute force / naive | Quadtree speedup (range over runs) | R-tree speedup (range over runs) |
 |---|---:|---:|---:|
-| Range query, 100,000 zones in one district (k ≈ 98) | 239 µs | 33.7× (31.7–33.7×) | 224× (211–224×) |
-| Range query, 100,000 zones at constant density (k ≈ 1) | 216 µs | 543× (423–543×) | 1042× (845–1042×) |
-| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 262 µs | 1461× (1461–1552×) | 2088× (ratio of medians) |
+| Range query, 100,000 zones in one district (k ≈ 98) | 245 µs | 32.7× (31.7–33.5×) | 224× (211–224×) |
+| Range query, 100,000 zones at constant density (k ≈ 1) | 219 µs | 556× (423–556×) | 1027× (845–1027×) |
+| Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon | 255 µs | 1498× (1461–1552×) | 2072× (ratio of medians) |
 <!-- /results:headline -->
 
 What the numbers say, and why:
@@ -107,7 +174,7 @@ What the numbers say, and why:
 - **Persistence is cheap**: one root-to-leaf path per change (≈15 nodes on a
   5,000-zone index), zero for a rule change, and a query against the past costs
   the same as one against the present. (§9)
-- **Reconciliation does not undo the index**: <!-- results:evalfix -->the whole `evaluate()` — index, geometry, hysteresis and the observation of every zone with open state — costs **4.93 µs per fix at 5,038 zones and 5.52 µs at 50,038** when the zone density is held constant; packed into one district it costs 2.19 µs at 1,038 zones and 17.0 µs at 20,038, tracking the candidate count (k grows with n, as in §1). Reconciliation itself is 0.08–1.42 zones observed per fix outside the candidate set, a box distance each, no geometry<!-- /results:evalfix -->. (§18)
+- **Reconciliation does not undo the index**: <!-- results:evalfix -->the whole `evaluate()` — index, geometry, hysteresis and the observation of every zone with open state — costs **5.00 µs per fix at 5,038 zones and 5.74 µs at 50,038** when the zone density is held constant; packed into one district it costs 2.24 µs at 1,038 zones and 17.2 µs at 20,038, tracking the candidate count (k grows with n, as in §1). Reconciliation itself is 0.08–1.42 zones observed per fix outside the candidate set, a box distance each, no geometry<!-- /results:evalfix -->. (§18)
 
 ## How correctness is established (evidence)
 
@@ -117,7 +184,7 @@ What the numbers say, and why:
 | **Differential tests** | ~55,000 queries per index over seven hostile workload profiles (identical boxes, zero-area boxes, touching edges, both hemispheres, poles, past lon 180, far inserts), mixed with inserts, removals and rebuilds |
 | **Invariant audits** | each core structure's `check_invariants()` runs after **every** operation in those tests |
 | **End to end** | the whole engine under all four indexes must emit bit-identical event streams |
-| **Mutation testing** | 23 realistic bugs injected into the core; the suite must fail on each (`make mutation`: 23/23) |
+| **Mutation testing** | 28 realistic bugs injected, 23 into the engine and 5 into the platform; the suite must fail on each (`make mutation`: 28/28) |
 | **Sanitizers, warnings, analysis** | the whole suite is UBSan-clean on macOS and gated under ASan + UBSan in Linux CI; `-Werror` builds with clang, and with g++ 13 in CI; Clang Static Analyzer: 0 findings |
 
 This process found **ten defects** in code that was already passing its tests —
@@ -135,7 +202,9 @@ fix; the measurement defect is pinned by the benchmark's own gates
 make review       # the project walkthrough: every index, identical answers,
                   # transitions, noise, history, the benchmark results, tests,
                   # dashboard (PAUSE=1 to step through it while presenting)
-make test         # 46 test files, ~11,850 checks (~20 s once built)
+make app          # the operations platform on http://127.0.0.1:8080
+make test         # 51 test files, 12,166 checks (~20 s once built)
+make e2e          # the server driven over real HTTP
 make demo         # the engine on real OSM zones: event stream + counters
 make dashboard    # writes dashboard.html; just open it
 make bench        # every benchmark (~2–3 min), regenerates the tables above

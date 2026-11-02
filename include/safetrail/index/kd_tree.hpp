@@ -110,11 +110,33 @@ class KdTree {
     if (root_ < 0) return false;
     int32_t best = -1;
     double best_d2 = 1e300;
-    nn_rec(root_, q, best, best_d2);
+    nn_rec(root_, q, best, best_d2, nullptr);
     if (best < 0) return false;
     out_id = items_[size_t(best)].id;
     return true;
   }
+
+  // ── Lab diagnostics ───────────────────────────────────────────────────────
+  // The same search as nearest(), recording the order in which nodes were
+  // visited (as indices into view()), so the lab can show which subtrees the
+  // splitting-plane test pruned.
+  bool nearest_traced(const geo::LatLon& q, Id& out_id, std::vector<int32_t>& visited) const {
+    if (root_ < 0) return false;
+    int32_t best = -1;
+    double best_d2 = 1e300;
+    nn_rec(root_, q, best, best_d2, &visited);
+    if (best < 0) return false;
+    out_id = items_[size_t(best)].id;
+    return true;
+  }
+  struct NodeView { Id id; geo::LatLon pos; uint8_t axis; int32_t left, right; };
+  std::vector<NodeView> view() const {
+    std::vector<NodeView> v;
+    for (const auto& n : nodes_)
+      v.push_back({items_[size_t(n.item)].id, items_[size_t(n.item)].pos, n.axis, n.left, n.right});
+    return v;
+  }
+  int32_t root_index() const { return root_; }
 
   // k nearest neighbours, returned nearest-first. Fewer than k if the tree is smaller.
   std::vector<Id> k_nearest(const geo::LatLon& q, size_t k) const {
@@ -172,8 +194,10 @@ class KdTree {
     return me;
   }
 
-  void nn_rec(int32_t n, const geo::LatLon& q, int32_t& best, double& best_d2) const {
+  void nn_rec(int32_t n, const geo::LatLon& q, int32_t& best, double& best_d2,
+              std::vector<int32_t>* trace) const {
     if (n < 0) return;
+    if (trace) trace->push_back(n);
     const Node& nd = nodes_[size_t(n)];
     const double d2 = dist2(q, items_[size_t(nd.item)].pos);
     if (d2 < best_d2 ||
@@ -185,7 +209,7 @@ class KdTree {
                                       : (q.lon - items_[size_t(nd.item)].pos.lon) * lon_scale_);
     const int32_t near = diff < 0 ? nd.left : nd.right;
     const int32_t far  = diff < 0 ? nd.right : nd.left;
-    nn_rec(near, q, best, best_d2);
+    nn_rec(near, q, best, best_d2, trace);
     // `<=`, not `<`. With strict `<`, the far side is pruned the moment the
     // splitting plane is exactly as far as the current best -- which is precisely
     // the case where the far side holds an EQUALLY near point. The result is
@@ -197,7 +221,7 @@ class KdTree {
     // side when the query lies exactly on a splitting plane, so for distinct data
     // it never triggers, and for a pile of coincident points it is bounded by how
     // many of them there are.
-    if (diff * diff <= best_d2) nn_rec(far, q, best, best_d2);
+    if (diff * diff <= best_d2) nn_rec(far, q, best, best_d2, trace);
   }
 
   // Maintain `heap` as a distance-sorted vector of the k best seen so far.

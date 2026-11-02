@@ -73,6 +73,10 @@ class RollbackDSU {
   bool connected(size_t x, size_t y) const { return find(x) == find(y); }
   size_t component_size(size_t x) const;
   size_t component_count() const { return components_; }
+  // The forest itself (lab diagnostics): parent pointer and rank of node x.
+  size_t parent_of(size_t x) const { return parent_[x]; }
+  uint32_t rank_of(size_t x) const { return rank_[x]; }
+  size_t node_count() const { return parent_.size(); }
 
   // ── Rollback ──────────────────────────────────────────────────────────────
   // snapshot() records the current undo-stack depth. rollback_to() undoes every

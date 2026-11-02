@@ -137,6 +137,32 @@ MUTANTS = [
      "std::asin(std::sin(delta) / std::cos(phi))",
      "std::asin(std::sin(delta))",
      ["geo/bbox_around_test"]),
+    # ── platform (multi-user application layer) ────────────────────────────
+    ("platform accepts fixes without consent",
+     "src/app/platform.cpp",
+     "if (usr->role != Role::Tourist || !usr->active || !usr->consent || !usr->sharing) {",
+     "if (usr->role != Role::Tourist || !usr->active) {",
+     ["app/multi_user_test"]),
+    ("platform evaluates out-of-order fixes",
+     "src/app/platform.cpp",
+     "    if (t < tr.last_fix_ms || (in.seq != 0 && tr.last_seq != 0 && in.seq < tr.last_seq)) {",
+     "    if (false) {",
+     ["app/multi_user_test"]),
+    ("responder keeps location access after the incident resolves",
+     "src/app/platform.cpp",
+     "if (c.id == kNoId || c.state == CaseState::Resolved || c.responder != me->unit) continue;",
+     "if (c.id == kNoId || c.responder != me->unit) continue;",
+     ["app/api_test"]),
+    ("operator can give consent for a tourist",
+     "src/app/platform.cpp",
+     "  if (!(by.system || by.id == u)) return Outcome::fail(403, \"only the user can give or withdraw consent\");",
+     "",
+     ["app/multi_user_test", "app/api_test"]),
+    ("reconciler admits a retried batch twice",
+     "src/sync/lamport.cpp",
+     "    if (!seen_.put(StampKey{e.stamp.counter, e.stamp.device}, 1)) {",
+     "    if (!seen_.put(StampKey{e.stamp.counter, e.stamp.device}, 1) && false) {",
+     ["sync/lamport_test", "app/scenario_test"]),
     ("sweep line looks at only the immediate neighbour",
      "src/geo/sweep_line.cpp",
      "constexpr int kReach = 3;",
@@ -177,7 +203,7 @@ def main():
     mutants = [m for m in MUTANTS if only in m[0]]
     work = tempfile.mkdtemp(prefix="safetrail-mutation-")
     try:
-        for d in ("include", "src", "tests", "apps", "data", "tools"):
+        for d in ("include", "src", "tests", "apps", "data", "tools", "web"):
             shutil.copytree(os.path.join(ROOT, d), os.path.join(work, d))
         shutil.copy(os.path.join(ROOT, "Makefile"), work)
         jobs = str(os.cpu_count() or 4)

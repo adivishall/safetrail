@@ -292,6 +292,31 @@ void Quadtree::collect_node_boxes(std::vector<geo::Bbox>& out) const {
 geo::Bbox Quadtree::root_region() const { return root_->region; }
 
 namespace {
+void describe_node(const Quadtree::Node* n, uint16_t depth, std::vector<NodeTrace>& out) {
+  out.push_back({n->region, depth, n->leaf(), false, uint32_t(n->items.size())});
+  if (n->leaf()) return;
+  for (int c = 0; c < 4; ++c) describe_node(n->kids[c].get(), uint16_t(depth + 1), out);
+}
+void trace_node(const Quadtree::Node* n, const geo::Bbox& q, uint16_t depth,
+                std::vector<ZoneId>& out, std::vector<NodeTrace>& visited) {
+  const bool hit = n->region.intersects(q);
+  visited.push_back({n->region, depth, n->leaf(), hit, uint32_t(n->items.size())});
+  if (!hit) return;
+  for (const auto& it : n->items)
+    if (it.second.intersects(q)) out.push_back(it.first);
+  if (n->leaf()) return;
+  for (int c = 0; c < 4; ++c) trace_node(n->kids[c].get(), q, uint16_t(depth + 1), out, visited);
+}
+}  // namespace
+
+void Quadtree::describe(std::vector<NodeTrace>& out) const { describe_node(root_.get(), 0, out); }
+
+void Quadtree::trace_query(const geo::Bbox& q, std::vector<ZoneId>& out,
+                           std::vector<NodeTrace>& visited) const {
+  trace_node(root_.get(), q, 0, out, visited);
+}
+
+namespace {
 // Equal up to rounding. A doubling expansion reuses the old root as a quadrant
 // of the new one, and the new root's midpoint -- (min + max) / 2 of a doubled
 // extent -- can land an ulp away from the old root's edge.
