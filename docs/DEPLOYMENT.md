@@ -1,5 +1,13 @@
 # Deployment
 
+> **Since this was written** the project gained an operations platform with a
+> server (`safetrail_server`: accounts, live multi-user tracking, incidents,
+> the Data Structures Lab), and that server **is** publicly deployed, at
+> https://safetrail-v0bh.onrender.com, on Render's free plan. Its deployment is
+> documented in [final/DEPLOYMENT_GUIDE.md](final/DEPLOYMENT_GUIDE.md). This
+> document still describes the engine and the static dashboard, which are
+> unchanged.
+
 ## The one thing to understand first
 
 **This project has no server to deploy.** That is not an omission — it is the

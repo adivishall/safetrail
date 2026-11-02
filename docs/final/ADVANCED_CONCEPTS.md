@@ -77,4 +77,4 @@ solves here, and where to find it.
 **Here:** the evaluator feeds the sampler the distance it already computed; a battery-aware device in the platform sends fixes only when due, and the signal-lost detector stretches its threshold to 2.5× the expected interval so silence by design is not mistaken for a lost signal. The energy figure is a stated linear model, not a measurement.
 
 ### Benchmark methodology, differential and mutation testing
-See [TESTING_AND_BENCHMARKS.md](TESTING_AND_BENCHMARKS.md): interleaved rounds, paired ratios, checksums as correctness gates, oracles for every fast structure, invariant audits after every operation, and 23 injected bugs that the suite must catch.
+See [TESTING_AND_BENCHMARKS.md](TESTING_AND_BENCHMARKS.md): interleaved rounds, paired ratios, checksums as correctness gates, oracles for every fast structure, invariant audits after every operation, and 28 injected bugs that the suite must catch.

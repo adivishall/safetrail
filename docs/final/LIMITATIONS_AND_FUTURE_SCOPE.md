@@ -56,12 +56,14 @@ Stated plainly, so that nothing on the slides claims more than the code does.
     no phone app — the "simulated phone" on the tourist page stands in for one.
 19. **Security** — see the open items in [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md)
     (no in-process TLS, PBKDF2 not Argon2, no external penetration test).
-20. **Not publicly hosted.** The integrated application (server, accounts,
-    live tracking, Lab) runs on the presenter's machine. The public links
-    (GitHub Pages, Vercel) serve only the static dashboard replay, and the
-    pull-request preview is visible only to members of the Vercel project.
-    What a free public deployment would need is in
-    [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
+20. **Hosted for demonstration only, on a free plan.** The integrated
+    application is public at https://safetrail-v0bh.onrender.com, but on
+    Render's free plan it sleeps after 15 idle minutes (the next visit waits
+    while it starts), runs on 0.1 CPU, and keeps everything in memory: every
+    restart, redeploy or wake begins a fresh world, so nothing there is durable
+    history. It is one shared world for everyone signed in, carries simulated
+    people only, and has no persistence, which would need a paid disk or
+    database ([DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) §1.6).
 
 ## Future scope
 

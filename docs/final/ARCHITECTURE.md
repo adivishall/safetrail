@@ -4,10 +4,12 @@ SafeTrail has three layers: the **engine** (data structures, geometry,
 geofencing — present before the final phase), the **platform** (users,
 consent, sessions, alerts, incidents, groups, responders, history, offline
 sync), and the **server and web app** (HTTP API, scenario runner, operations
-console, Data Structures Lab). The static dashboard (`make dashboard`, deployed
-to GitHub Pages and Vercel) is a fourth, independent product: a replay of one
-simulated run. The engine's pipeline and design decisions are described in
-detail in [../ARCHITECTURE.md](../ARCHITECTURE.md).
+console, Data Structures Lab). The server and web app are publicly hosted as
+one container on Render, behind its TLS proxy
+([DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)). The static dashboard (`make
+dashboard`, deployed to GitHub Pages and Vercel) is a fourth, independent
+product: a replay of one simulated run. The engine's pipeline and design
+decisions are described in detail in [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## 1. Layers
 

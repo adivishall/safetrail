@@ -29,7 +29,7 @@ Merkle log. On 100,000 zones in one district the R-tree answers the index query
 224× faster than a linear scan and the quadtree 33×, with identical results;
 the complete platform ingests a fix in about 3 µs, independent of the number of
 users up to 5,000. Correctness is established by oracles, invariant audits,
-51 test files (12,137 checks), an end-to-end HTTP test, and mutation testing
+51 test files (12,166 checks), an end-to-end HTTP test, and mutation testing
 (28 of 28 injected bugs caught). The people in all demonstrations are
 simulated; the geography is real OpenStreetMap data.
 
@@ -259,8 +259,8 @@ Full tables: [ALGORITHM_COMPLEXITY.md](ALGORITHM_COMPLEXITY.md).
 | Differential testing against oracles, invariant audits after every operation | ~55,000 queries per index |
 | Engine end to end under all four indexes | byte-identical events |
 | Platform: isolation, ingestion boundary, consent, access, evidence, scenarios | 4 test files |
-| API in process; HTTP parser; real-HTTP end-to-end | 102 + 26 + 30 checks |
-| Total suite | 51 files, 12,137 checks, 0 failed |
+| API in process; HTTP parser; real-HTTP end-to-end | 131 + 26 + 38 checks |
+| Total suite | 51 files, 12,166 checks, 0 failed |
 | Mutation testing | 28/28 injected bugs caught |
 | Sanitizers, static analysis, cross-platform determinism | UBSan clean; ASan+UBSan in Linux CI; macOS vs Linux compared in CI |
 
@@ -284,8 +284,14 @@ retention and erasure; PBKDF2 passwords; hashed session tokens in HttpOnly,
 SameSite=Strict cookies; CSRF header; login throttling; strict request limits
 and CSP. Open items include in-process TLS and persistence
 ([SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md)). The integrated
-application runs locally; only the static dashboard is hosted publicly
-([DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)).
+application is publicly hosted as a demonstration at
+https://safetrail-v0bh.onrender.com (Render's free plan, Singapore): the same
+server in a public mode that takes passwords only from the host's secrets,
+sets `Secure` cookies and HSTS, reads the visitor's address only from the
+proxy's header, rate-limits requests and sign-ins, and labels every person as
+simulated and all state as temporary
+([DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)). The static dashboard remains on
+GitHub Pages and Vercel.
 
 ## 17. Limitations
 

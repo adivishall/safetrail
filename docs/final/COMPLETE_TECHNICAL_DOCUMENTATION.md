@@ -43,6 +43,10 @@ is loaded and paused at T+00:00:00.
 | Fixed passwords | `SAFETRAIL_ADMIN_PASSWORD=... make app` | likewise `_OPERATOR_`, `_RESPONDER_`, `_TOURIST_`; at least 10 characters |
 | Reset | `make app-reset` | deletes `var/`; passwords regenerate on the next start |
 | Behind a TLS proxy | `make app APP_ARGS="--secure-cookies"` | adds `Secure` to the session cookie; see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) before exposing the server |
+| Hosted public demo | `safetrail_server --host 0.0.0.0 --public --client-ip-header CF-Connecting-IP --pbkdf2-iterations 10000` (the [Dockerfile](../../Dockerfile)'s command) | passwords only from the four `SAFETRAIL_<ROLE>_PASSWORD` variables (16+ characters; refuses to start otherwise; none generated, printed or written); `Secure` cookie and HSTS; request and sign-in rate limits; the console labels everything simulated and temporary. Deployed on Render: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) §1 |
+| Port from the environment | `PORT=10000 ./build/safetrail_server` | `--port` wins; otherwise `$PORT`; otherwise 8080 |
+| Client address behind a proxy | `--client-ip-header NAME` and optionally `--trusted-proxy CIDR` (repeatable) | the header is believed only on connections from a trusted range (default: 10/8, 172.16/12, 192.168/16, 100.64/10, 127/8), in exactly one copy, holding an IP address |
+| Password-hash cost | `--pbkdf2-iterations N` | default 120,000; at least 10,000 |
 
 Demo data: there is nothing to initialise. The world is built at start-up from
 `data/zones/shillong_osm.geojson` (38 OSM hazard zones) and `data/osm/roads.txt`
@@ -55,8 +59,8 @@ Scenario → Load, or **Reset** in the top bar) rebuilds the world from scratch.
 |---|---|
 | `make` | build the three programs |
 | `make app` / `make app-reset` | run the platform / delete local credentials |
-| `make test` | 51 test files, 12,137 checks (about 20 s once built) |
-| `make e2e` | start the server on a free port and drive it over HTTP (30 checks, about 22 s: one check waits out the 20 s request deadline) |
+| `make test` | 51 test files, 12,166 checks (about 20 s once built) |
+| `make e2e` | start the server on a free port and drive it over HTTP (38 checks, about 22 s: one check waits out the 20 s request deadline; the last 8 start the binary in public mode) |
 | `make bench` | every benchmark (≈ 5 min); rewrites `bench/results/*.csv` and the tables in README and RESULTS |
 | `make validate` | docs links, results tables, `-Werror`, tests, determinism, e2e, sanitizers, CMake + ctest |
 | `make mutation` | inject 28 known bugs; each must be caught |
@@ -89,9 +93,9 @@ the user named in the path.
 
 | Method and path | Who | Purpose |
 |---|---|---|
-| `GET /api/health` | anyone | mode, clock |
+| `GET /api/health` | anyone | mode, public flag, clock; never rate limited (the host's health check) |
 | `POST /api/login` `{username, password}` | anyone | sets the session cookie |
-| `GET /api/session` | anyone | current user or null |
+| `GET /api/session` | anyone | current user or null, mode, public flag, and the client address the server sees |
 | `POST /api/logout` | signed in | ends the session |
 | `GET /api/live` | signed in (filtered by role) | users, responders, incidents, groups, runner, counts |
 | `GET /api/users` | A O (all), R (assigned subjects), T (self) | accounts |
@@ -133,9 +137,17 @@ the user named in the path.
 Errors: `{"error": "..."}` with 400 (bad input, including a number that is not
 finite or is beyond 2^53, and a query parameter that is not entirely numeric),
 401 (no session), 403 (role or CSRF), 404, 409 (state conflict, e.g. responder
-busy), 411/413/431/501 (HTTP limits), 429 (login throttled), 500 (a request
+busy), 411/413/431/501 (HTTP limits), 429 (too many failed sign-ins, or with
+`--public` a rate limit; `Retry-After` says when to retry), 500 (a request
 that failed inside the server; the server keeps running). A connection that
 has not delivered a complete request 20 s after opening is closed.
+
+Sign-in locks: 10 failures from one client address lock that address for
+5 min; 5 for one account from one address lock that pair for 60 s; 25 for one
+account from anywhere lock the account for 60 s (a count restarts after 15
+minutes without a failure). With `--public`, also: 2 sign-ins/s server-wide
+(burst 10); 100 requests/s per address (burst 300); API requests without a
+session 2/s (burst 20); per session 20/s (burst 60), a Lab run costing 5.
 
 ## 6. Data formats
 

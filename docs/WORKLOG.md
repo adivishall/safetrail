@@ -6,6 +6,53 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-11-02 — The integrated application is public: Render free web service, public mode, live smoke test
+
+**What:** SafeTrail's server now runs publicly at
+https://safetrail-v0bh.onrender.com, a Render free web service in Singapore
+built from the new `Dockerfile` (two Ubuntu 24.04 stages; the final image has
+only the stripped server, the web console, the two OpenStreetMap files and the
+benchmark CSVs, 148 MB, unprivileged user) through the Blueprint
+`render.yaml`, redeployed automatically on every push to
+`final/product-completion`. To make that safe, the server gained a public
+mode (`--public`): it refuses to start unless the four account passwords come
+from the host's secrets (Render generated them; none is in the repository or
+the log), sets `Secure` cookies and HSTS, takes the visitor's address from
+Cloudflare's `CF-Connecting-IP` only when the connection comes from the proxy,
+rate-limits requests and sign-ins, and tells every visitor that the people are
+simulated and that everything resets. Sign-in locks are now per address, per
+account and address, and per account, so a wrong password locks only the
+person typing it and a shared proxy address cannot lock everyone out. The
+server reads `$PORT`, exits cleanly on SIGTERM, and starts in about 3 s under
+the free instance's 0.1 CPU (36 s before: the world was built twice, and each
+account's 120,000-iteration hash took seconds; public mode uses 10,000
+iterations, which costs nothing against 256-bit random passwords). On the
+live site, the top bar's Reset button slid under the user's name between 760
+and about 1,050 px wide; fixed. The README now links the live application,
+the static dashboard, the repository, the report, the technical reference, the
+deck and the viva guide; the deployment guide, security review, demo script,
+report, technical reference, limitations and deck describe the real
+deployment and the new test counts (12,166 checks; 38 end to end).
+
+**Why:** The project needed a working public application, not only a static
+replay or a laptop demonstration, without paying for hosting and without
+weakening security: behind a proxy every request looks like the proxy, so
+the old per-address lock would have locked out all visitors at once, and the
+old start-up printed generated passwords to the log.
+
+**Impact:** Anyone can open the sign-in page; the owner holds the passwords
+(Render Dashboard → safetrail → Environment). Checked on the live URL: 44 of
+44 scripted checks without an account (HTTPS, headers, spoofing, access
+control, CSRF, traversal, rate limits) and the full walkthrough signed in as
+admin — 16 simulated tourists, 14 alerts of 7 kinds, an incident acknowledged
+and assigned with its A* route, all 15 Lab experiments — with no failed
+request. After 18 idle minutes the service had gone to sleep; the next
+request woke it in 13.5 s into a fresh world, and the same checks passed
+again after signing in. The free plan's limits are documented, not hidden:
+it sleeps after 15 idle minutes, and every restart starts a fresh world, so
+nothing on it is durable. GitHub Pages and Vercel still serve the static
+dashboard, unchanged.
+
 ### 2026-11-01 — Pre-merge verification of PR #11: isolation, audit, input and server fixes; document QA
 
 **What:** A full verification of PR #11 before merging. Code: a tourist now

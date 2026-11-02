@@ -58,7 +58,7 @@ Each concept is explained twice: once in plain words, once technically, with a S
 | State machines | hysteresis filter (`fence::HysteresisState`), alert and incident life cycles | |
 | Computational geometry | ray casting, winding number, segment intersection, Shamos–Hoey sweep line (with a balanced status tree) | `src/geo/` |
 | Differential testing | every index against brute force, with invariant audits after every operation | `tests/index/differential_test.cpp` |
-| Mutation testing | 23 injected bugs, each must fail a test | `tools/mutation_check.py` |
+| Mutation testing | 28 injected bugs (23 engine, 5 platform), each must fail a test | `tools/mutation_check.py` |
 
 ## C. Beyond the syllabus (detail in [ADVANCED_CONCEPTS.md](ADVANCED_CONCEPTS.md))
 

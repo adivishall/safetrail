@@ -25,6 +25,28 @@ Scenario "walkthrough" is loaded and paused at 00:00 — press Start in Live Mon
 3. In a second terminal, have `make test` already run once (so it finishes in seconds when shown).
 4. Keep `docs/presentation/SafeTrail_review_slides.pdf` or the new deck open in another window as the fallback.
 
+### Or: the public URL
+
+The same demo runs at **https://safetrail-v0bh.onrender.com** (Render free
+plan; [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) §1). Use it when the examiner
+wants to open it on their own device; keep the local server ready as the
+fallback.
+
+1. **Two minutes before**, open the URL. After 15 idle minutes the service is
+   asleep and the first request waits while it starts (13.5 s when measured;
+   Render allows up to about a minute); every
+   wake starts a fresh world with the walkthrough paused at T+00:00:00.
+2. Sign in as **admin**. The password is in the Render Dashboard: service
+   **safetrail** → **Environment** → `SAFETRAIL_ADMIN_PASSWORD` (copy button).
+   Never put it on a slide or in the chat.
+3. Point at the sign-in notice and the **public demo · resets** tag: everyone is
+   simulated, nothing is kept.
+4. The world is shared: if someone else is signed in and presses Reset or Run,
+   it changes for you too. Press **Reset** before step 3 below for a clean start.
+
+Steps 1–13 below are identical. For step 14, run `make test` locally (the
+server online does not run the test suite).
+
 ## The demo
 
 | # | Say (short) | Do | Expect |
@@ -42,7 +64,7 @@ Scenario "walkthrough" is loaded and paused at 00:00 — press Start in Live Mon
 | 11 **[7:00]** | "The Data Structures Lab runs the real C++ structures." | **Data Structures Lab → Brute force · Quadtree · R-tree**; drag a new query box; press Play. | Teal (descended) and red (pruned) nodes; table: every index 0 mismatches vs brute force; timings. |
 | 12 **[7:45]** | "AVL rotations and graph search, from the same code." | Lab → **AVL** (Play), then **Graph** (switch Dijkstra / A*). | Balance factors, rotations; settled nodes and heap contents. |
 | 13 **[8:15]** | "Benchmarks are measured, not typed." | **Analytics**, scroll to the charts. | Index scaling chart; multi-user table (≈ 3 µs per fix up to 5,000 users). |
-| 14 **[8:45]** | "Tests: 51 files, 12,137 checks; 28 injected bugs all caught." | Second terminal: `make test` (and point at the last line). | `ALL TESTS PASS`. |
+| 14 **[8:45]** | "Tests: 51 files, 12,166 checks; 28 injected bugs all caught." | Second terminal: `make test` (and point at the last line). | `ALL TESTS PASS`. |
 | 15 **[9:15]** | "Syllabus: arrays and ring buffers, trees and recursion, BST and AVL, hashing, heaps, graphs, Dijkstra/A*, union-find, binary search; beyond it: persistence, Merkle proofs, Lamport clocks. Limits: simulated people, in-memory server, thin OSM polygons." | Slide: syllabus map + limitations. | — |
 
 ## Fallbacks
@@ -50,6 +72,8 @@ Scenario "walkthrough" is loaded and paused at 00:00 — press Start in Live Mon
 | Problem | Fallback |
 |---|---|
 | Port 8080 busy | `make app APP_ARGS="--port 8090"` |
+| Public URL takes a minute to answer | it is waking from sleep; wait, or switch to the local server |
+| Public URL unreachable, or someone else is driving the shared world | the local server (`make app`), which needs no network |
 | The scenario has run past the moment you need | top bar **Reset**, then **Step 10 s** / speed 60× to jump |
 | Incident list refreshes under the cursor | click the incident in the Overview table instead, or pause first |
 | Browser problem | the static dashboard: `make dashboard` then open `dashboard.html`, or the live site https://adivishall.github.io/safetrail |
@@ -63,4 +87,4 @@ Scenario "walkthrough" is loaded and paused at 00:00 — press Start in Live Mon
 make app-reset && make -s && make test && make e2e
 ```
 
-Expected: `ALL TESTS PASS` and `[ ok ] api/e2e 30 checks, 0 failed` (about 22 s).
+Expected: `ALL TESTS PASS` and `[ ok ] api/e2e 38 checks, 0 failed` (about 22 s).

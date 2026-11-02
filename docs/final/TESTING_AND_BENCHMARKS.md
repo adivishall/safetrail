@@ -10,8 +10,8 @@ platform, API and multi-user evidence produced in the final phase.
 
 | Check | Command | Result |
 |---|---|---|
-| Unit, property, differential, golden, platform, API and HTTP tests | `make test` | **51 files, 12,137 checks, 0 failed** (Apple clang; g++ 13 on Ubuntu 24.04 in CI) |
-| End to end over real HTTP | `make e2e` | **30 checks, 0 failed** |
+| Unit, property, differential, golden, platform, API and HTTP tests | `make test` | **51 files, 12,166 checks, 0 failed** (Apple clang; g++ 13 on Ubuntu 24.04 in CI) |
+| End to end over real HTTP | `make e2e` | **38 checks, 0 failed** (30 in demo mode, 8 starting the binary in public mode) |
 | Mutation testing | `make mutation` | **28/28 injected bugs caught** (23 engine + 5 platform) |
 | Full gate | `make validate` | passes: docs, results tables, `-Werror`, headers, tests, determinism, e2e, UBSan, CMake + ctest, Make-vs-CMake byte-identical output |
 | Benchmark correctness gates | `make bench` | all 8 gates pass (scaling, density, end to end, equivalence, containment, interval, evaluator, multi-user) |
@@ -38,7 +38,9 @@ platform, API and multi-user evidence produced in the final phase.
 | Groups | split and reunite; straggler confirmed only after the separation lasts | `scenario_test` |
 | Zones | self-intersecting polygon rejected; import all-or-nothing; validity changes | `api_test` |
 | HTTP | limits enforced before buffering; chunked, duplicate Content-Length, malformed request lines and headers refused | `tests/net/http_parse_test.cpp` |
-| API security | 401 without session, 403 without CSRF header, throttling after 5 failures, idle expiry, logout, role matrix, path traversal (plain and encoded), bounded lab inputs | `api_test`, `api_e2e` |
+| API security | 401 without session, 403 without CSRF header, the three sign-in locks (a shared proxy address locks nobody else), idle expiry, logout, role matrix, an access sweep of every route for anonymous, CSRF-less and tourist callers, path traversal (plain and encoded), bounded lab inputs | `api_test`, `api_e2e` |
+| Public mode | client address from the proxy header only from a trusted peer, one copy, a plausible value; spoofing ignored; request and sign-in rate limits (429); refuses to start without the four secrets and writes nothing; `$PORT`; `Secure` cookie and HSTS; no secret in the output; SIGTERM exits 0 | `api_test`, `api_e2e` |
+| Public deployment | the live Render URL: 44 scripted checks without an account, and the signed-in walkthrough in a browser ([DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) §1.7) | 2026-11-02, manual and scripted (script not committed) |
 | Isolation between tourists over the API | two tourists in one incident each see only their own part (no other name, alert, position, timeline entry, centroid or route); another tourist's trail, profile, history, fixes and consent are refused; lists show only yourself; responder positions and zone detail refused to tourists | `api_test` |
 | Role boundaries | responder cannot acknowledge, assign, resolve another unit's incident or create zones; operator cannot create an administrator, change settings or deactivate users; history, evidence and statistics are staff-only | `api_test` |
 | Audit coverage | the user list, alert feed and incident detail are audited per person shown, once per ten minutes | `api_test` |
