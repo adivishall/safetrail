@@ -108,7 +108,7 @@ function startApp() {
   const clockEl = h('span', { class: 'clock', title: 'Platform clock' }, 'T+00:00:00');
   const runbar = h('div', { class: 'runbar' });
   const who = h('div', { class: 'who' },
-    h('span', null, ctx.me.display_name + ' · ' + ctx.me.role),
+    h('span', { title: ctx.me.display_name + ' · ' + ctx.me.role }, ctx.me.display_name + ' · ' + ctx.me.role),
     h('button', { class: 'ghost small', onclick: logout }, 'Sign out'));
   const top = h('header', { class: 'topbar' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }), h('span', null, 'SafeTrail'), h('small', null, 'operations')),

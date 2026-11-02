@@ -63,9 +63,13 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .mode-tag { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 2px 7px; border-radius: 3px;
   border: 1px solid var(--line-strong); color: var(--text-2); }
 .mode-tag.demo { color: var(--sim); border-color: rgba(155,138,251,.45); }
-.runbar { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* The run controls keep their size; when the bar is short of room the user's
+   name gives way (ellipsis, full text in its title) instead of the Reset button
+   sliding underneath it. */
+.runbar { display: flex; align-items: center; gap: 6px; flex: none; }
 .runbar .state { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); width: 64px; }
-.who { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.who { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; white-space: nowrap; min-width: 0; }
+.who > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 .nav { border-right: 1px solid var(--line); background: var(--surface); padding: 10px 8px; overflow-y: auto; }
 .nav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: var(--radius);
@@ -227,6 +231,8 @@ dl.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .steps { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
 @media (max-width: 1100px) {
+  .brand { width: auto; }
+  .brand small { display: none; }
   .cols-main-side { grid-template-columns: 1fr; }
   .live { grid-template-columns: 1fr; grid-template-rows: 60vh auto; height: auto; }
   .live .map-wrap { border-right: 0; border-bottom: 1px solid var(--line); }
