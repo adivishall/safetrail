@@ -6,6 +6,218 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-11-02 — The integrated application is public: Render free web service, public mode, live smoke test
+
+**What:** SafeTrail's server now runs publicly at
+https://safetrail-v0bh.onrender.com, a Render free web service in Singapore
+built from the new `Dockerfile` (two Ubuntu 24.04 stages; the final image has
+only the stripped server, the web console, the two OpenStreetMap files and the
+benchmark CSVs, 148 MB, unprivileged user) through the Blueprint
+`render.yaml`, redeployed automatically on every push to
+`final/product-completion`. To make that safe, the server gained a public
+mode (`--public`): it refuses to start unless the four account passwords come
+from the host's secrets (Render generated them; none is in the repository or
+the log), sets `Secure` cookies and HSTS, takes the visitor's address from
+Cloudflare's `CF-Connecting-IP` only when the connection comes from the proxy,
+rate-limits requests and sign-ins, and tells every visitor that the people are
+simulated and that everything resets. Sign-in locks are now per address, per
+account and address, and per account, so a wrong password locks only the
+person typing it and a shared proxy address cannot lock everyone out. The
+server reads `$PORT`, exits cleanly on SIGTERM, and starts in about 3 s under
+the free instance's 0.1 CPU (36 s before: the world was built twice, and each
+account's 120,000-iteration hash took seconds; public mode uses 10,000
+iterations, which costs nothing against 256-bit random passwords). On the
+live site, the top bar's Reset button slid under the user's name between 760
+and about 1,050 px wide; fixed. The README now links the live application,
+the static dashboard, the repository, the report, the technical reference, the
+deck and the viva guide; the deployment guide, security review, demo script,
+report, technical reference, limitations and deck describe the real
+deployment and the new test counts (12,166 checks; 38 end to end).
+
+**Why:** The project needed a working public application, not only a static
+replay or a laptop demonstration, without paying for hosting and without
+weakening security: behind a proxy every request looks like the proxy, so
+the old per-address lock would have locked out all visitors at once, and the
+old start-up printed generated passwords to the log.
+
+**Impact:** Anyone can open the sign-in page; the owner holds the passwords
+(Render Dashboard → safetrail → Environment). Checked on the live URL: 44 of
+44 scripted checks without an account (HTTPS, headers, spoofing, access
+control, CSRF, traversal, rate limits) and the full walkthrough signed in as
+admin — 16 simulated tourists, 14 alerts of 7 kinds, an incident acknowledged
+and assigned with its A* route, all 15 Lab experiments — with no failed
+request. After 18 idle minutes the service had gone to sleep; the next
+request woke it in 13.5 s into a fresh world, and the same checks passed
+again after signing in. The free plan's limits are documented, not hidden:
+it sleeps after 15 idle minutes, and every restart starts a fresh world, so
+nothing on it is durable. GitHub Pages and Vercel still serve the static
+dashboard, unchanged.
+
+### 2026-11-01 — Pre-merge verification of PR #11: isolation, audit, input and server fixes; document QA
+
+**What:** A full verification of PR #11 before merging. Code: a tourist now
+sees only their own part of an incident they share with someone else (before,
+they could read the other person's name, alert positions and timeline, and
+work out their position from the centroid); responder positions and zone
+detail are no longer shown to tourists; the user list, alert feed and incident
+detail are now audited like the live map; unknown-username logins cost the
+full 120,000-iteration key derivation (they ran 1 iteration, which let anyone
+find valid usernames by timing); client numbers go through checked
+conversions (a JSON `1e999` cast to `int` was undefined behaviour);
+`PATCH /api/users/{id}` applies every field; the Data Structures Lab no
+longer leaves a playback timer throwing forever after Play then Clear, and no
+longer gets stuck after a refused request; the HTTP server cuts off a
+request not complete 20 s after the connection opens, survives a handler
+exception, and has a `--secure-cookies` switch. Build: sanitizer builds track
+header dependencies and check `float-cast-overflow` on g++ as well. Documents:
+the PDFs print at the intended sizes (Chrome had been shrinking two of them to
+7.3 pt body text because of one over-wide table cell), carry page numbers and
+bookmarks, keep escaped `|` inside table cells, and link to the repository
+instead of dead relative paths; the deck says 30 end-to-end checks and that
+the full application runs locally; a new `docs/final/DEPLOYMENT_GUIDE.md`
+separates the public static dashboard, the local application, and what a
+free public backend would need (a container was built and run locally, not
+deployed).
+
+**Why:** The PR was about to be reviewed for merging. Every claim in the
+deliverables (isolation, "every read is audited", the login timing note,
+the test counts) had to be true of the code, and Linux g++ had to be checked
+on its own, not inferred from Apple clang.
+
+**Impact:** 22 new or changed checks failed on the old code and pass now;
+the slow-client check failed (connection held 45 s); UBSan aborted on the old
+code. Suite: 51 test files, 12,137 checks; e2e 30 checks. A g++-only
+`-Wshadow` error in a new test was caught in an Ubuntu 24.04 container before
+pushing. Still personal and not in the repository: roll number, programme,
+institution, guide, the declaration, and the declaration of assistance used.
+
+### 2026-10-30 — Multi-user benchmark, API tests, final academic deliverables
+
+**What:** Benchmark section 19 drives 1–5,000 independent users through the
+platform's whole ingestion path under three update patterns (in order,
+user-batched, noisy with injected duplicates and late fixes) and gates on the
+counters. New tests: the API in process (roles, CSRF, throttling, session
+expiry, responder visibility, path confinement), the HTTP parser, and
+`tools/api_e2e.py`, which starts the server on a free port and drives it over
+real HTTP (`make e2e`; also in `make validate` and the gcc CI job). Five
+platform mutants joined the mutation check. `docs/final/` now holds the audit,
+report, technical documentation, architecture, data-structures guide,
+complexity reference, syllabus mapping, advanced concepts, testing and
+benchmarks, security and privacy, limitations, viva Q&A, presentation and demo
+scripts, contribution record, three PDFs, a 14-slide PowerPoint deck, and
+figures and screenshots generated by `tools/make_figures.py`,
+`tools/app_screenshots.py`, `tools/build_pdfs.py` and `tools/make_deck.js`.
+
+**Why:** The brief asks for evidence at multi-user scale, security testing,
+and complete academic material that states only what the code does.
+
+**Impact:** The multi-user benchmark found a real bug: alert bookkeeping scanned
+every alert ever raised on each state change, so a 5,000-user run was
+quadratic. Alerts are now indexed per user, and the cost per fix is flat at
+about 3 µs from 10 to 5,000 users. Suite: 51 test files, 12,066 checks; e2e 29
+checks; mutation 28/28. Two honest limits found while preparing material: the
+deck uses chart images drawn from the CSVs because Keynote renders native
+pptxgenjs charts blank; and the tourist-facing screenshots needed full page
+loads because the console caches the signed-in user across hash navigation.
+
+### 2026-10-30 — Operations web app, HTTP server and Data Structures Lab
+
+**What:** `safetrail_server` (`make app`) serves a no-build-step web console from
+`web/app/`: Overview, Live Monitoring (Canvas map over the real OSM road network,
+no tile service), Users, Groups, Hazard Zones (draw, edit, validity, GeoJSON
+import, version history), Alerts (heap triage order), Incidents (acknowledge,
+assign with A* route, resolve, greedy-vs-Hungarian batch plan), Responders,
+Investigation (state at any past time; Merkle proofs re-verified in the browser
+with WebCrypto), Analytics (live counters plus committed benchmark CSVs),
+Data Structures Lab (15 experiments drawn from the real C++ structures),
+Settings, and tourist / responder self-service pages. The server has PBKDF2
+logins, hashed session tokens, CSRF header, login throttling, role checks,
+audited location reads, and strict security headers.
+
+**Why:** The brief asks for an operable product, not a replay page.
+
+**Impact:** Verified in the browser: login, scenario run at 20x, incident
+acknowledge and assignment with a 1.54 km road route (A* 772 junctions vs
+Dijkstra 5,557), lab views, all 220 evidence entries verified client-side and a
+forged one rejected. Not yet done: multi-user benchmark, API end-to-end test
+script, docs/final deliverables, slides and PDF.
+
+### 2026-10-30 — Platform layer: users, consent, multi-user tracking, alerts, incidents, groups, offline sync
+
+**What:** A new layer, `src/app/`, turns the engine into a multi-user
+application without re-implementing any of it. `app::Platform` holds user
+accounts (admin, operator, responder, tourist), consent and tracking sessions,
+one isolated engine state per tracked user, an ingestion boundary for GPS fixes
+(duplicates dropped, out-of-order fixes recorded but not evaluated, jumps and
+noisy fixes flagged, fixes without consent refused and not stored), alerts with
+acknowledgement and escalation (the existing timer wheel + hash table, which
+nothing ran before), triage order through the existing binary heap, incidents
+with an operator workflow (acknowledge, assign, resolve), nearest responder by
+road distance (Dijkstra) and the route by A*, greedy-vs-Hungarian batch
+dispatch, groups with per-group cohesion monitors and a separation-duration
+rule, zone create/edit/delete/validity/GeoJSON import with history in the
+persistent index, an event log mirrored into a Merkle log, an access audit log,
+retention and erasure, and offline phones that evaluate zones locally from an
+index shipped as bytes, queue Lamport-stamped events and reconcile on
+reconnect. `app::ScenarioRunner` drives scripted, clearly labelled simulated
+people through the same entry point a phone would use (four stories plus a
+combined walkthrough). Passwords are PBKDF2-HMAC-SHA256 on the project's own
+SHA-256, checked against the RFC test vectors. Small changes to existing code:
+`CohesionMonitor` gained read accessors for its current straggler and
+fragmentation state; `ZoneStore::load_geojson` is now all-or-nothing (it used to
+leave a half-loaded store when a later feature was invalid) and the same parser
+is exposed for text uploads; `Reconciler` de-duplicates with the project's hash
+map instead of scanning the whole timeline per event.
+
+**Why:** The audit (`docs/final/AUDIT.md`) found no user model, no live
+ingestion, and seven tested modules on no running path; group separation was
+counted but never alerted, and its confirmation threshold was never read.
+
+**Impact:** Three new test files (crypto vectors, multi-user isolation and the
+ingestion boundary, every scenario end to end plus byte-identical determinism);
+the suite is 49 files and passes. Two findings worth knowing: the real OSM
+hazard polygons are mostly thin (rivers 25–40 m deep, the cliff about 23 m), so
+with a 15 m entry margin a confirmed "inside" is rare and "uncertain" is the
+honest answer near them; and a phone whose clock is slow judges a zone's
+validity window on its own wrong clock.
+
+### 2026-10-25 — Dashboard redesign: summary strip, honest legend, phone layout
+
+**What:** The page template in `src/viz/html_export.cpp` (CSS, markup and a few
+lines of its script) was reworked. A strip under the header shows the run's
+headline numbers, read from the same `D.stats` and `D.equivalence` as the
+counters panel: zones indexed, candidates per query, pruning, alerts →
+incidents, metres saved by the Hungarian dispatch, and the live quadtree/R-tree
+vs brute-force mismatch count. The legend now explains the tourist dots (clear,
+uncertain, inside a zone) and the responder squares, and lists only the zone
+kinds this run actually has. The side panel's eleven sections are cards; prose
+is set in the system sans-serif and numbers stay monospaced. The bottom bar
+keeps its controls in the same order with the same labels, adds a "frame n /
+720" readout, larger hit targets, focus outlines and `aria-pressed` on the
+three toggles. The page gained a viewport tag and a phone layout: the map
+fills the width, the panel scrolls with the page instead of inside a 50vh box,
+the benchmark table scrolls sideways inside its card, and the controls stay
+pinned at the bottom. README's three dashboard images were regenerated with
+`tools/screenshots.sh`.
+
+**Why:** On a phone the old page had no viewport tag, so it rendered at desktop
+width; at phone width the benchmark table and the control bar ran off the
+screen, leaving `dispatch` unreachable. The legend showed "safe", which no zone
+in the run uses, omitted "advisory", which 18 do, and never said what the dot
+colours meant. On desktop the run's results were only reachable by scrolling a
+long panel.
+
+**Impact:** Presentation only. The embedded data block is byte-identical to
+the verified production page (sha256 `37293065…`), so every number, the
+benchmark rows and the incident ranking are unchanged; the engine, tests, CSVs,
+Vercel and Pages configuration are untouched. The page's own hash changes, to
+sha256 `270f8575…`, identical on macOS (Apple clang 17) and in the Amazon Linux
+2023 container (GCC 11.5) through `tools/vercel_build.sh`, whose benchmark and
+self-contained checks pass on both. Play/pause, the four index modes, accuracy
+discs, dispatch, the slider, tapping a tourist, the in-page Merkle check and the
+`#index=rtree&frame=400` deep link were exercised in the browser at desktop and
+375 px phone width, with no console output and no request beyond the page.
+
 ### 2026-10-23 — Vercel production rebuilt from `main` and verified
 
 **What:** Pull request #6 merged as `28f0e47`, so `main` now carries

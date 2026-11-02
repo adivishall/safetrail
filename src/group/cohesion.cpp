@@ -116,4 +116,16 @@ std::vector<std::vector<track::TouristId>> CohesionMonitor::observed_components(
   return prev_components_;
 }
 
+std::vector<track::TouristId> CohesionMonitor::stragglers(GroupId g) const {
+  for (size_t gi = 0; gi < declared_.size(); ++gi)
+    if (declared_[gi].id == g) return prev_stragglers_[gi];
+  return {};
+}
+
+bool CohesionMonitor::fragmented(GroupId g) const {
+  for (size_t gi = 0; gi < declared_.size(); ++gi)
+    if (declared_[gi].id == g) return was_fragmented_[gi] != 0;
+  return false;
+}
+
 }  // namespace safetrail::group

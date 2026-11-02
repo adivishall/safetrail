@@ -34,6 +34,10 @@ bool heuristic_is_admissible(const RoadGraph& g) {
 }
 
 AStarResult astar(const RoadGraph& g, NodeId source, NodeId target) {
+  return astar(g, source, target, nullptr);
+}
+
+AStarResult astar(const RoadGraph& g, NodeId source, NodeId target, SearchTrace* tr) {
   AStarResult out;
   if (!g.valid(source) || !g.valid(target)) return out;
 
@@ -48,9 +52,15 @@ AStarResult astar(const RoadGraph& g, NodeId source, NodeId target) {
   frontier.push({h(source), 0.0, source});
 
   while (!frontier.empty()) {
+    if (tr && tr->frontier.size() < tr->snapshot_limit) {
+      std::vector<std::pair<double, NodeId>> snap;
+      for (const auto& q : frontier.data()) snap.emplace_back(q.f, q.node);
+      tr->frontier.push_back(std::move(snap));
+    }
     const QItem cur = frontier.pop();
-    if (cur.g > best_g[size_t(cur.node)]) continue;   // stale
+    if (cur.g > best_g[size_t(cur.node)]) { if (tr) ++tr->stale_pops; continue; }   // stale
     ++out.nodes_expanded;
+    if (tr) { tr->settled.push_back(cur.node); tr->frontier_size.push_back(frontier.size()); }
 
     if (cur.node == target) {
       out.found = true;
@@ -66,6 +76,7 @@ AStarResult astar(const RoadGraph& g, NodeId source, NodeId target) {
         best_g[size_t(e.to)] = ng;
         parent[size_t(e.to)] = cur.node;
         frontier.push({ng + h(e.to), ng, e.to});
+        if (tr) ++tr->pushes;
       } else if (e.weight_m > 0.0 && ng == best_g[size_t(e.to)] &&
                  cur.node < parent[size_t(e.to)]) {
         // The positive-weight guard is not cosmetic. Rewriting a parent on an

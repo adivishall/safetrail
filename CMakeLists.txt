@@ -50,7 +50,7 @@ message(STATUS "safetrail: ${SAFETRAIL_SRC_COUNT} source files")
 add_library(safetrail STATIC ${SAFETRAIL_SRC})
 target_include_directories(safetrail PUBLIC include)
 
-foreach(app safetrail_headless safetrail_bench)
+foreach(app safetrail_headless safetrail_bench safetrail_server)
   if(EXISTS ${CMAKE_SOURCE_DIR}/apps/${app}.cpp)
     add_executable(${app} apps/${app}.cpp)
     target_link_libraries(${app} PRIVATE safetrail)

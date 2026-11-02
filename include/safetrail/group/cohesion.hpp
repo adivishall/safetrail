@@ -82,6 +82,14 @@ class CohesionMonitor {
   // with stragglers drawn outside them reads instantly.
   std::vector<std::vector<track::TouristId>> observed_components() const;
 
+  // The state behind the transition events: who is CURRENTLY reported as a
+  // straggler in group `g`, and whether `g` is currently fragmented. The events
+  // say when a separation began; a caller that must know how LONG it has lasted
+  // (app::Platform's separation-duration rule, which is what confirm_ms above
+  // describes) needs the standing state as well. Empty / false for an unknown g.
+  std::vector<track::TouristId> stragglers(GroupId g) const;
+  bool fragmented(GroupId g) const;
+
  private:
   CohesionConfig cfg_;
   std::vector<DeclaredGroup> declared_;

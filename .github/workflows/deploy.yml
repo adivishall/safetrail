@@ -96,6 +96,8 @@ jobs:
         run: make -j$(nproc) test CXX=g++ WERROR=1
       - name: Deterministic replay (same seed twice, byte-identical)
         run: make determinism CXX=g++ WERROR=1
+      - name: Platform server end to end over HTTP
+        run: make e2e CXX=g++ WERROR=1
 
   # The same suite built by clang on Linux: clang enforces the -Wconversion
   # family (see the Makefile), and a second compiler is a second opinion on UB

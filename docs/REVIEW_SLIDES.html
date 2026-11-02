@@ -233,7 +233,7 @@
   <h2>Measured against our own brute force, as paired ratios</h2>
   <div class="cols">
     <div>
-      <!-- results:html-headline --><table><thead><tr><th>Workload</th><th>Brute force / naive</th><th>Quadtree speedup (range over runs)</th><th>R-tree speedup (range over runs)</th></tr></thead><tbody><tr><td>Range query, 100,000 zones in one district (k ≈ 98)</td><td>239 µs</td><td>33.7× (31.7–33.7×)</td><td>224× (211–224×)</td></tr><tr><td>Range query, 100,000 zones at constant density (k ≈ 1)</td><td>216 µs</td><td>543× (423–543×)</td><td>1042× (845–1042×)</td></tr><tr><td>Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon</td><td>262 µs</td><td>1461× (1461–1552×)</td><td>2088× (ratio of medians)</td></tr></tbody></table><!-- /results:html-headline -->
+      <!-- results:html-headline --><table><thead><tr><th>Workload</th><th>Brute force / naive</th><th>Quadtree speedup (range over runs)</th><th>R-tree speedup (range over runs)</th></tr></thead><tbody><tr><td>Range query, 100,000 zones in one district (k ≈ 98)</td><td>245 µs</td><td>32.7× (31.7–33.5×)</td><td>224× (211–224×)</td></tr><tr><td>Range query, 100,000 zones at constant density (k ≈ 1)</td><td>219 µs</td><td>556× (423–556×)</td><td>1027× (845–1027×)</td></tr><tr><td>Point-in-zone, 5,000 polygons × 128 vertices, vs checking every polygon</td><td>255 µs</td><td>1498× (1461–1552×)</td><td>2072× (ratio of medians)</td></tr></tbody></table><!-- /results:html-headline -->
       <p class="dim" style="margin-top:12px">Ranges are over repeated runs in one session. Between
         sessions the R-tree's ratio has moved by more than 2× on this laptop (about 100× in
         September, over 200× in October); read ~100× as the floor. Candidate counts are
