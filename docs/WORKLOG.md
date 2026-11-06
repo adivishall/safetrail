@@ -6,6 +6,30 @@ follow the project's history without reading diffs.
 
 Format: `### YYYY-MM-DD — short title` then What / Why / Impact.
 
+### 2026-11-06 — Presentation-preparation pack for the course viva
+
+**What:** A new folder, `presentation-preparation/`, with thirteen documents
+written from the code: a project overview with a glossary; every console page,
+control and workflow traced from the click to the endpoint, the C++ function and
+the data structure; a deep dive on every data structure (node layout,
+operations, invariants, expected vs guaranteed bounds, diagrams, worked
+examples); the GPS-fix pipeline end to end and every implemented algorithm; a
+live demonstration script for the deployed site; the fifteen Lab experiments;
+benchmarks (protocol, verified numbers, why speedups plateau, variation); testing
+(oracles, differential tests, the 28 mutants, defects found); architecture with
+diagrams; limitations with ready answers; 115 viva questions; spoken scripts from
+30 seconds to 10 minutes; and a master index with a study order.
+
+**Why:** To present and defend the project to the Data Structures course from
+the actual implementation rather than from memory, with every claim traceable.
+
+**Impact:** Documentation only; no application code changed. Every file path
+and function name cited was checked to exist, and every benchmark figure against
+`bench/results/`. Two points the pack makes explicit: the 100,000-zone headline
+benchmarks use synthetic zones (the live system uses the 38 OpenStreetMap
+zones), and the jurisdiction hierarchy, QR digital-ID verification, Kuhn's
+matching and k-NN queries are tested library code that the console does not use.
+
 ### 2026-11-02 — The integrated application is public: Render free web service, public mode, live smoke test
 
 **What:** SafeTrail's server now runs publicly at
